@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.sparse import csr_array
 from datasets import Dataset, DatasetInfo, list_datasets, load_dataset, concatenate_datasets,DatasetDict, load_from_disk
-import h5py
+# import h5py
 import os
 import torch
 from tqdm import tqdm
