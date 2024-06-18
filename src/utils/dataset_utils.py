@@ -249,9 +249,9 @@ def load_ibl_dataset(cache_dir,
 
         num_neuron_set = set()
         eids_set = set()
-        target_eids = get_target_eids()
-        test_re_eids = get_test_re_eids()
         if use_re:
+            target_eids = get_target_eids()
+            test_re_eids = get_test_re_eids()
             train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] in target_eids]
             # remove the test_re_eids from the train_session_eid_dir
             train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] not in test_re_eids]

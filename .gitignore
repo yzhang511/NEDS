@@ -1,3 +1,5 @@
 wandb
 *.egg-info
 __pycache__
+checkpoints
+results
