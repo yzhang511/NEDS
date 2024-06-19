@@ -76,7 +76,10 @@ if not os.path.exists(final_checkpoint) or args.overwrite:
 
     log_dir = os.path.join(
         args.base_path,
-        config.dirs.log_dir, eid, "train", "multi_modal",
+        config.dirs.log_dir, 
+        eid, 
+        "train", 
+        "multi_modal",
         "mask_{}".format(args.mask_mode),
         "ratio_{}".format(args.mask_ratio),
     )

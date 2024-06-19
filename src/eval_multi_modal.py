@@ -32,6 +32,8 @@ ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
+ap.add_argument('--seed', type=int, default=42)
+ap.add_argument('--wandb', action='store_true')
 args = ap.parse_args()
 
 base_path = args.base_path
@@ -44,15 +46,16 @@ model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 
-if config.wandb.use:
+if args.wandb:
     wandb.init(
-        project=config.wandb.project, entity=config.wandb.entity, config=config,
+        project="multi_modal",
+        config=args,
         name="{}_eval_multi_modal_mask_{}_ratio_{}".format(
             eid[:5], args.mask_mode, args.mask_ratio
         )
     )
 
-set_seed(config.seed)
+set_seed(args.seed)
 
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
