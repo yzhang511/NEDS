@@ -316,9 +316,9 @@ class MultiModalTrainer():
 
         # Multi-task-Masing (MtM)
         if self.config.training.use_mtm:
-            self.masking_schemes = ['neuron', 'causal', 'temporal', 'intra-region', 'inter-region']
+            self.masking_schemes = ['neuron','temporal']
         else:
-            self.masking_schemes = None
+            self.masking_mode = None
 
     def _forward_model_outputs(self, batch, masking_mode):
         batch = move_batch_to_device(batch, self.accelerator.device)
