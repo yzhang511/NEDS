@@ -316,7 +316,7 @@ class MultiModalTrainer():
 
         # Multi-task-Masing (MtM)
         if self.config.training.use_mtm:
-            self.masking_schemes = ['neuron','temporal']
+            self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
         else:
             self.masking_mode = None
 
@@ -336,7 +336,7 @@ class MultiModalTrainer():
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
-                mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
+                mod_dict[mod]['inputs_regions'] = np.asarray(batch['neuron_regions']).T
             elif mod == 'behavior':
                 mod_dict[mod]['inputs'] = batch['target'].clone()
                 mod_dict[mod]['targets'] = batch['target'].clone()
