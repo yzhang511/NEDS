@@ -311,11 +311,16 @@ class MultiModalTrainer():
         self.model_class = self.config.model.model_class
         self.metric = 'r2'        
         self.session_active_neurons = []      
-        self.avail_mod = ['ap', 'behavior']
+        self.avail_mod = kwargs.get("avail_mod", None)
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
+        # Multi-task-Masing (MtM)
+        if self.config.training.use_mtm:
+            self.masking_schemes = ['neuron', 'causal', 'temporal', 'intra-region', 'inter-region']
+        else:
+            self.masking_schemes = None
 
-    def _forward_model_outputs(self, batch):
+    def _forward_model_outputs(self, batch, masking_mode):
         batch = move_batch_to_device(batch, self.accelerator.device)
         mod_dict = {}
         for mod in self.mod_to_indx.keys():
@@ -327,6 +332,7 @@ class MultiModalTrainer():
             mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+            mod_dict[mod]['masking_mode'] = masking_mode
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
@@ -417,7 +423,9 @@ class MultiModalTrainer():
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
-            outputs = self._forward_model_outputs(batch)
+            if self.config.training.use_mtm:
+                self.masking_mode = random.sample(self.masking_schemes, 1)[0]
+            outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
             loss = outputs.loss
             loss.backward()
             self.optimizer.step()
@@ -442,7 +450,9 @@ class MultiModalTrainer():
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
-                    outputs = self._forward_model_outputs(batch)
+                    if self.config.training.use_mtm:
+                        self.masking_mode = random.sample(self.masking_schemes, 1)[0]
+                    outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
                     loss = outputs.loss
                     eval_loss += loss.item()
                     num_neuron = batch['spikes_data'].shape[2] 

@@ -37,6 +37,7 @@ training:
   save_every: 100  # Save checkpoint
   eval_every: null  # Eval model
 
+  use_mtm: true
 
 
 # Model configuration. 

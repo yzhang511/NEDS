@@ -151,7 +151,7 @@ class MultiModal(nn.Module):
         # TO DO: Change context_mask
         context_mask = torch.ones_like(encoder_attn_mask).to(encoder_attn_mask.device, torch.int64)
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
-        
+
         return encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask
 
     
@@ -164,7 +164,7 @@ class MultiModal(nn.Module):
         decoder_tokens[decoder_mask] = 0.
         decoder_emb[decoder_mask] = 0.
         decoder_attn_mask = self.adapt_decoder_attention_mask(decoder_attn_mask, mod_mask)
-        
+
         return decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask
         
     # TO DO
@@ -213,7 +213,10 @@ class MultiModal(nn.Module):
             targets = target_gts[mod]
             B, T, N = targets.size()
             preds = decoder_mod_dict[mod]['preds']
-            targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
+            if "spike_mask" in decoder_mod_dict[mod]:
+                targets_mask = decoder_mod_dict[mod]['spike_mask']
+            else:
+                targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
             loss = (self.loss_mod[mod](preds, targets) * targets_mask).sum()
             n_examples = targets_mask.sum()
             mod_loss[mod] = loss
@@ -240,8 +243,14 @@ class MultiModal(nn.Module):
             B, N, D = mod_dict[mod]['inputs'].size()
             if self.mask:
                 inputs_regions = mod_dict[mod]['inputs_regions'] if mod == 'ap' else None
-                _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
-                mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] # use token-wise mask now and expand later
+                if mod_dict[mod]['masking_mode']:
+                    self.masker.mode = mod_dict[mod]['masking_mode']
+                    mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(),inputs_regions)
+                    mod_dict[mod]['spike_mask'] = spike_mask
+                    mask = mod_dict[mod]['inputs_attn_mask']
+                else:
+                    _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
+                    mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] # use token-wise mask now and expand later
             else:
                 mask = mod_dict[mod]['inputs_attn_mask']
                 

@@ -136,7 +136,7 @@ if not os.path.exists(final_checkpoint) or args.overwrite:
                              sort_by_region=config.data.sort_by_region,
                              shuffle=False)
 
-    avail_mod = ['ap', 'behavior']
+    avail_mod = ['ap']
     
     encoder_embeddings, decoder_embeddings = {}, {}
     for mod in avail_mod:
@@ -195,6 +195,7 @@ if not os.path.exists(final_checkpoint) or args.overwrite:
         "log_dir": log_dir,
         "accelerator": accelerator,
         "lr_scheduler": lr_scheduler,
+        "avail_mod": avail_mod,
         "config": config,
     }
     
