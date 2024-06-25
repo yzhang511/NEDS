@@ -247,7 +247,7 @@ class MultiModal(nn.Module):
                     self.masker.mode = mod_dict[mod]['masking_mode']
                     # print(f"masking mode: {self.masker.mode}")
                     # print(f"unmask inputs: {mod_dict[mod]['inputs'].sum()}")
-                    mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(),inputs_regions)
+                    mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
                     # print(f"mask inputs: {mod_dict[mod]['inputs'].sum()}")
                     # print(f"spike mask: {spike_mask.sum()}")
                     mod_dict[mod]['spike_mask'] = spike_mask

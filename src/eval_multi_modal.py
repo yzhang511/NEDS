@@ -28,6 +28,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='671c7ea7-6726-4fbe-adeb-f89c2c8e489b')
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
+ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
@@ -46,12 +47,19 @@ model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 
+# change config to eval mode
+config['model']['masker']['force_active'] = False
+config['model']['masker']['ratio'] = 0
+config['model']['masker']['mask_regions'] = [] 
+config['model']['masker']['target_regions'] = [] 
+config['training']['use_mtm'] = args.use_MtM
+
 if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="{}_eval_multi_modal_mask_{}_ratio_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio
+        name="{}_eval_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
+            eid[:5], args.mask_mode, args.mask_ratio, config.training.use_mtm
         )
     )
 
@@ -70,8 +78,8 @@ intra_region = False
 print('Start model evaluation.')
 print('=======================')
 
-model_path = f'{base_path}/results/{eid}/train/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/{best_ckpt_path}'
-save_path = f'{base_path}/results/{eid}/eval/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}'
+model_path = f'{base_path}/results/{eid}/train/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/useMtM_{args.use_MtM}/{best_ckpt_path}'
+save_path = f'{base_path}/results/{eid}/eval/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/useMtM_{args.use_MtM}/'
 
 configs = {
     'model_config': model_config,

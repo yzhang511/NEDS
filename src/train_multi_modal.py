@@ -26,6 +26,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='671c7ea7-6726-4fbe-adeb-f89c2c8e489b')
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
+ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
@@ -44,11 +45,15 @@ kwargs = {
 config = config_from_kwargs(kwargs)
 config = update_config(f"src/configs/multi_modal/trainer_mm.yaml", config)
 
+config['model']['masker']['mode'] = args.mask_mode
+config['model']['masker']['ratio'] = args.mask_ratio
+config['training']['use_mtm'] = args.use_MtM
+
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="{}_train_multi_modal_mask_{}_ratio_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio
+        name="{}_train_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
+            eid[:5], args.mask_mode, args.mask_ratio, config.training.use_mtm
         )
     )
 
@@ -82,6 +87,7 @@ if not os.path.exists(final_checkpoint) or args.overwrite:
         "multi_modal",
         "mask_{}".format(args.mask_mode),
         "ratio_{}".format(args.mask_ratio),
+        "useMtM_{}".format(config.training.use_mtm)
     )
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -165,14 +171,9 @@ if not os.path.exists(final_checkpoint) or args.overwrite:
         **meta_data
     )
 
-    model.masker.mode = args.mask_mode
-    model.masker.ratio = args.mask_ratio
     print("(train) masking mode: ", model.masker.mode)
     print("(train) masking ratio: ", model.masker.ratio)
     print("(train) masking active: ", model.masker.force_active)
-    if args.mask_mode == 'causal':
-        model.context_forward = 0
-        print("(train) context forward: ", model.context_forward)
     
     model = accelerator.prepare(model)
 
