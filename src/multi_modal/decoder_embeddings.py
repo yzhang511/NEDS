@@ -43,7 +43,7 @@ class DecoderEmbeddingLayer(nn.Module):
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
         # TO DO: Change to different sampled target tokens later
-        targets, targets_timestamp, targets_modality  = d['targets'], d['targets_timestamp'], d['targets_modality']
+        targets, targets_timestamp, targets_modality  = d['inputs'], d['inputs_timestamp'], d['inputs_modality']
         
         B, N, _ = targets.size()
 

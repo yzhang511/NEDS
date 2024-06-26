@@ -62,12 +62,12 @@ set_seed(args.seed)
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
-spike_recon = True if 'ap' in avail_mod else False
+spike_recon = False
 behave_recon = True if 'behavior' in avail_mod else False
 co_smooth = True if 'ap' in avail_mod else False
 forward_pred = True if 'ap' in avail_mod else False
-inter_region = True if 'ap' in avail_mod else False
-intra_region = True if 'ap' in avail_mod else False
+inter_region = False
+intra_region = False
 
 print('Start model evaluation.')
 print('=======================')
