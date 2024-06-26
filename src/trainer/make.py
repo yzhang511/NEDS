@@ -1,20 +1,4 @@
-from trainer.base import Trainer, MultiModalTrainer
-
-def make_trainer(
-    model,
-    train_dataloader,
-    eval_dataloader,
-    optimizer,
-    **kwargs
-):
-    return Trainer(
-        model=model,
-        train_dataloader=train_dataloader,
-        eval_dataloader=eval_dataloader,
-        optimizer=optimizer,
-        **kwargs
-    )
-
+from trainer.base import MultiModalTrainer
 
 def make_multimodal_trainer(
     model,

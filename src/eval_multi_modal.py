@@ -46,20 +46,14 @@ print(f'Working on EID: {eid} ...')
 model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
-
-# change config to eval mode
-config['model']['masker']['force_active'] = False
-config['model']['masker']['ratio'] = 0
-config['model']['masker']['mask_regions'] = [] 
-config['model']['masker']['target_regions'] = [] 
-config['training']['use_mtm'] = args.use_MtM
+avail_mod = ['ap']
 
 if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
         name="{}_eval_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio, config.training.use_mtm
+            eid[:5], args.mask_mode, args.mask_ratio, args.use_MtM
         )
     )
 
@@ -68,12 +62,12 @@ set_seed(args.seed)
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
-spike_recon = True
-behave_recon = True
-co_smooth = False
-forward_pred = False
-inter_region = False
-intra_region = False
+spike_recon = True if 'ap' in avail_mod else False
+behave_recon = True if 'behavior' in avail_mod else False
+co_smooth = True if 'ap' in avail_mod else False
+forward_pred = True if 'ap' in avail_mod else False
+inter_region = True if 'ap' in avail_mod else False
+intra_region = True if 'ap' in avail_mod else False
 
 print('Start model evaluation.')
 print('=======================')
@@ -89,12 +83,16 @@ configs = {
     'seed': 42,
     'mask_name': mask_name,
     'eid': eid,
-    'avail_mod': ['ap', 'behavior'],
+    'avail_mod': avail_mod,
     'avail_beh': [args.cont_target],
 }  
 
 model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 
+print("(eval) masking ratio: ", model.masker.ratio)
+print("(eval) masking active: ", model.masker.force_active)
+print("(eval) masking mask regions: ", model.masker.mask_regions)
+print("(eval) masking target regions: ", model.masker.target_regions)
 
 if spike_recon:
     spike_recon_bps_file = f'{save_path}/spike_recon/bps.npy'
@@ -114,6 +112,7 @@ if spike_recon:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **spike_recon_configs
         )
         print(results)
@@ -141,6 +140,7 @@ if behave_recon:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **behave_recon_configs
         )
         print(results)
@@ -169,6 +169,7 @@ if co_smooth:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **co_smoothing_configs
         )
         print(results)
@@ -197,6 +198,7 @@ if forward_pred:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **co_smoothing_configs
         )
         print(results)
@@ -225,6 +227,7 @@ if inter_region:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **co_smoothing_configs
         )
         print(results)
@@ -253,6 +256,7 @@ if intra_region:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
+            use_mtm=args.use_MtM,
             **co_smoothing_configs
         )
         print(results)

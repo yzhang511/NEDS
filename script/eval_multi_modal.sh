@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --account=col169
-#SBATCH --partition=gpu-shared
-#SBATCH --job-name="train_mm"
-#SBATCH --output="train_mm.%j.out"
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="eval_mm"
+#SBATCH --output="eval_mm.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 8
@@ -12,19 +12,15 @@
 #SBATCH -t 0-1
 #SBATCH --export=ALL
 
-module load gpu
-module load slurm
 
 . ~/.bashrc
 echo $TMPDIR
 
 conda activate ibl-mm
 
-cd /home/yzhang39/multi_modal_foundation_model
+cd ../
 
-huggingface-cli login --token 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  --add-to-git-credential
-
-python src/eval_multi_modal.py --mask_mode temporal --mask_ratio 0.3 --train --eid 51e53aff-1d5d-4182-a684-aba783d50ae5
+python src/eval_multi_modal.py --mask_mode temporal --mask_ratio 0.3 --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 --wandb --seed 42 --base_path /scratch/bcxj/yzhang39 --save_plot --use_MtM
 
 conda deactivate
 

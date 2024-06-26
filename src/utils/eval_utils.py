@@ -60,6 +60,13 @@ def load_model_data_local(**kwargs):
 
     accelerator = Accelerator()
     model = torch.load(model_path)['model']
+    
+    # change model to eval mode
+    model.masker.force_active = False
+    model.masker.ratio = 0
+    model.masker.mask_regions = []
+    model.masker.target_regions = []
+    
     model = accelerator.prepare(model)
     
     dataloader = make_loader(
@@ -89,6 +96,7 @@ def spiking_activity_recon_eval(
         test_dataloader,
         test_dataset,
         save_plot=False,
+        use_mtm=False,
         **kwargs
 ):
     
@@ -139,10 +147,31 @@ def spiking_activity_recon_eval(
     with torch.no_grad():
         for batch in test_dataloader:
             batch = move_batch_to_device(batch, accelerator.device)
-            outputs = model._forward_model_outputs(batch)
+            mod_dict = {}
+            for mod in model.mod_to_indx.keys():
+                mod_dict[mod] = {}
+                mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                mod_dict[mod]['eid'] = batch['eid'][0]  
+                mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                if use_mtm:
+                    mod_dict[mod]['masking_mode'] = model.masker.mode 
+                else:
+                    mod_dict[mod]['masking_mode'] = None 
+                if mod == 'ap':
+                    mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
+                    mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
+                    mod_dict[mod]['targets'] = batch['spikes_data'].clone()
+                elif mod == 'behavior':
+                    mod_dict[mod]['inputs'] = batch['target'].clone()
+                    mod_dict[mod]['targets'] = batch['target'].clone()
+            outputs = model(mod_dict)
 
-    gt = torch.cat(outputs.mod_targets['ap'], dim=0)[:,:,:N].detach().cpu().numpy()
-    preds = torch.cat(outputs.mod_preds['ap'], dim=0)[:,:,:N]
+    gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
+    preds = outputs.mod_preds['ap'][:,:,:N]
     preds = torch.exp(preds).detach().cpu().numpy()
     
     for n_i in tqdm(range(N), desc='neuron'): 
@@ -197,6 +226,7 @@ def behavior_recon_eval(
         test_dataloader,
         test_dataset,
         save_plot=False,
+        use_mtm=False,
         **kwargs
 ):
     
@@ -239,10 +269,31 @@ def behavior_recon_eval(
     with torch.no_grad():
         for batch in test_dataloader:
             batch = move_batch_to_device(batch, accelerator.device)
-            outputs = model._forward_model_outputs(batch)
+            mod_dict = {}
+            for mod in model.mod_to_indx.keys():
+                mod_dict[mod] = {}
+                mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                mod_dict[mod]['eid'] = batch['eid'][0]  
+                mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                if use_mtm:
+                    mod_dict[mod]['masking_mode'] = model.masker.mode 
+                else:
+                    mod_dict[mod]['masking_mode'] = None
+                if mod == 'ap':
+                    mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
+                    mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
+                    mod_dict[mod]['targets'] = batch['spikes_data'].clone()
+                elif mod == 'behavior':
+                    mod_dict[mod]['inputs'] = batch['target'].clone()
+                    mod_dict[mod]['targets'] = batch['target'].clone()
+            outputs = model(mod_dict)
 
-    gt = torch.cat(outputs.mod_targets['behavior'], dim=0).detach().cpu().numpy()
-    preds = torch.cat(outputs.mod_preds['behavior'], dim=0).detach().cpu().numpy()
+    gt = outputs.mod_targets['behavior'].detach().cpu().numpy()
+    preds = outputs.mod_preds['behavior'].detach().cpu().numpy()
 
     N = gt.size()[-1]
     
@@ -286,6 +337,8 @@ def co_smoothing_eval(
         accelerator,
         test_dataloader,
         test_dataset,
+        save_plot=False,
+        use_mtm=False,
         **kwargs
 ):
     
@@ -358,13 +411,17 @@ def co_smoothing_eval(
                         mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                        if use_mtm:
+                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                        else:
+                            mod_dict[mod]['masking_mode'] = None
                         if mod == 'ap':
                             mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
                             #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
-                            mod_dict[mod]['mask_mode'] = 'causal'
+                            mod_dict[mod]['mask_mode'] = 'neuron'
                             #######
                         elif mod == 'behavior':
                             mod_dict[mod]['inputs'] = batch['target'].clone()
@@ -372,9 +429,9 @@ def co_smoothing_eval(
                     
                     outputs = model(mod_dict)
                     
-            gt = torch.cat(outputs.mod_targets['ap'], dim=0)[:,:,:N]
-            preds = torch.cat(outputs.mod_preds['ap'], dim=0)[:,:,:N]
-            preds = torch.exp(preds)
+            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
+            preds = outputs.mod_preds['ap'][:,:,:N]
+            preds = torch.exp(preds).detach().cpu().numpy()
 
             bps = bits_per_spike(preds[:,:,[n_i]], gt[:,:,[n_i]])
             if np.isinf(bps):
@@ -440,6 +497,10 @@ def co_smoothing_eval(
                         mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                        if use_mtm:
+                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                        else:
+                            mod_dict[mod]['masking_mode'] = None
                         if mod == 'ap':
                             mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
@@ -454,8 +515,8 @@ def co_smoothing_eval(
                     
                     outputs = model(mod_dict)
                     
-            gt = torch.cat(outputs.mod_targets['ap'], dim=0)[:,:,:N].detach().cpu().numpy()
-            preds = torch.cat(outputs.mod_preds['ap'], dim=0)[:,:,:N]
+            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
+            preds = outputs.mod_preds['ap'][:,:,:N]
             preds = torch.exp(preds).detach().cpu().numpy()
     
             target_n_i, target_t_i = np.arange(N), held_out_list[0]
@@ -534,6 +595,10 @@ def co_smoothing_eval(
                         mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                        if use_mtm:
+                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                        else:
+                            mod_dict[mod]['masking_mode'] = None
                         if mod == 'ap':
                             mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
@@ -548,8 +613,8 @@ def co_smoothing_eval(
                     
                     outputs = model(mod_dict)
                     
-            gt = torch.cat(outputs.mod_targets['ap'], dim=0)[:,:,:N].detach().cpu().numpy()
-            preds = torch.cat(outputs.mod_preds['ap'], dim=0)[:,:,:N]
+            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
+            preds = outputs.mod_preds['ap'][:,:,:N]
             preds = torch.exp(preds).detach().cpu().numpy()
     
             target_n_i, target_t_i = mask_result['heldout_idxs'], np.arange(T)
@@ -633,6 +698,10 @@ def co_smoothing_eval(
                             mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                             mod_dict[mod]['eid'] = batch['eid'][0]  
                             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                            if use_mtm:
+                                mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                            else:
+                                mod_dict[mod]['masking_mode'] = None
                             if mod == 'ap':
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                                 mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
@@ -647,8 +716,8 @@ def co_smoothing_eval(
                         
                         outputs = model(mod_dict)
                     
-                gt = torch.cat(outputs.mod_targets['ap'], dim=0)[:,:,:N].detach().cpu().numpy()
-                preds = torch.cat(outputs.mod_preds['ap'], dim=0)[:,:,:N]
+                gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
+                preds = outputs.mod_preds['ap'][:,:,:N]
                 preds = torch.exp(preds).detach().cpu().numpy()
     
                 heldout_n_i = mask_result['heldout_idxs']
