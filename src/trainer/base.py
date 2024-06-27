@@ -35,7 +35,8 @@ class MultiModalTrainer():
 
         # Multi-task-Masing (MtM)
         if self.config.training.use_mtm:
-            self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
+            # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
+            self.masking_schemes = ['inter-region', 'neuron', 'temporal']
             # self.masking_schemes = ['temporal']
         else:
             self.masking_mode = None
