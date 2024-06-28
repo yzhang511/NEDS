@@ -63,8 +63,8 @@ last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
 spike_recon = False
-behave_recon = True if 'behavior' in avail_mod else False
-co_smooth = True if 'ap' in avail_mod else False
+behave_recon = False
+co_smooth = False
 forward_pred = True if 'ap' in avail_mod else False
 inter_region = False
 intra_region = False
@@ -90,7 +90,6 @@ configs = {
 model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 
 print("(eval) masking ratio: ", model.masker.ratio)
-print("(eval) masking active: ", model.masker.force_active)
 print("(eval) masking mask regions: ", model.masker.mask_regions)
 print("(eval) masking target regions: ", model.masker.target_regions)
 
@@ -190,7 +189,7 @@ if forward_pred:
             'save_path': f'{save_path}/forward_pred',
             'mode': 'forward_pred',
             'n_time_steps': n_time_steps,  
-            'held_out_list': list(range(90, 100)),
+            'held_out_list': list(range(70, 100)),
             'is_aligned': True,
             'target_regions': None,
         }
