@@ -17,7 +17,8 @@ conda activate ibl-mm
 cd ../
 
 python src/train_multi_modal.py --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
-                                     --base_path ./ 
+                                     --base_path ./ \
+                                     --use_MtM
 cd script
 
 conda deactivate

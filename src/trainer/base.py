@@ -36,7 +36,8 @@ class MultiModalTrainer():
         # Multi-task-Masing (MtM)
         if self.config.training.use_mtm:
             # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
-            self.masking_schemes = ['temporal']
+            self.masking_schemes = ['inter-region', 'neuron', 'temporal']
+            # self.masking_schemes = ['temporal']
         else:
             self.masking_mode = None
 
@@ -53,7 +54,6 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
-            mod_dict[mod]['eval_mask'] = None
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
@@ -253,4 +253,3 @@ class MultiModalTrainer():
             "epoch": epoch,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
-
