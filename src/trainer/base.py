@@ -34,9 +34,9 @@ class MultiModalTrainer():
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
         # Multi-task-Masing (MtM)
-        if self.config.training.use_mtm:
+        if self.config.training.mask_type == "input":
             # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
-            self.masking_schemes = ['inter-region', 'neuron', 'temporal']
+            self.masking_schemes = self.config.training.mask_mode
             # self.masking_schemes = ['temporal']
         else:
             self.masking_mode = None
@@ -225,11 +225,14 @@ class MultiModalTrainer():
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
         if modality == 'ap':
+            # gt shape, [batch_size, seq_len, n_neurons]
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch)
         elif modality == 'behavior':
+            # gt shape, [batch_size, seq_len, 1]
             # Hack: Enable drawing multiple behaviors later
+            print(f"gt: {gt.shape}, preds: {preds.shape}")
             gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
                         pred = preds.squeeze().detach().cpu().numpy(),
                         epoch = epoch)
