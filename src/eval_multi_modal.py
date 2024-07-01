@@ -29,6 +29,7 @@ ap.add_argument("--eid", type=str, default='671c7ea7-6726-4fbe-adeb-f89c2c8e489b
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--use_MtM", action='store_true')
+ap.add_argument("--mask_type", type=str, default="input")
 ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
@@ -46,10 +47,11 @@ print(f'Working on EID: {eid} ...')
 model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
-avail_mod = ['ap']
+avail_mod = ['ap','behavior']
 
-if config.training.mask_type == 'input':
-    mask_mode = '-'.join(config.training.mask_mode)
+if args.mask_type == 'input':
+    mask_mode = ["temporal"]
+    mask_mode = '-'.join(mask_mode)
     use_mtm = True
 else:
     mask_mode = args.mask_mode
@@ -75,7 +77,7 @@ model_path = os.path.join(base_path,
                         f"ses-{eid}",
                         "set-train",
                         f"modal-{'-'.join(avail_mod)}",
-                        f"mask-{config.training.mask_type}",
+                        f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
                         best_ckpt_path
@@ -86,7 +88,7 @@ save_path = os.path.join(base_path,
                         f"ses-{eid}",
                         "set-eval",
                         f"modal-{'-'.join(avail_mod)}",
-                        f"mask-{config.training.mask_type}",
+                        f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}"
                         )
@@ -98,7 +100,7 @@ if args.wandb:
         name="ses-{}_set-eval_modal-{}_mask-{}_mode-{}_ratio-{}".format(
             eid[:5], 
             '-'.join(avail_mod), 
-            config.training.mask_type, 
+            args.mask_type, 
             mask_mode,
             args.mask_ratio
     )
