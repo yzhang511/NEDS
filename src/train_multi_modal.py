@@ -47,16 +47,6 @@ config = update_config(f"src/configs/multi_modal/trainer_mm.yaml", config)
 
 config['model']['masker']['mode'] = args.mask_mode
 config['model']['masker']['ratio'] = args.mask_ratio
-config['training']['use_mtm'] = args.use_MtM
-
-if config.wandb.use:
-    wandb.init(
-        project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="{}_train_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio, config.training.use_mtm
-        )
-    )
-
 set_seed(config.seed)
 
 last_ckpt_path = 'model_last.pt'
@@ -64,21 +54,33 @@ best_ckpt_path = 'model_best.pt'
 
 avail_mod = ['ap','behavior']
 if config.training.mask_type == 'input':
-    mask_mode = '_'.join(config.training.mask_mode)
+    mask_mode = '-'.join(config.training.mask_mode)
 else:
     mask_mode = args.mask_mode
 
 log_dir = os.path.join(base_path, 
                        "results",
-                       "train",
                        f"ses-{eid}",
-                       f"modal-{'_'.join(avail_mod)}",
+                       "set-train",
+                       f"modal-{'-'.join(avail_mod)}",
                        f"mask-{config.training.mask_type}",
-                       f"mask_mode-{mask_mode}",
+                       f"mode-{mask_mode}",
+                       f"ratio-{args.mask_ratio}"
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
 
+if config.wandb.use:
+    wandb.init(
+        project=config.wandb.project, entity=config.wandb.entity, config=config,
+        name="ses-{}_set-train_modal-{}_mask-{}_mode-{}_ratio-{}".format(
+            eid[:5], 
+            '-'.join(avail_mod), 
+            config.training.mask_type, 
+            mask_mode,
+            args.mask_ratio
+        )
+    )
 os.makedirs(log_dir, exist_ok=True)
 _, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
                     config.dirs.huggingface_org,

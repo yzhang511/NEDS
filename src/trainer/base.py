@@ -144,7 +144,7 @@ class MultiModalTrainer():
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
-            if self.config.training.use_mtm:
+            if self.config.training.mask_type == "input":
                 self.masking_mode = random.sample(self.masking_schemes, 1)[0]
             outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
             loss = outputs.loss
@@ -171,7 +171,7 @@ class MultiModalTrainer():
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
-                    if self.config.training.use_mtm:
+                    if self.config.training.mask_type == "input":
                         self.masking_mode = random.sample(self.masking_schemes, 1)[0]
                     outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
                     loss = outputs.loss

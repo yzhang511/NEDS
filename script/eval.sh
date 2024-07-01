@@ -16,10 +16,13 @@ conda activate ibl-mm
 
 cd ../
 
-python src/eval_multi_modal.py --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
-                                     --base_path ./ \
-                                     --wandb \
-                                     --seed 42
+python src/eval_multi_modal.py --mask_mode temporal \
+                               --mask_ratio 0.3 \
+                               --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
+                               --seed 42 \
+                               --base_path ./ \
+                               --save_plot \
+                               --wandb 
 cd script
 
 conda deactivate

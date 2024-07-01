@@ -48,14 +48,12 @@ mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 avail_mod = ['ap']
 
-if args.wandb:
-    wandb.init(
-        project="multi_modal",
-        config=args,
-        name="{}_eval_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio, args.use_MtM
-        )
-    )
+if config.training.mask_type == 'input':
+    mask_mode = '-'.join(config.training.mask_mode)
+    use_mtm = True
+else:
+    mask_mode = args.mask_mode
+    use_mtm = False
 
 set_seed(args.seed)
 
@@ -72,8 +70,39 @@ intra_region = False
 print('Start model evaluation.')
 print('=======================')
 
-model_path = f'{base_path}/results/{eid}/train/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/useMtM_{args.use_MtM}/{best_ckpt_path}'
-save_path = f'{base_path}/results/{eid}/eval/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/useMtM_{args.use_MtM}/'
+model_path = os.path.join(base_path, 
+                        "results",
+                        f"ses-{eid}",
+                        "set-train",
+                        f"modal-{'-'.join(avail_mod)}",
+                        f"mask-{config.training.mask_type}",
+                        f"mode-{mask_mode}",
+                        f"ratio-{args.mask_ratio}",
+                        best_ckpt_path
+                        )
+
+save_path = os.path.join(base_path,
+                        "results",
+                        f"ses-{eid}",
+                        "set-eval",
+                        f"modal-{'-'.join(avail_mod)}",
+                        f"mask-{config.training.mask_type}",
+                        f"mode-{mask_mode}",
+                        f"ratio-{args.mask_ratio}"
+                        )
+
+if args.wandb:
+    wandb.init(
+        project="multi_modal",
+        config=args,
+        name="ses-{}_set-eval_modal-{}_mask-{}_mode-{}_ratio-{}".format(
+            eid[:5], 
+            '-'.join(avail_mod), 
+            config.training.mask_type, 
+            mask_mode,
+            args.mask_ratio
+    )
+)
 
 configs = {
     'model_config': model_config,
@@ -111,7 +140,7 @@ if spike_recon:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm
             **spike_recon_configs
         )
         print(results)
@@ -139,7 +168,7 @@ if behave_recon:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm,
             **behave_recon_configs
         )
         print(results)
@@ -168,7 +197,7 @@ if co_smooth:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm,
             **co_smoothing_configs
         )
         print(results)
@@ -197,7 +226,7 @@ if forward_pred:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm,
             **co_smoothing_configs
         )
         print(results)
@@ -226,7 +255,7 @@ if inter_region:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm,
             **co_smoothing_configs
         )
         print(results)
@@ -255,7 +284,7 @@ if intra_region:
             model, accelerator, 
             dataloader, dataset, 
             save_plot=args.save_plot,
-            use_mtm=args.use_MtM,
+            use_mtm=use_mtm,
             **co_smoothing_configs
         )
         print(results)
