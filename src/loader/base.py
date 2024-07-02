@@ -321,6 +321,10 @@ class BaseDataset(torch.utils.data.Dataset):
                 target_behavior = target_behavior.astype(np.float32)
         else:
             target_behavior = np.array([np.nan])
+
+        choice = np.array(data['choice']).astype(np.float32)
+        block = np.array(data['block']).astype(np.float32)
+        reward = np.array(data['reward']).astype(np.float32)
             
         binned_spikes_data = binned_spikes_data[0]
 
@@ -440,6 +444,9 @@ class BaseDataset(torch.utils.data.Dataset):
             "neuron_regions": list(neuron_regions),
             "eid": data['eid'],
             "nemo_rep": nemo_rep,
+            "choice": choice,
+            "block": block,
+            "reward": reward,
         }
     
     def __len__(self):

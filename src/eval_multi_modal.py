@@ -1,4 +1,5 @@
 import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import pickle
 import argparse
 from math import ceil
@@ -189,7 +190,7 @@ if forward_pred:
             'save_path': f'{save_path}/forward_pred',
             'mode': 'forward_pred',
             'n_time_steps': n_time_steps,  
-            'held_out_list': list(range(70, 100)),
+            'held_out_list': list(range(90, 100)),
             'is_aligned': True,
             'target_regions': None,
         }

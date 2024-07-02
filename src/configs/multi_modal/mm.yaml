@@ -52,6 +52,7 @@ decoder:
   from_pt: null
 
   decoder_sep_mask: false
+  decoder_causal_mask: false
 
   embedder:
     n_modality: 2
