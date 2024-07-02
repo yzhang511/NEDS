@@ -47,170 +47,167 @@ config = update_config(f"src/configs/multi_modal/trainer_mm.yaml", config)
 
 config['model']['masker']['mode'] = args.mask_mode
 config['model']['masker']['ratio'] = args.mask_ratio
-config['training']['use_mtm'] = args.use_MtM
-
-if config.wandb.use:
-    wandb.init(
-        project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="{}_train_multi_modal_mask_{}_ratio_{}_useMtM_{}".format(
-            eid[:5], args.mask_mode, args.mask_ratio, config.training.use_mtm
-        )
-    )
-
 set_seed(config.seed)
 
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
-    
-final_checkpoint = f'{base_path}/results/{eid}/train/multi_modal/mask_{args.mask_mode}/ratio_{args.mask_ratio}/{last_ckpt_path}'
 
-if not os.path.exists(final_checkpoint) or args.overwrite:
-    
-    _, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
-                       config.dirs.huggingface_org,
-                       eid=eid,
-                       num_sessions=1,
-                       split_method="predefined",
-                       test_session_eid=[],
-                       batch_size=config.training.train_batch_size,
-                       seed=config.seed)
-    print(meta_data)
-    
-    print('Start model training.')
-    print('=====================')
-
-    log_dir = os.path.join(
-        args.base_path,
-        config.dirs.log_dir, 
-        eid, 
-        "train", 
-        "multi_modal",
-        "mask_{}".format(args.mask_mode),
-        "ratio_{}".format(args.mask_ratio),
-        "useMtM_{}".format(config.training.use_mtm)
-    )
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    train_dataset = dataset["train"]
-    val_dataset = dataset["val"]
-    test_dataset = dataset["test"]
-    print(dataset.column_names)
-
-    n_behaviors = 1  # CHANGE LATER
-    n_neurons = len(train_dataset['cluster_regions'][0])
-    meta_data['num_neurons'] = [n_neurons]
-    print(meta_data)
-
-    train_dataloader = make_loader(train_dataset, 
-                             target=args.cont_target,
-                             load_meta=config.data.load_meta,
-                             batch_size=config.training.train_batch_size, 
-                             pad_to_right=True, 
-                             pad_value=-1.,
-                             max_time_length=config.data.max_time_length,
-                             max_space_length=n_neurons,
-                             dataset_name=config.data.dataset_name,
-                             sort_by_depth=config.data.sort_by_depth,
-                             sort_by_region=config.data.sort_by_region,
-                             shuffle=True)
-
-    val_dataloader = make_loader(val_dataset, 
-                             target=args.cont_target,
-                             load_meta=config.data.load_meta,
-                             batch_size=config.training.test_batch_size, 
-                             pad_to_right=True, 
-                             pad_value=-1.,
-                             max_time_length=config.data.max_time_length,
-                             max_space_length=n_neurons,
-                             dataset_name=config.data.dataset_name,
-                             sort_by_depth=config.data.sort_by_depth,
-                             sort_by_region=config.data.sort_by_region,
-                             shuffle=False)
-
-    test_dataloader = make_loader(test_dataset, 
-                             target=args.cont_target,
-                             load_meta=config.data.load_meta,
-                             batch_size=config.training.test_batch_size, 
-                             pad_to_right=True, 
-                             pad_value=-1.,
-                             max_time_length=config.data.max_time_length,
-                             max_space_length=n_neurons,
-                             dataset_name=config.data.dataset_name,
-                             sort_by_depth=config.data.sort_by_depth,
-                             sort_by_region=config.data.sort_by_region,
-                             shuffle=False)
-
-    avail_mod = ['ap']
-    
-    encoder_embeddings, decoder_embeddings = {}, {}
-    for mod in avail_mod:
-        encoder_embeddings[mod] = EncoderEmbedding(
-            hidden_size=config.model.encoder.transformer.hidden_size,
-            n_channel=n_neurons if mod == 'ap' else n_behaviors,
-            config=config.model.encoder,
-        )
-        decoder_embeddings[mod] = DecoderEmbedding(
-            hidden_size=config.model.decoder.transformer.hidden_size,
-            n_channel=n_neurons if mod == 'ap' else n_behaviors,
-            config=config.model.decoder,
-        )
-
-    accelerator = Accelerator()
-
-    NAME2MODEL = {"MultiModal": MultiModal}
-    model_class = NAME2MODEL[config.model.model_class]
-    model = model_class(
-        encoder_embeddings,
-        decoder_embeddings,
-        avail_mod=avail_mod,
-        config=config.model, 
-        share_modality_embeddings=True,
-        **config.method.model_kwargs, 
-        **meta_data
-    )
-
-    print("(train) masking mode: ", model.masker.mode)
-    print("(train) masking ratio: ", model.masker.ratio)
-    print("(train) masking active: ", model.masker.force_active)
-    
-    model = accelerator.prepare(model)
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(), 
-        lr=config.optimizer.lr, 
-        weight_decay=config.optimizer.wd, 
-        eps=config.optimizer.eps
-    )
-    
-    lr_scheduler = OneCycleLR(
-        optimizer=optimizer,
-        total_steps=config.training.num_epochs*len(train_dataloader)//config.optimizer.gradient_accumulation_steps,
-        max_lr=config.optimizer.lr,
-        pct_start=config.optimizer.warmup_pct,
-        div_factor=config.optimizer.div_factor,
-    )
-
-    trainer_kwargs = {
-        "log_dir": log_dir,
-        "accelerator": accelerator,
-        "lr_scheduler": lr_scheduler,
-        "avail_mod": avail_mod,
-        "config": config,
-    }
-    
-    trainer_ = make_multimodal_trainer(
-        model=model,
-        train_dataloader=train_dataloader,
-        eval_dataloader=val_dataloader,
-        test_dataloader=test_dataloader,
-        optimizer=optimizer,
-        **trainer_kwargs,
-        **meta_data
-    )
-    trainer_.train()
+avail_mod = ['ap','behavior']
+if config.training.mask_type == 'input':
+    mask_mode = '-'.join(config.training.mask_mode)
 else:
-    print("skipping training since last checkpoint exists or overwrite is False")
+    mask_mode = args.mask_mode
 
+log_dir = os.path.join(base_path, 
+                       "results",
+                       f"ses-{eid}",
+                       "set-train",
+                       f"modal-{'-'.join(avail_mod)}",
+                       f"mask-{config.training.mask_type}",
+                       f"mode-{mask_mode}",
+                       f"ratio-{args.mask_ratio}"
+                       )
+final_checkpoint = os.path.join(log_dir, last_ckpt_path)
+assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
 
+if config.wandb.use:
+    wandb.init(
+        project=config.wandb.project, entity=config.wandb.entity, config=config,
+        name="ses-{}_set-train_modal-{}_mask-{}_mode-{}_ratio-{}".format(
+            eid[:5], 
+            '-'.join(avail_mod), 
+            config.training.mask_type, 
+            mask_mode,
+            args.mask_ratio
+        )
+    )
+os.makedirs(log_dir, exist_ok=True)
+_, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
+                    config.dirs.huggingface_org,
+                    eid=eid,
+                    num_sessions=1,
+                    split_method="predefined",
+                    test_session_eid=[],
+                    batch_size=config.training.train_batch_size,
+                    seed=config.seed)
+print(meta_data)
+
+print('Start model training.')
+print('=====================')
+
+dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
+train_dataset = dataset["train"]
+val_dataset = dataset["val"]
+test_dataset = dataset["test"]
+print(dataset.column_names)
+
+n_behaviors = 1  # CHANGE LATER
+n_neurons = len(train_dataset['cluster_regions'][0])
+meta_data['num_neurons'] = [n_neurons]
+print(meta_data)
+
+train_dataloader = make_loader(train_dataset, 
+                            target=args.cont_target,
+                            load_meta=config.data.load_meta,
+                            batch_size=config.training.train_batch_size, 
+                            pad_to_right=True, 
+                            pad_value=-1.,
+                            max_time_length=config.data.max_time_length,
+                            max_space_length=n_neurons,
+                            dataset_name=config.data.dataset_name,
+                            sort_by_depth=config.data.sort_by_depth,
+                            sort_by_region=config.data.sort_by_region,
+                            shuffle=True)
+
+val_dataloader = make_loader(val_dataset, 
+                            target=args.cont_target,
+                            load_meta=config.data.load_meta,
+                            batch_size=config.training.test_batch_size, 
+                            pad_to_right=True, 
+                            pad_value=-1.,
+                            max_time_length=config.data.max_time_length,
+                            max_space_length=n_neurons,
+                            dataset_name=config.data.dataset_name,
+                            sort_by_depth=config.data.sort_by_depth,
+                            sort_by_region=config.data.sort_by_region,
+                            shuffle=False)
+
+test_dataloader = make_loader(test_dataset, 
+                            target=args.cont_target,
+                            load_meta=config.data.load_meta,
+                            batch_size=config.training.test_batch_size, 
+                            pad_to_right=True, 
+                            pad_value=-1.,
+                            max_time_length=config.data.max_time_length,
+                            max_space_length=n_neurons,
+                            dataset_name=config.data.dataset_name,
+                            sort_by_depth=config.data.sort_by_depth,
+                            sort_by_region=config.data.sort_by_region,
+                            shuffle=False)
+
+encoder_embeddings, decoder_embeddings = {}, {}
+for mod in avail_mod:
+    encoder_embeddings[mod] = EncoderEmbedding(
+        hidden_size=config.model.encoder.transformer.hidden_size,
+        n_channel=n_neurons if mod == 'ap' else n_behaviors,
+        config=config.model.encoder,
+    )
+    decoder_embeddings[mod] = DecoderEmbedding(
+        hidden_size=config.model.decoder.transformer.hidden_size,
+        n_channel=n_neurons if mod == 'ap' else n_behaviors,
+        config=config.model.decoder,
+    )
+
+accelerator = Accelerator()
+
+NAME2MODEL = {"MultiModal": MultiModal}
+model_class = NAME2MODEL[config.model.model_class]
+model = model_class(
+    encoder_embeddings,
+    decoder_embeddings,
+    avail_mod=avail_mod,
+    config=config.model, 
+    share_modality_embeddings=True,
+    **config.method.model_kwargs, 
+    **meta_data
+)
+
+print("(train) masking mode: ", model.masker.mode)
+print("(train) masking ratio: ", model.masker.ratio)
+print("(train) masking active: ", model.masker.force_active)
+
+model = accelerator.prepare(model)
+
+optimizer = torch.optim.AdamW(
+    model.parameters(), 
+    lr=config.optimizer.lr, 
+    weight_decay=config.optimizer.wd, 
+    eps=config.optimizer.eps
+)
+
+lr_scheduler = OneCycleLR(
+    optimizer=optimizer,
+    total_steps=config.training.num_epochs*len(train_dataloader)//config.optimizer.gradient_accumulation_steps,
+    max_lr=config.optimizer.lr,
+    pct_start=config.optimizer.warmup_pct,
+    div_factor=config.optimizer.div_factor,
+)
+
+trainer_kwargs = {
+    "log_dir": log_dir,
+    "accelerator": accelerator,
+    "lr_scheduler": lr_scheduler,
+    "avail_mod": avail_mod,
+    "config": config,
+}
+
+trainer_ = make_multimodal_trainer(
+    model=model,
+    train_dataloader=train_dataloader,
+    eval_dataloader=val_dataloader,
+    test_dataloader=test_dataloader,
+    optimizer=optimizer,
+    **trainer_kwargs,
+    **meta_data
+)
+trainer_.train()

@@ -34,10 +34,10 @@ class MultiModalTrainer():
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
         # Multi-task-Masing (MtM)
-        if self.config.training.use_mtm:
+        if self.config.training.mask_type == "input":
             # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
-            # self.masking_schemes = ['inter-region', 'neuron', 'temporal']
-            self.masking_schemes = ['temporal']
+            self.masking_schemes = self.config.training.mask_mode
+            # self.masking_schemes = ['temporal']
         else:
             self.masking_mode = None
 
@@ -54,7 +54,6 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
-            mod_dict[mod]['eval_mask'] = None
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
@@ -145,7 +144,7 @@ class MultiModalTrainer():
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
-            if self.config.training.use_mtm:
+            if self.config.training.mask_type == "input":
                 self.masking_mode = random.sample(self.masking_schemes, 1)[0]
             outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
             loss = outputs.loss
@@ -172,7 +171,7 @@ class MultiModalTrainer():
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
-                    if self.config.training.use_mtm:
+                    if self.config.training.mask_type == "input":
                         self.masking_mode = random.sample(self.masking_schemes, 1)[0]
                     outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
                     loss = outputs.loss
@@ -226,11 +225,14 @@ class MultiModalTrainer():
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
         if modality == 'ap':
+            # gt shape, [batch_size, seq_len, n_neurons]
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch)
         elif modality == 'behavior':
+            # gt shape, [batch_size, seq_len, 1]
             # Hack: Enable drawing multiple behaviors later
+            # print(f"gt: {gt.shape}, preds: {preds.shape}")
             gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
                         pred = preds.squeeze().detach().cpu().numpy(),
                         epoch = epoch)
@@ -254,3 +256,4 @@ class MultiModalTrainer():
             "epoch": epoch,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
+        
