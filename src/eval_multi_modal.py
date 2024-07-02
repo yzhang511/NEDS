@@ -65,9 +65,13 @@ best_ckpt_path = 'model_best.pt'
 spike_recon = False
 behave_recon = False
 co_smooth = False
-forward_pred = True if 'ap' in avail_mod else False
+# forward_pred = True if 'ap' in avail_mod else False
+forward_pred = False
 inter_region = False
 intra_region = False
+
+modal_spike = True if 'ap' in avail_mod else False
+modal_behavior = True if 'behavior' in avail_mod else False
 
 print('Start model evaluation.')
 print('=======================')
@@ -225,8 +229,10 @@ if forward_pred:
             'target_regions': None,
         }
         results = co_smoothing_eval(
-            model, accelerator, 
-            dataloader, dataset, 
+            model=model, 
+            accelerator=accelerator, 
+            test_dataloader=dataloader, 
+            test_dataset=dataset, 
             save_plot=args.save_plot,
             use_mtm=use_mtm,
             **co_smoothing_configs
@@ -293,7 +299,66 @@ if intra_region:
         wandb.log(results)
     else:
         print("skipping intra_region since files exist or overwrite is False")
-        
+
+if modal_spike:
+    modal_spike_bps_file = f'{save_path}/modal_spike/bps.npy'
+    modal_spike_r2_file = f'{save_path}/modal_spike/r2.npy'
+    if not os.path.exists(modal_spike_bps_file) or not os.path.exists(modal_spike_r2_file) or args.overwrite:
+        print('Start modal_spike:')
+        co_smoothing_configs = {
+            'subtract': 'task',
+            'onset_alignment': [40],
+            'method_name': mask_name, 
+            'save_path': f'{save_path}/modal_spike',
+            'mode': 'modal_spike',
+            'n_time_steps': n_time_steps,  
+            'held_out_list': list(range(0, 100)),
+            'is_aligned': True,
+            'target_regions': None,
+        }
+        results = co_smoothing_eval(
+            model=model, 
+            accelerator=accelerator, 
+            test_dataloader=dataloader, 
+            test_dataset=dataset, 
+            save_plot=args.save_plot,
+            use_mtm=use_mtm,
+            **co_smoothing_configs
+        )
+        print(results)
+        wandb.log(results)
+    else:
+        print("skipping modal_spike since files exist or overwrite is False")
+
+if modal_behavior:
+    modal_behavior_bps_file = f'{save_path}/modal_behavior/bps.npy'
+    modal_behavior_r2_file = f'{save_path}/modal_behavior/r2.npy'
+    if not os.path.exists(modal_behavior_bps_file) or not os.path.exists(modal_behavior_r2_file) or args.overwrite:
+        print('Start modal_behavior:')
+        co_smoothing_configs = {
+            'subtract': 'task',
+            'onset_alignment': [40],
+            'method_name': mask_name, 
+            'save_path': f'{save_path}/modal_behavior',
+            'mode': 'modal_behavior',
+            'n_time_steps': n_time_steps,  
+            'held_out_list': list(range(0, 100)),
+            'is_aligned': True,
+            'target_regions': None,
+        }
+        results = co_smoothing_eval(
+            model=model, 
+            accelerator=accelerator, 
+            test_dataloader=dataloader, 
+            test_dataset=dataset, 
+            save_plot=args.save_plot,
+            use_mtm=use_mtm,
+            **co_smoothing_configs
+        )
+        print(results)
+        wandb.log(results)
+    else:
+        print("skipping modal_behavior since files exist or overwrite is False")
 
 print('Finish model evaluation.')
 print('=======================')

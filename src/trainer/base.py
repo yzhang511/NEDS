@@ -232,7 +232,7 @@ class MultiModalTrainer():
         elif modality == 'behavior':
             # gt shape, [batch_size, seq_len, 1]
             # Hack: Enable drawing multiple behaviors later
-            print(f"gt: {gt.shape}, preds: {preds.shape}")
+            # print(f"gt: {gt.shape}, preds: {preds.shape}")
             gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
                         pred = preds.squeeze().detach().cpu().numpy(),
                         epoch = epoch)

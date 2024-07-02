@@ -73,7 +73,7 @@ data:
   spike_augmentation: false
 
   include_behav: false # include behavior data
-  target: null
+  target: whisker-motion-energy # target behavior
 
   load_meta: true
 
