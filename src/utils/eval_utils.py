@@ -689,12 +689,9 @@ def co_smoothing_eval(
                             mod_dict[mod]['mask_mode'] = 'causal'
                             #######
                         elif mod == 'behavior':
-                            mod_dict[mod]['inputs'] = batch['target'].clone()
-                            print(mask_result['spikes'].shape)
-                            print(mask_result['eval_mask'].shape)
-                            print(mask_result['eval_mask'])
-                            mod_dict[mod]['targets'] = mask_result['spikes'].clone()
-                            mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
+                            mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
+                            mod_dict[mod]['targets'] = batch['target'].clone()
+                            mod_dict[mod]['eval_mask'] = mask_result['eval_mask'].unsqueeze(-1)
                     
                     outputs = model(mod_dict)
                     
