@@ -9,7 +9,7 @@ import torch
 from loader.make_loader import make_loader
 from utils.dataset_utils import load_ibl_dataset
 from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict
-from utils.utils import set_seed, move_batch_to_device, plot_gt_pred, metrics_list, plot_avg_rate_and_spike, plot_rate_and_spike,plot_neurons_r2
+from utils.utils import set_seed, move_batch_to_device, plot_gt_pred, metrics_list, plot_avg_rate_and_spike, plot_rate_and_spike
 from utils.config_utils import config_from_kwargs, update_config
 
 from multi_modal.mm import MultiModal
@@ -53,8 +53,7 @@ def load_model_data_local(**kwargs):
     config = update_config(trainer_config, config)
 
     r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    #dataset = r_dataset["test"]
-    dataset = r_dataset["train"]
+    dataset = r_dataset["test"]
 
     n_neurons = len(dataset['cluster_regions'][0])
     n_behaviors = len(avail_beh)
@@ -70,17 +69,14 @@ def load_model_data_local(**kwargs):
     model = accelerator.prepare(model)
     
     dataloader = make_loader(
-        dataset, 
-        target=config.data.target,
+        dataset, target=config.data.target,
         batch_size=len(dataset),
-        pad_to_right=True, 
-        pad_value=-1.,
+        pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        use_nemo=False, 
-        shuffle=False,
+        use_nemo=False, shuffle=False,
     )
 
     return model, accelerator, dataset, dataloader
@@ -120,31 +116,6 @@ def co_smoothing_eval(
     uuids_list = np.array(test_dataset['cluster_uuids'][0])[:N]
     region_list = np.array(test_dataset['cluster_regions'])[0][:N]
 
-    if is_aligned:
-        
-        b_list = []
-    
-        choice = np.array(test_dataset['choice'])
-        choice = np.tile(np.reshape(choice, (choice.shape[0], 1)), (1, T))
-        b_list.append(choice)
-    
-        reward = np.array(test_dataset['reward'])
-        reward = np.tile(np.reshape(reward, (reward.shape[0], 1)), (1, T))
-        b_list.append(reward)
-    
-        block = np.array(test_dataset['block'])
-        block = np.tile(np.reshape(block, (block.shape[0], 1)), (1, T))
-        b_list.append(block)
-    
-        behavior_set = np.stack(b_list, axis=-1)
-    
-        var_name2idx = {'block': [2], 'choice': [0], 'reward': [1], 'wheel': [3]}
-        var_value2label = {'block': {(0.2,): "p(left)=0.2", (0.5,): "p(left)=0.5", (0.8,): "p(left)=0.8",},
-                           'choice': {(-1.0,): "right", (1.0,): "left"},
-                           'reward': {(0.,): "no reward", (1.,): "reward", }}
-        var_tasklist = ['block', 'choice', 'reward']
-        var_behlist = []
-
     if mode == 'per_neuron':
         
         bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
@@ -155,6 +126,10 @@ def co_smoothing_eval(
             with torch.no_grad():
                 for batch in test_dataloader:
                     batch = move_batch_to_device(batch, accelerator.device)
+
+                    if is_aligned:
+                        behavior_set, var_name2idx, var_tasklist, \
+                        var_value2label, var_behlist = create_behave_list(batch, T=T)
                     
                     mask_result = heldout_mask(
                         batch['spikes_data'].clone(),
@@ -233,15 +208,19 @@ def co_smoothing_eval(
         target_regions = neuron_regions = None
 
         bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
-
+        
         for hd_idx in held_out_list:
-
+           
             hd = np.array([hd_idx])
 
             model.eval()
             with torch.no_grad():
                 for batch in test_dataloader:
                     batch = move_batch_to_device(batch, accelerator.device)
+
+                    if is_aligned:
+                        behavior_set, var_name2idx, var_tasklist, \
+                        var_value2label, var_behlist = create_behave_list(batch, T=T)
                     
                     mask_result = heldout_mask(
                         batch['spikes_data'].clone(),
@@ -290,7 +269,7 @@ def co_smoothing_eval(
 
             gt_held_out = gt[:,target_t_i][:,:,target_n_i]
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
-
+    
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
                 bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
                 if np.isinf(bps):
@@ -343,6 +322,10 @@ def co_smoothing_eval(
             with torch.no_grad():
                 for batch in test_dataloader:
                     batch = move_batch_to_device(batch, accelerator.device)
+
+                    if is_aligned:
+                        behavior_set, var_name2idx, var_tasklist, \
+                        var_value2label, var_behlist = create_behave_list(batch, T=T)
                     
                     mask_result = heldout_mask(
                         batch['spikes_data'].clone(),
@@ -391,7 +374,7 @@ def co_smoothing_eval(
 
             gt_held_out = gt[:, target_t_i][:,:,target_n_i]
             pred_held_out = preds[:, target_t_i][:,:,target_n_i]
-
+    
             for n_i in range(len(target_n_i)): 
                 bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
                 if np.isinf(bps):
@@ -447,8 +430,11 @@ def co_smoothing_eval(
                 model.eval()
                 with torch.no_grad():
                     for batch in test_dataloader:
-                        
                         batch = move_batch_to_device(batch, accelerator.device)
+
+                        if is_aligned:
+                            behavior_set, var_name2idx, var_tasklist, \
+                            var_value2label, var_behlist = create_behave_list(batch, T=T)
                         
                         mask_result = heldout_mask(
                             batch['spikes_data'].clone(),
@@ -524,234 +510,6 @@ def co_smoothing_eval(
                             save_plot=save_plot
                         )
                         r2_result_list[heldout_n_i[i]] = r2
-    
-    elif mode == 'modal_spike':
-
-        held_out_list = [kwargs['held_out_list']]
-
-        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
-        target_regions = neuron_regions = None
-
-        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
-
-        for hd_idx in held_out_list:
-
-            hd = np.array([hd_idx])
-
-            model.eval()
-            with torch.no_grad():
-                for batch in test_dataloader:
-                    batch = move_batch_to_device(batch, accelerator.device)
-                    
-                    mask_result = heldout_mask(
-                        batch['spikes_data'].clone(),
-                        mode=mode,
-                        heldout_idxs=hd,
-                        target_regions=target_regions,
-                        neuron_regions=region_list
-                    )  
-                    
-                    mod_dict = {}
-                    for mod in model.mod_to_indx.keys():
-                        mod_dict[mod] = {}
-                        mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['eid'] = batch['eid'][0]  
-                        mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
-                        if use_mtm:
-                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
-                        else:
-                            mod_dict[mod]['masking_mode'] = None
-                        if mod == 'ap':
-                            if not use_mtm:
-                                mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
-                            else:
-                                mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
-                            mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
-                            mod_dict[mod]['targets'] = batch['spikes_data'].clone()
-                            mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
-                            mod_dict[mod]['mask_mode'] = 'causal'
-                            #######
-                        elif mod == 'behavior':
-                            mod_dict[mod]['inputs'] = batch['target'].clone()
-                            mod_dict[mod]['targets'] = batch['target'].clone()
-                    
-                    outputs = model(mod_dict)
-                    
-            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
-            preds = outputs.mod_preds['ap'][:,:,:N]
-            preds = torch.exp(preds).detach().cpu().numpy()
-
-            behavior_gt = outputs.mod_targets['behavior'][:,:N].detach()
-            behavior_preds = outputs.mod_preds['behavior'][:,:N].detach()
-
-            target_n_i, target_t_i = np.arange(N), held_out_list[0]
-
-            gt_held_out = gt[:,target_t_i][:,:,target_n_i]
-            pred_held_out = preds[:,target_t_i][:,:,target_n_i]
-
-            behavior_recon_fig = plot_bahavior_recon(
-                gt = behavior_gt,
-                preds = behavior_preds
-            )
-
-            behavior_results = metrics_list(
-                gt = behavior_gt,
-                pred = behavior_preds,
-                metrics=['r2']
-            )
-            os.makedirs(kwargs['save_path'], exist_ok=True)
-            behavior_recon_fig['plot_behavior_gt_pred'].savefig(os.path.join(kwargs['save_path'], f'behavior_gt_pred.png'))
-            behavior_recon_fig['plot_behavior_r2'].savefig(os.path.join(kwargs['save_path'], f'behavior_r2.png'))
-
-            print(behavior_results)
-
-            for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                if np.isinf(bps):
-                    bps = np.nan
-                bps_result_list[target_n_i[n_i]] = bps
-
-            ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
-        
-            for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
-                if is_aligned:
-                    X = behavior_set[:, target_t_i, :]  
-                    _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
-                                                          var_name2idx, var_tasklist, var_value2label, var_behlist,
-                                                          subtract_psth=kwargs['subtract'],
-                                                          aligned_tbins=[],
-                                                          neuron_idx=uuids_list[target_n_i[i]][:4],
-                                                          neuron_region=region_list[target_n_i[i]],
-                                                          method=method_name, save_path=kwargs['save_path'],
-                                                          save_plot=save_plot);
-                    r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
-                else:
-                    r2 = viz_single_cell_unaligned(
-                        ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
-                        neuron_idx=uuids_list[target_n_i[i]][:4],
-                        neuron_region=region_list[target_n_i[i]],
-                        method=method_name, save_path=kwargs['save_path'],
-                        save_plot=save_plot
-                    )
-                    r2_result_list[target_n_i[i]] = r2
-    elif mode == 'modal_behavior':
-
-        held_out_list = [kwargs['held_out_list']]
-
-        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
-        target_regions = neuron_regions = None
-
-        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
-
-        for hd_idx in held_out_list:
-
-            hd = np.array([hd_idx])
-
-            model.eval()
-            with torch.no_grad():
-                for batch in test_dataloader:
-                    batch = move_batch_to_device(batch, accelerator.device)
-                    mask_result = heldout_mask(
-                        batch['target'].clone(),
-                        mode=mode,
-                        heldout_idxs=hd,
-                        target_regions=target_regions,
-                        neuron_regions=region_list
-                    )  
-                    
-                    mod_dict = {}
-                    for mod in model.mod_to_indx.keys():
-                        mod_dict[mod] = {}
-                        mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['eid'] = batch['eid'][0]  
-                        mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
-                        if use_mtm:
-                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
-                        else:
-                            mod_dict[mod]['masking_mode'] = None
-                        if mod == 'ap':
-                            if not use_mtm:
-                                mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
-                            else:
-                                mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
-                            mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
-                            mod_dict[mod]['targets'] = batch['spikes_data'].clone()
-                            mod_dict[mod]['mask_mode'] = 'causal'
-                            #######
-                        elif mod == 'behavior':
-                            mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
-                            mod_dict[mod]['targets'] = batch['target'].clone()
-                            mod_dict[mod]['eval_mask'] = mask_result['eval_mask'].unsqueeze(-1)
-                    
-                    outputs = model(mod_dict)
-                    
-            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
-            preds = outputs.mod_preds['ap'][:,:,:N]
-            preds = torch.exp(preds).detach().cpu().numpy()
-
-            behavior_gt = outputs.mod_targets['behavior'][:,:N].detach()
-            behavior_preds = outputs.mod_preds['behavior'][:,:N].detach()
-
-            target_n_i, target_t_i = np.arange(N), held_out_list[0]
-
-            gt_held_out = gt[:,target_t_i][:,:,target_n_i]
-            pred_held_out = preds[:,target_t_i][:,:,target_n_i]
-
-            behavior_recon_fig = plot_bahavior_recon(
-                gt = behavior_gt,
-                preds = behavior_preds
-            )
-
-            behavior_results = metrics_list(
-                gt = behavior_gt,
-                pred = behavior_preds,
-                metrics=['r2']
-            )
-            os.makedirs(kwargs['save_path'], exist_ok=True)
-            behavior_recon_fig['plot_behavior_gt_pred'].savefig(os.path.join(kwargs['save_path'], f'behavior_gt_pred.png'))
-            behavior_recon_fig['plot_behavior_r2'].savefig(os.path.join(kwargs['save_path'], f'behavior_r2.png'))
-
-            print(behavior_results)
-
-            for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                if np.isinf(bps):
-                    bps = np.nan
-                bps_result_list[target_n_i[n_i]] = bps
-
-            ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
-        
-            for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
-                if is_aligned:
-                    X = behavior_set[:, target_t_i, :]  
-                    _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
-                                                          var_name2idx, var_tasklist, var_value2label, var_behlist,
-                                                          subtract_psth=kwargs['subtract'],
-                                                          aligned_tbins=[],
-                                                          neuron_idx=uuids_list[target_n_i[i]][:4],
-                                                          neuron_region=region_list[target_n_i[i]],
-                                                          method=method_name, save_path=kwargs['save_path'],
-                                                          save_plot=save_plot);
-                    r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
-                else:
-                    r2 = viz_single_cell_unaligned(
-                        ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
-                        neuron_idx=uuids_list[target_n_i[i]][:4],
-                        neuron_region=region_list[target_n_i[i]],
-                        method=method_name, save_path=kwargs['save_path'],
-                        save_plot=save_plot
-                    )
-                    r2_result_list[target_n_i[i]] = r2
     else:
         raise NotImplementedError('mode not implemented')
 
@@ -769,26 +527,6 @@ def co_smoothing_eval(
         f"{mode}_mean_r2_trial": np.nanmean(r2_all[:, 1]),
     }
 
-def plot_bahavior_recon(
-        gt,
-        preds,
-    ):
-    gt_pred_fig = plot_gt_pred(
-                        gt = gt.squeeze().cpu().numpy(),
-                        pred = preds.squeeze().detach().cpu().numpy(),
-                        )
-
-    active_neurons = [0]
-
-    r2_fig = plot_neurons_r2(
-                gt = gt.mean(0),
-                pred = preds.mean(0),
-                neuron_idx=active_neurons,
-            )
-    return {
-            "plot_behavior_gt_pred": gt_pred_fig,
-            "plot_behavior_r2": r2_fig
-        }
 
 # DO NOT USE NOW: NEED TO FIX EVAL MASK
 def spiking_activity_recon_eval(
@@ -817,37 +555,17 @@ def spiking_activity_recon_eval(
     uuids_list = np.array(test_dataset['cluster_uuids'][0])[:N]
     region_list = np.array(test_dataset['cluster_regions'])[0][:N]
 
-    if is_aligned:
-        
-        b_list = []
-    
-        choice = np.array(test_dataset['choice'])
-        choice = np.tile(np.reshape(choice, (choice.shape[0], 1)), (1, T))
-        b_list.append(choice)
-    
-        reward = np.array(test_dataset['reward'])
-        reward = np.tile(np.reshape(reward, (reward.shape[0], 1)), (1, T))
-        b_list.append(reward)
-    
-        block = np.array(test_dataset['block'])
-        block = np.tile(np.reshape(block, (block.shape[0], 1)), (1, T))
-        b_list.append(block)
-    
-        behavior_set = np.stack(b_list, axis=-1)
-    
-        var_name2idx = {'block': [2], 'choice': [0], 'reward': [1], 'wheel': [3]}
-        var_value2label = {'block': {(0.2,): "p(left)=0.2", (0.5,): "p(left)=0.5", (0.8,): "p(left)=0.8",},
-                           'choice': {(-1.0,): "right", (1.0,): "left"},
-                           'reward': {(0.,): "no reward", (1.,): "reward", }}
-        var_tasklist = ['block', 'choice', 'reward']
-        var_behlist = []
-
     bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
 
     model.eval()
     with torch.no_grad():
         for batch in test_dataloader:
             batch = move_batch_to_device(batch, accelerator.device)
+
+            if is_aligned:
+                behavior_set, var_name2idx, var_tasklist, \
+                var_value2label, var_behlist = create_behave_list(batch, T=T)
+                
             mod_dict = {}
             for mod in model.mod_to_indx.keys():
                 mod_dict[mod] = {}
@@ -939,37 +657,17 @@ def behavior_recon_eval(
     T = kwargs['n_time_steps']
     avail_beh = kwargs['avail_beh']
     
-    if is_aligned:
-        
-        b_list = []
-    
-        choice = np.array(test_dataset['choice'])
-        choice = np.tile(np.reshape(choice, (choice.shape[0], 1)), (1, T))
-        b_list.append(choice)
-    
-        reward = np.array(test_dataset['reward'])
-        reward = np.tile(np.reshape(reward, (reward.shape[0], 1)), (1, T))
-        b_list.append(reward)
-    
-        block = np.array(test_dataset['block'])
-        block = np.tile(np.reshape(block, (block.shape[0], 1)), (1, T))
-        b_list.append(block)
-    
-        behavior_set = np.stack(b_list, axis=-1)
-    
-        var_name2idx = {'block': [2], 'choice': [0], 'reward': [1], 'wheel': [3]}
-        var_value2label = {'block': {(0.2,): "p(left)=0.2", (0.5,): "p(left)=0.5", (0.8,): "p(left)=0.8",},
-                           'choice': {(-1.0,): "right", (1.0,): "left"},
-                           'reward': {(0.,): "no reward", (1.,): "reward", }}
-        var_tasklist = ['block', 'choice', 'reward']
-        var_behlist = []
-
     r2_result_list = [np.array([np.nan, np.nan])] * N
 
     model.eval()
     with torch.no_grad():
         for batch in test_dataloader:
             batch = move_batch_to_device(batch, accelerator.device)
+
+            if is_aligned:
+                behavior_set, var_name2idx, var_tasklist, \
+                var_value2label, var_behlist = create_behave_list(batch, T=T)
+                
             mod_dict = {}
             for mod in model.mod_to_indx.keys():
                 mod_dict[mod] = {}
@@ -1080,12 +778,10 @@ def heldout_mask(
             hd.append(target_idxs)
         hd = np.stack(hd).flatten()
             
-    elif mode == 'forward_pred' or mode == 'modal_spike':
+    elif mode == 'forward_pred':
         hd = heldout_idxs
         mask[:, hd, :] = 0
-    elif mode == 'modal_behavior':
-        hd = heldout_idxs
-        mask[:, hd] = 0
+        
     else:
         raise NotImplementedError('mode not implemented')
 
@@ -1172,6 +868,34 @@ def bits_per_spike(rates, spikes):
 # single neuron plot functions
 # --------------------------------------------------------------------------------------------------
 
+def create_behave_list(batch, T=100):
+    
+    b_list = []
+        
+    choice = batch['choice'].detach().cpu().numpy()
+    choice = np.tile(np.reshape(choice, (choice.shape[0], 1)), (1, T))
+    b_list.append(choice)
+    
+    reward = batch['reward'].detach().cpu().numpy()
+    reward = np.tile(np.reshape(reward, (reward.shape[0], 1)), (1, T))
+    b_list.append(reward)
+    
+    block = batch['block'].detach().cpu().numpy()
+    block = np.tile(np.reshape(block, (block.shape[0], 1)), (1, T))
+    b_list.append(block)
+    
+    behavior_set = np.stack(b_list, axis=-1)
+    
+    var_name2idx = {'block': [2], 'choice': [0], 'reward': [1], 'wheel': [3]}
+    var_value2label = {'block': {(0.2,): "p(left)=0.2", (0.5,): "p(left)=0.5", (0.8,): "p(left)=0.8", },
+                           'choice': {(-1.0,): "right", (1.0,): "left"},
+                           'reward': {(0.,): "no reward", (1.,): "reward", }}
+    var_tasklist = ['block', 'choice', 'reward']
+    var_behlist = []
+    
+    return behavior_set, var_name2idx, var_tasklist, var_value2label, var_behlist
+
+
 """
 :X: [n_trials, n_timesteps, n_variables]
 :y: [n_trials, n_timesteps] (in Hz)
@@ -1198,11 +922,12 @@ def plot_psth(X, y, y_pred, var_tasklist, var_name2idx, var_value2label,
             psth_pred_xy = compute_all_psth(X, y_pred, var_name2idx[var])
             
             for _i, _x in enumerate(psth_xy.keys()):
+                
                 psth = psth_xy[_x]
                 psth_pred = psth_pred_xy[_x]
                 ax.plot(psth,
                         color=plt.get_cmap('tab10')(_i),
-                        linewidth=3, alpha=0.3, label=f"{var_value2label[var][tuple(_x)]}")
+                        linewidth=3, alpha=0.3, label=f"{var}: {tuple(_x)[0]:.2f}")
                 ax.plot(psth_pred,
                         color=plt.get_cmap('tab10')(_i),
                         linestyle='--')

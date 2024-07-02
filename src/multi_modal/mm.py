@@ -45,6 +45,7 @@ class MultiModal(nn.Module):
         self.avail_mod = avail_mod
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
         self.decoder_sep_mask = config.decoder.decoder_sep_mask
+        self.decoder_causal_mask = config.decoder.decoder_causal_mask
 
         self.n_enc_layers = config.encoder.transformer.n_layers
         self.n_dec_layers = config.decoder.transformer.n_layers
@@ -142,14 +143,18 @@ class MultiModal(nn.Module):
         encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask = self.cat_encoder_tensors(mod_dict)
 
         B, N, _ = encoder_tokens.size()
+
+        encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
         
-        encoder_tokens[encoder_mask] = 0.
-        encoder_emb[encoder_mask] = 0.
+        encoder_tokens[:,encoder_mask_ids,:] = 0.
+        # encoder_emb[:,encoder_mask_ids,:] = 0.
 
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
         # TO DO: Change context_mask
         context_mask = torch.ones_like(encoder_attn_mask).to(encoder_attn_mask.device, torch.int64)
+        # context_mask = create_context_mask(0, -1, N).to(encoder_tokens.device)
+        # context_mask = repeat(context_mask, "n1 n2 -> b n1 n2", b=B)
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
 
         return encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask
@@ -161,8 +166,10 @@ class MultiModal(nn.Module):
 
         B, N, _ = decoder_tokens.size()
 
-        decoder_tokens[decoder_mask] = 0.
-        decoder_emb[decoder_mask] = 0.
+        decoder_mask_ids = torch.argwhere(decoder_mask[0] == 1).squeeze()
+
+        decoder_tokens[:,decoder_mask_ids,:] = 0.
+        # decoder_emb[:,decoder_mask_ids,:] = 0.
         decoder_attn_mask = self.adapt_decoder_attention_mask(decoder_attn_mask, mod_mask)
 
         return decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask
@@ -171,15 +178,18 @@ class MultiModal(nn.Module):
     def adapt_decoder_attention_mask(self, decoder_attn_mask: torch.Tensor, mod_mask=Optional[torch.Tensor]) -> torch.Tensor:
 
         B, N = decoder_attn_mask.shape
-        
+
+        if self.decoder_causal_mask:
+            causal_mask = create_context_mask(0, -1, N).to(decoder_attn_mask.device)
+            causal_mask = repeat(causal_mask, "n1 n2 -> b n1 n2", b=B)
+            adapted_attn_mask = causal_mask
+        else:
+            adapted_attn_mask = decoder_attn_mask.unsqueeze(1).expand(B,N,N)
+            
         if self.decoder_sep_mask:
             # separate attention between tokens based on their modality using mod_mask.
             sep_mask = repeat(mod_mask, "b n2 -> b n1 n2", n1=N) != repeat(mod_mask, "b n1 -> b n1 n2", n2=N)
-            adapted_attn_mask = decoder_attn_mask | sep_mask
-        else:
-            adapted_attn_mask = decoder_attn_mask
-
-        adapted_attn_mask = adapted_attn_mask.unsqueeze(1).expand(B,N,N)
+            adapted_attn_mask = adapted_attn_mask | sep_mask
 
         return adapted_attn_mask
 
@@ -246,18 +256,16 @@ class MultiModal(nn.Module):
             
             if mod_dict[mod]['masking_mode']:
                 self.masker.mode = mod_dict[mod]['masking_mode']
-                # print(mod)
                 # print(f"masking mode: {self.masker.mode}")
                 # print(f"unmask inputs: {mod_dict[mod]['inputs'].sum()}")
                 mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
                 # print(f"mask inputs: {mod_dict[mod]['inputs'].sum()}")
                 # print(f"spike mask: {spike_mask.sum()}")
                 mod_dict[mod]['spike_mask'] = spike_mask
-                mask = mod_dict[mod]['inputs_attn_mask']
-
-                if 'eval_mask' in mod_dict[mod]:
-                    mask = mod_dict[mod]['eval_mask']
-                    mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask']
+                if mod_dict[mod]['eval_mask'] is None:
+                    mask = 1 - mod_dict[mod]['inputs_attn_mask']
+                else:
+                    mask = mod_dict[mod]['eval_mask'][:,:,0]
             else:
                 if mod_dict[mod]['eval_mask'] is None:
                     _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)

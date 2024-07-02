@@ -54,6 +54,7 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
+            mod_dict[mod]['eval_mask'] = None
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
