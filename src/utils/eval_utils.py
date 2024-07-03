@@ -651,7 +651,7 @@ def co_smoothing_eval(
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = r2
-                break
+                
     
     elif mode == 'modal_behavior':
 
@@ -767,7 +767,7 @@ def co_smoothing_eval(
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = r2
-                break
+                
     
     else:
         raise NotImplementedError('mode not implemented')
