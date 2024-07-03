@@ -22,7 +22,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --seed 42 \
                                --base_path ./ \
                                --save_plot \
-                               --mask_type input \
+                               --mask_type embd \
                                --wandb 
 cd script
 
