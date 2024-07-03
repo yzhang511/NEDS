@@ -20,7 +20,14 @@ conda activate ibl-mm
 
 cd ../
 
-python src/train_multi_modal.py --mask_mode temporal --mask_ratio 0.3 --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 --base_path /scratch/bcxj/yzhang39 --use_MtM
+python src/train_multi_modal.py --mask_ratio 0.3 \
+                                --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
+                                --base_path /scratch/bcxj/yzhang39 \
+
+# check mask_type in train_mm.yaml
+# --use_MtM
+# check the mask_mode in train_mm.yaml
+# --mask_mode temporal 
 
 conda deactivate
 

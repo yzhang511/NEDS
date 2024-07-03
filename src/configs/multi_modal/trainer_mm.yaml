@@ -38,7 +38,7 @@ training:
   eval_every: null  # Eval model
 
   use_mtm: false
-  mask_type: input # embd/input
+  mask_type: embd # embd/input
   mask_mode: ["temporal"]
 
 # Model configuration. 
