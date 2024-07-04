@@ -246,7 +246,7 @@ class MultiModal(nn.Module):
         for mod, d in mod_dict.items():
 
             # TO DO
-            if mod == 'behavior':
+            if mod == 'behavior' and len(mod_dict[mod]['inputs'].size()) == 2:
                 mod_dict[mod]['inputs'] = mod_dict[mod]['inputs'].unsqueeze(-1)
                 mod_dict[mod]['targets'] = mod_dict[mod]['targets'].unsqueeze(-1)
                 

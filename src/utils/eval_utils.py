@@ -69,7 +69,8 @@ def load_model_data_local(**kwargs):
     model = accelerator.prepare(model)
     
     dataloader = make_loader(
-        dataset, target=config.data.target,
+        dataset, 
+        target=avail_beh,
         batch_size=len(dataset),
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
@@ -791,12 +792,13 @@ def plot_bahavior_recon(
         gt,
         preds,
     ):
+    
     gt_pred_fig = plot_gt_pred(
-                        gt = gt.squeeze().cpu().numpy(),
-                        pred = preds.squeeze().detach().cpu().numpy(),
-                        )
-
-    active_neurons = [0]
+        gt = gt.mean(0).T.cpu().numpy(),
+        pred = preds.mean(0).T.detach().cpu().numpy(),
+        epoch = epoch
+    )
+    active_neurons = range(gt.size()[-1])
 
     r2_fig = plot_neurons_r2(
                 gt = gt.mean(0),

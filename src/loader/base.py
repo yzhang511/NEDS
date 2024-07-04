@@ -314,11 +314,11 @@ class BaseDataset(torch.utils.data.Dataset):
                                                            spikes_sparse_shape_list)
 
         if self.target is not None:
-            target_behavior = np.array(data[self.target]).astype(np.float32)
-            if self.target == 'choice':
-                assert target_behavior != 0, "Invalid value for choice."
-                target_behavior = np.array([0., 1.]) if target_behavior == 1 else np.array([1., 0.])
-                target_behavior = target_behavior.astype(np.float32)
+            target_behavior = []
+            for beh_name in self.target:
+                beh = np.array(data[beh_name]).astype(np.float32)
+                target_behavior.append(beh)
+            target_behavior = np.array(target_behavior).T
         else:
             target_behavior = np.array([np.nan])
 

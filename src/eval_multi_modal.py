@@ -30,7 +30,6 @@ ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--mask_type", type=str, default="input")
-ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
@@ -41,6 +40,8 @@ args = ap.parse_args()
 base_path = args.base_path
 
 eid = args.eid
+
+avail_beh = ['wheel-speed', 'whisker-motion-energy', 'pupil-diameter']
     
 print(f'Working on EID: {eid} ...')
 
@@ -119,7 +120,7 @@ configs = {
     'mask_name': mask_name,
     'eid': eid,
     'avail_mod': avail_mod,
-    'avail_beh': [args.cont_target],
+    'avail_beh': avail_beh,
 }  
 
 model, accelerator, dataset, dataloader = load_model_data_local(**configs)
@@ -168,7 +169,7 @@ if behave_recon:
             'n_time_steps': n_time_steps,    
             'is_aligned': True,
             'target_regions': None,
-            'avail_beh': [args.cont_target],
+            'avail_beh': avail_beh,
         }
         results = behavior_recon_eval(
             model, accelerator, 

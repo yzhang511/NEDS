@@ -27,7 +27,6 @@ ap.add_argument("--eid", type=str, default='671c7ea7-6726-4fbe-adeb-f89c2c8e489b
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--use_MtM", action='store_true')
-ap.add_argument("--cont_target", type=str, default="whisker-motion-energy")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 args = ap.parse_args()
@@ -35,6 +34,8 @@ args = ap.parse_args()
 base_path = args.base_path
 
 eid = args.eid
+
+avail_beh = ['wheel-speed', 'whisker-motion-energy', 'pupil-diameter']
     
 print(f'Working on EID: {eid} ...')
 
@@ -101,13 +102,13 @@ val_dataset = dataset["val"]
 test_dataset = dataset["test"]
 print(dataset.column_names)
 
-n_behaviors = 1  # CHANGE LATER
+n_behaviors = len(avail_beh)
 n_neurons = len(train_dataset['cluster_regions'][0])
 meta_data['num_neurons'] = [n_neurons]
 print(meta_data)
 
 train_dataloader = make_loader(train_dataset, 
-                            target=args.cont_target,
+                            target=avail_beh,
                             load_meta=config.data.load_meta,
                             batch_size=config.training.train_batch_size, 
                             pad_to_right=True, 
@@ -120,7 +121,7 @@ train_dataloader = make_loader(train_dataset,
                             shuffle=True)
 
 val_dataloader = make_loader(val_dataset, 
-                            target=args.cont_target,
+                            target=avail_beh,
                             load_meta=config.data.load_meta,
                             batch_size=config.training.test_batch_size, 
                             pad_to_right=True, 
@@ -133,7 +134,7 @@ val_dataloader = make_loader(val_dataset,
                             shuffle=False)
 
 test_dataloader = make_loader(test_dataset, 
-                            target=args.cont_target,
+                            target=avail_beh,
                             load_meta=config.data.load_meta,
                             batch_size=config.training.test_batch_size, 
                             pad_to_right=True, 

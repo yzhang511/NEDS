@@ -234,10 +234,14 @@ class MultiModalTrainer():
             # gt shape, [batch_size, seq_len, 1]
             # Hack: Enable drawing multiple behaviors later
             # print(f"gt: {gt.shape}, preds: {preds.shape}")
-            gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
-                        pred = preds.squeeze().detach().cpu().numpy(),
+            # gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
+            #             pred = preds.squeeze().detach().cpu().numpy(),
+            #             epoch = epoch)
+            # active_neurons = [0]
+            gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
+                        pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch)
-            active_neurons = [0]
+            active_neurons = range(gt.size()[-1])
             
         r2_fig = plot_neurons_r2(gt = gt.mean(0),
                 pred = preds.mean(0),
