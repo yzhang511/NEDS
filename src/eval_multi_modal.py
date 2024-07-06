@@ -98,7 +98,8 @@ save_path = os.path.join(base_path,
                         "results",
                         f"ses-{eid}",
                         "set-eval",
-                        f"modal-{'-'.join(avail_mod)}",
+                        f"inModal-{'-'.join(modal_filter['input'])}",
+                        f"outModal-{'-'.join(modal_filter['output'])}"
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}"
