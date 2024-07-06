@@ -66,6 +66,7 @@ class DecoderEmbedding(nn.Module):
     def __init__(
         self, 
         n_channel,
+        output_channel,
         config: DictConfig,
         **kwargs
     ):
@@ -75,10 +76,11 @@ class DecoderEmbedding(nn.Module):
         self.n_layers = config.transformer.n_layers
         self.max_F = config.embedder.max_F
         self.n_channel = n_channel
+        self.output_channel = output_channel
 
         self.embedder = DecoderEmbeddingLayer(self.hidden_size, self.n_channel, config.embedder)
 
-        self.out = nn.Linear(self.hidden_size, self.n_channel)
+        self.out = nn.Linear(self.hidden_size, self.output_channel)
     
     def forward_embed(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         
@@ -102,7 +104,7 @@ class DecoderEmbedding(nn.Module):
         
         y_mod = y[decoder_mod_mask == mod_idx]
         
-        d['preds'] = self.out(y_mod).reshape((-1, N//n_mod, self.n_channel))
+        d['preds'] = self.out(y_mod).reshape((-1, N//n_mod, self.output_channel))
         
         return d
 

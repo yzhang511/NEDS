@@ -49,6 +49,11 @@ model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 avail_mod = ['ap','behavior']
+modal_filter = {
+    "input": ['ap'], # 'ap', 'behavior'
+    "output": ['behavior']
+}
+avail_mod = [mod for mod in avail_mod if mod in modal_filter['input']]
 
 if args.mask_type == 'input':
     mask_mode = ["temporal"]
@@ -81,7 +86,8 @@ model_path = os.path.join(base_path,
                         "results",
                         f"ses-{eid}",
                         "set-train",
-                        f"modal-{'-'.join(avail_mod)}",
+                        f"inModal-{'-'.join(modal_filter['input'])}",
+                        f"outModal-{'-'.join(modal_filter['output'])}",
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
@@ -102,9 +108,10 @@ if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="ses-{}_set-eval_modal-{}_mask-{}_mode-{}_ratio-{}".format(
+        name="ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}".format(
             eid[:5], 
-            '-'.join(avail_mod), 
+            '-'.join(modal_filter['input']),
+            '-'.join(modal_filter['output']),
             args.mask_type, 
             mask_mode,
             args.mask_ratio

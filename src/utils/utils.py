@@ -35,7 +35,7 @@ def move_batch_to_device(batch, device):
             batch[key] = batch[key].to(device)
     return batch
 
-def plot_gt_pred(gt, pred, epoch=0):
+def plot_gt_pred(gt, pred, epoch=0,modality="behavior"):
     # plot Ground Truth and Prediction in the same figur
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     ax1.set_title("Ground Truth")
@@ -48,10 +48,11 @@ def plot_gt_pred(gt, pred, epoch=0):
     plt.colorbar(im1, ax=ax1)
     plt.colorbar(im2, ax=ax2)
 
-    fig.suptitle("Epoch: {}".format(epoch))
+    fig.suptitle("Epoch: {}, Mod: {}".format(epoch, 
+                                             modality))
     return fig
 
-def plot_neurons_r2(gt, pred, epoch=0, neuron_idx=[]):
+def plot_neurons_r2(gt, pred, epoch=0, neuron_idx=[],modality="behavior"):
     # Create one figure and axis for all plots
     fig, axes = plt.subplots(len(neuron_idx), 1, figsize=(12, 5 * len(neuron_idx)))
     r2_values = []  # To store R2 values for each neuron
@@ -68,7 +69,9 @@ def plot_neurons_r2(gt, pred, epoch=0, neuron_idx=[]):
         ax.set_xlabel("Time")
         # y label
         ax.set_ylabel("Rate")
-    fig.suptitle("Epoch: {}, Avg R2: {:.4f}".format(epoch, np.mean(r2_values)))
+    fig.suptitle("Epoch: {}, Mod: {}, Avg R2: {:.4f}".format(epoch, 
+                                                            modality, 
+                                                            np.mean(r2_values)))
     return fig
 
 def plt_condition_avg_r2(gt, pred, epoch=0, neuron_idx=0, condition_idx=0, first_n=8, device="cpu"):

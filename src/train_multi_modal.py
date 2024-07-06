@@ -35,7 +35,7 @@ base_path = args.base_path
 
 eid = args.eid
 
-avail_beh = ['wheel-speed', 'whisker-motion-energy', 'pupil-diameter']
+avail_beh = ['whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
 
@@ -54,6 +54,14 @@ last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
 avail_mod = ['ap','behavior']
+
+modal_filter = {
+    "input": ['ap'], # 'ap', 'behavior'
+    "output": ['behavior']
+}
+
+avail_mod = [mod for mod in avail_mod if mod in modal_filter['input']]
+
 if config.training.mask_type == 'input':
     mask_mode = '-'.join(config.training.mask_mode)
 else:
@@ -63,7 +71,8 @@ log_dir = os.path.join(base_path,
                        "results",
                        f"ses-{eid}",
                        "set-train",
-                       f"modal-{'-'.join(avail_mod)}",
+                       f"inModal-{'-'.join(modal_filter['input'])}",
+                       f"outModal-{'-'.join(modal_filter['output'])}",
                        f"mask-{config.training.mask_type}",
                        f"mode-{mask_mode}",
                        f"ratio-{args.mask_ratio}"
@@ -74,9 +83,10 @@ assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_modal-{}_mask-{}_mode-{}_ratio-{}".format(
+        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}".format(
             eid[:5], 
-            '-'.join(avail_mod), 
+            '-'.join(modal_filter['input']),
+            '-'.join(modal_filter['output']),
             config.training.mask_type, 
             mask_mode,
             args.mask_ratio
@@ -153,9 +163,20 @@ for mod in avail_mod:
         n_channel=n_neurons if mod == 'ap' else n_behaviors,
         config=config.model.encoder,
     )
+    if mod == 'ap':
+        if 'ap' in modal_filter['output']:
+            output_channel = n_neurons
+        else:
+            output_channel = n_behaviors
+    if mod == 'behavior':
+        if 'behavior' in modal_filter['output']:
+            output_channel = n_behaviors
+        else:
+            output_channel = n_neurons
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         n_channel=n_neurons if mod == 'ap' else n_behaviors,
+        output_channel=output_channel,
         config=config.model.decoder,
     )
 
@@ -199,6 +220,7 @@ trainer_kwargs = {
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
     "avail_mod": avail_mod,
+    "modal_filter": modal_filter,
     "config": config,
 }
 

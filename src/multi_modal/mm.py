@@ -221,13 +221,20 @@ class MultiModal(nn.Module):
         mod_loss, mod_n_examples, mod_preds, mod_targets = {}, {}, {}, {}
         for mod, d in decoder_mod_dict.items():
             targets = target_gts[mod]
+            loss_mod = mod
             B, T, N = targets.size()
             preds = decoder_mod_dict[mod]['preds']
             if "spike_mask" in decoder_mod_dict[mod]:
                 targets_mask = decoder_mod_dict[mod]['spike_mask']
             else:
                 targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
-            loss = (self.loss_mod[mod](preds, targets) * targets_mask).sum()
+            if decoder_mod_dict[mod]['inputs'].shape[2] != targets.shape[2]:
+                if mod == 'ap':
+                    loss_mod = "behavior"
+                else:
+                    loss_mod = "ap"
+                targets_mask = torch.ones_like(targets)
+            loss = (self.loss_mod[loss_mod](preds, targets) * targets_mask).sum()
             n_examples = targets_mask.sum()
             mod_loss[mod] = loss
             mod_n_examples[mod] = n_examples
@@ -242,7 +249,6 @@ class MultiModal(nn.Module):
     def forward(
             self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
         ) -> MultiModalOutput:
-
         for mod, d in mod_dict.items():
 
             # TO DO
@@ -269,7 +275,7 @@ class MultiModal(nn.Module):
                 else:
                     mask = mod_dict[mod]['eval_mask']
                 mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] # use token-wise mask now and expand later
-                
+
             mod_dict[mod]['inputs_mask'] = mask
             mod_dict[mod]['targets_mask'] = mask
             mod_dict[mod]['encoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
@@ -293,7 +299,7 @@ class MultiModal(nn.Module):
         context = self.decoder_proj_context(x) + encoder_emb
         y = decoder_tokens + decoder_emb
         y = self.forward_decoder(y, context, encoder_attn_mask=encoder_attn_mask, decoder_attn_mask=decoder_attn_mask)
-
+    
         decoder_mod_dict = {mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
                             for mod, d in decoder_mod_dict.items()
                             if mod in self.decoder_embeddings}

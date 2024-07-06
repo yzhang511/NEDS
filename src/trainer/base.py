@@ -31,6 +31,8 @@ class MultiModalTrainer():
         self.metric = 'r2'        
         self.session_active_neurons = []      
         self.avail_mod = kwargs.get("avail_mod", None)
+        self.modal_filter = kwargs.get("modal_filter", None)
+        # self.avail_mod = [mod for mod in self.avail_mod if mod in self.modal_filter['input']]
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
         # Multi-task-Masing (MtM)
@@ -57,11 +59,17 @@ class MultiModalTrainer():
             mod_dict[mod]['eval_mask'] = None
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
-                mod_dict[mod]['targets'] = batch['spikes_data'].clone()
+                if mod in self.modal_filter['output']:
+                    mod_dict[mod]['targets'] = batch['spikes_data'].clone()
+                else:
+                    mod_dict[mod]['targets'] = batch['target'].clone()
                 mod_dict[mod]['inputs_regions'] = np.asarray(batch['neuron_regions']).T
             elif mod == 'behavior':
                 mod_dict[mod]['inputs'] = batch['target'].clone()
-                mod_dict[mod]['targets'] = batch['target'].clone()
+                if mod in self.modal_filter['output']:
+                    mod_dict[mod]['targets'] = batch['target'].clone()
+                else:
+                    mod_dict[mod]['targets'] = batch['spikes_data'].clone()
             else:
                raise Exception(f"Modality not implemented yet.")
         return self.model(mod_dict)
@@ -84,10 +92,16 @@ class MultiModalTrainer():
                     self.save_model(name="best", epoch=epoch)
 
                     for mod in self.mod_to_indx.keys():
+                        if mod in self.modal_filter['output']:
+                            mod_ = mod
+                        else:
+                            mod_ = self.modal_filter['output'][0]
                         gt_pred_fig = self.plot_epoch(
                             gt=eval_epoch_results['eval_gt'][0][mod], 
-                            preds=eval_epoch_results['eval_preds'][0][mod], epoch=epoch,
-                            active_neurons=self.session_active_neurons[0][:5], modality=mod
+                            preds=eval_epoch_results['eval_preds'][0][mod], 
+                            epoch=epoch,
+                            active_neurons=self.session_active_neurons[0][:5], 
+                            modality=mod_
                         )
                         if self.config.wandb.use:
                             wandb.log(
@@ -107,10 +121,15 @@ class MultiModalTrainer():
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.mod_to_indx.keys():
+                    if mod in self.modal_filter['output']:
+                            mod_ = mod
+                    else:
+                        mod_ = self.modal_filter['output'][0]
                     gt_pred_fig = self.plot_epoch(
                         gt=eval_epoch_results['eval_gt'][0][mod], 
                         preds=eval_epoch_results['eval_preds'][0][mod], 
-                        epoch=epoch, modality=mod,
+                        epoch=epoch, 
+                        modality=mod_,
                         active_neurons=self.session_active_neurons[0][:5]
                     )
                     if self.config.wandb.use:
@@ -193,7 +212,7 @@ class MultiModalTrainer():
                 for mod in self.mod_to_indx.keys():
                     _gt = torch.cat(session_results[num_neuron][mod]["gt"], dim=0)
                     _preds = torch.cat(session_results[num_neuron][mod]["preds"], dim=0)
-                    if mod == 'ap':
+                    if mod == 'ap' and 'ap' in self.modal_filter['output']:
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
@@ -204,15 +223,28 @@ class MultiModalTrainer():
 
                 for mod in self.mod_to_indx.keys():
                     if mod == 'ap':
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
-                                            metrics=["r2"], 
-                                            device=self.accelerator.device)
-                    elif mod == 'behavior':
-                        results = metrics_list(gt = gt[idx][mod],
+                        if 'ap' in self.modal_filter['output']:
+                            results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
+                                                pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
+                                                metrics=["r2"], 
+                                                device=self.accelerator.device)
+                        else:
+                            print("here expected")
+                            results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
                                             metrics=[self.metric],
                                             device=self.accelerator.device)
+                    elif mod == 'behavior':
+                        if 'behavior' in self.modal_filter['output']:
+                            results = metrics_list(gt = gt[idx][mod],
+                                                pred = preds[idx][mod],
+                                                metrics=[self.metric],
+                                                device=self.accelerator.device)
+                        else:
+                            results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
+                                                pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
+                                                metrics=["r2"], 
+                                                device=self.accelerator.device)
                     results_list.append(results[self.metric])
 
         return {
@@ -227,20 +259,26 @@ class MultiModalTrainer():
         
         if modality == 'ap':
             # gt shape, [batch_size, seq_len, n_neurons]
-            gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
-                        pred = preds.mean(0).T.detach().cpu().numpy(),
-                        epoch = epoch)
+            gt_pred_fig = plot_gt_pred(
+                gt = gt.mean(0).T.cpu().numpy(),
+                pred = preds.mean(0).T.detach().cpu().numpy(),
+                epoch = epoch,
+                modality = modality
+                )
         elif modality == 'behavior':
             # gt shape, [batch_size, seq_len, 1]
             # Hack: Enable drawing multiple behaviors later
             # print(f"gt: {gt.shape}, preds: {preds.shape}")
-            # gt_pred_fig = plot_gt_pred(gt = gt.squeeze().cpu().numpy(),
-            #             pred = preds.squeeze().detach().cpu().numpy(),
-            #             epoch = epoch)
+            # gt_pred_fig = plot_gt_pred(
+            #     gt = gt.squeeze().cpu().numpy(),
+            #     pred = preds.squeeze().detach().cpu().numpy(),
+            #     epoch = epoch
+            #     )
             # active_neurons = [0]
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
-                        epoch = epoch)
+                        epoch = epoch,
+                        modality=modality)
             active_neurons = range(gt.size()[-1])
             
         r2_fig = plot_neurons_r2(gt = gt.mean(0),
