@@ -56,8 +56,8 @@ best_ckpt_path = 'model_best.pt'
 avail_mod = ['ap','behavior']
 
 modal_filter = {
-    "input": ['ap'], # 'ap', 'behavior'
-    "output": ['behavior']
+    "input": ['behavior'], # 'ap', 'behavior'
+    "output": ['ap']
 }
 
 avail_mod = [mod for mod in avail_mod if mod in modal_filter['input']]

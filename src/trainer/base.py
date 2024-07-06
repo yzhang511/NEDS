@@ -218,7 +218,11 @@ class MultiModalTrainer():
                     preds[idx][mod] = _preds
 
                 if len(self.session_active_neurons) < len(self.num_neurons):
-                    active_neurons = np.argsort(gt[idx]['ap'].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                    if 'ap' in self.modal_filter['input']:
+                        mod_ = 'ap'
+                    else:
+                        mod_ = 'behavior'
+                    active_neurons = np.argsort(gt[idx][mod_].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
                     self.session_active_neurons.append(active_neurons)
 
                 for mod in self.mod_to_indx.keys():
