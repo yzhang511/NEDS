@@ -41,7 +41,7 @@ base_path = args.base_path
 
 eid = args.eid
 
-avail_beh = ['wheel-speed', 'whisker-motion-energy', 'pupil-diameter']
+avail_beh = ['whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
 
@@ -50,8 +50,8 @@ mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 avail_mod = ['ap','behavior']
 modal_filter = {
-    "input": ['ap'], # 'ap', 'behavior'
-    "output": ['behavior']
+    "input": ['behavior'], # 'ap', 'behavior'
+    "output": ['ap']
 }
 avail_mod = [mod for mod in avail_mod if mod in modal_filter['input']]
 
@@ -76,9 +76,11 @@ forward_pred = False
 inter_region = False
 intra_region = False
 
-modal_spike = True if 'ap' in avail_mod else False
-modal_behavior = True if 'behavior' in avail_mod else False
+modal_spike = False
+modal_behavior = False
 
+baseline_decoding = False
+baseline_encoding = True
 print('Start model evaluation.')
 print('=======================')
 
@@ -99,7 +101,7 @@ save_path = os.path.join(base_path,
                         f"ses-{eid}",
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
-                        f"outModal-{'-'.join(modal_filter['output'])}"
+                        f"outModal-{'-'.join(modal_filter['output'])}",
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}"
@@ -368,6 +370,66 @@ if modal_behavior:
         wandb.log(results)
     else:
         print("skipping modal_behavior since files exist or overwrite is False")
+
+if baseline_decoding:
+    baseline_decoding_behavior_results_file = f'{save_path}/baseline_decoding/behavior_results.npy'
+    if not os.path.exists(baseline_decoding_behavior_results_file) or args.overwrite:
+        print('Start baseline_decoding:')
+        co_smoothing_configs = {
+            'subtract': 'task',
+            'onset_alignment': [40],
+            'method_name': mask_name, 
+            'save_path': f'{save_path}/baseline_decoding',
+            'mode': 'baseline_decoding',
+            'n_time_steps': n_time_steps,  
+            'held_out_list': list(range(0, 100)),
+            'is_aligned': True,
+            'target_regions': None,
+        }
+        results = co_smoothing_eval(
+            model=model, 
+            accelerator=accelerator, 
+            test_dataloader=dataloader, 
+            test_dataset=dataset, 
+            save_plot=args.save_plot,
+            use_mtm=use_mtm,
+            **co_smoothing_configs
+        )
+        print(results)
+        if args.wandb:
+            wandb.log(results)
+    else:
+        print("skipping baseline_decoding since files exist or overwrite is False")
+
+if baseline_encoding:
+    baseline_encoding_bps_file = f'{save_path}/baseline_encoding/bps.npy'
+    baseline_encoding_r2_file = f'{save_path}/baseline_encoding/r2.npy'
+    if not os.path.exists(baseline_encoding_bps_file) or not os.path.exists(baseline_encoding_r2_file) or args.overwrite:
+        print('Start baseline_encoding:')
+        co_smoothing_configs = {
+            'subtract': 'task',
+            'onset_alignment': [40],
+            'method_name': mask_name, 
+            'save_path': f'{save_path}/baseline_encoding',
+            'mode': 'baseline_encoding',
+            'n_time_steps': n_time_steps,  
+            'held_out_list': list(range(0, 100)),
+            'is_aligned': True,
+            'target_regions': None,
+        }
+        results = co_smoothing_eval(
+            model=model, 
+            accelerator=accelerator, 
+            test_dataloader=dataloader, 
+            test_dataset=dataset, 
+            save_plot=args.save_plot,
+            use_mtm=use_mtm,
+            **co_smoothing_configs
+        )
+        print(results)
+        wandb.log(results)
+    else:
+        print("skipping baseline_encoding since files exist or overwrite is False")
 
 print('Finish model evaluation.')
 print('=======================')

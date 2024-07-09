@@ -768,8 +768,166 @@ def co_smoothing_eval(
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = r2
+
+    elif mode == 'baseline_decoding':
+
+        held_out_list = [kwargs['held_out_list']]
+
+        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
+        target_regions = neuron_regions = None
+
+        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
+
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    
+                    mod_dict = {}
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod] = {}
+                        mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                        mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['eid'] = batch['eid'][0]  
+                        mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                        if use_mtm:
+                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                        else:
+                            mod_dict[mod]['masking_mode'] = None
+                        if mod == 'ap':
+                            if not use_mtm:
+                                mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
+                            else:
+                                mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
+                            mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
+                            #######
+                            mod_dict[mod]['targets'] = batch['target'].clone()
+                            mod_dict[mod]['mask_mode'] = 'causal'
+                            mod_dict[mod]['eval_mask'] = None
+                            #######
+                        elif mod == 'behavior':
+                            print("shit")
+                            raise NotImplementedError('mode not implemented')
+                    
+                    outputs = model(mod_dict)
+
+            behavior_gt = outputs.mod_targets['ap'][:,:N].detach()
+            behavior_preds = outputs.mod_preds['ap'][:,:N].detach()
+
+            target_n_i, target_t_i = np.arange(N), held_out_list[0]
+
+            behavior_recon_fig = plot_bahavior_recon(
+                gt = behavior_gt,
+                preds = behavior_preds
+            )
+
+            behavior_results = metrics_list(
+                gt = behavior_gt,
+                pred = behavior_preds,
+                metrics=['r2']
+            )
+            os.makedirs(kwargs['save_path'], exist_ok=True)
+            behavior_recon_fig['plot_behavior_gt_pred'].savefig(os.path.join(kwargs['save_path'], f'behavior_gt_pred.png'))
+            behavior_recon_fig['plot_behavior_r2'].savefig(os.path.join(kwargs['save_path'], f'behavior_r2.png'))
+
+            np.save(os.path.join(kwargs['save_path'], f'behavior_results.npy'), behavior_results)
+            return {
+                "behavior_results": behavior_results
+            }
                 
-    
+    elif mode == 'baseline_encoding':
+
+        held_out_list = [kwargs['held_out_list']]
+
+        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
+        target_regions = neuron_regions = None
+
+        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan, np.nan])] * N
+
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    
+                    mod_dict = {}
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod] = {}
+                        mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                        mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['eid'] = batch['eid'][0]  
+                        mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
+                        if use_mtm:
+                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                        else:
+                            mod_dict[mod]['masking_mode'] = None
+                        if mod == 'ap':
+                            print("shit")
+                            raise NotImplementedError("Error")
+                            #######
+                        elif mod == 'behavior':
+                            mod_dict[mod]['inputs'] = batch['target'].clone()
+                            mod_dict[mod]['targets'] = batch['spikes_data'].clone()
+                            mod_dict[mod]['eval_mask'] = None
+                    
+                    outputs = model(mod_dict)
+                    
+            gt = outputs.mod_targets['behavior'][:,:,:N].detach().cpu().numpy()
+            preds = outputs.mod_preds['behavior'][:,:,:N]
+            preds = torch.exp(preds).detach().cpu().numpy()
+
+            print(gt.shape, preds.shape)
+            target_n_i, target_t_i = np.arange(N), held_out_list[0]
+
+            gt_held_out = gt[:,target_t_i][:,:,target_n_i]
+            pred_held_out = preds[:,target_t_i][:,:,target_n_i]
+
+            for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
+                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                if np.isinf(bps):
+                    bps = np.nan
+                bps_result_list[target_n_i[n_i]] = bps
+            bps_all = np.array(bps_result_list)
+            bps_mean = np.nanmean(bps_all)
+            print(f"mean bps: {bps_mean}")
+            exit()
+            ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
+        
+            for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
+                if is_aligned:
+                    X = behavior_set[:, target_t_i, :]  
+                    _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
+                                                          var_name2idx, var_tasklist, var_value2label, var_behlist,
+                                                          subtract_psth=kwargs['subtract'],
+                                                          aligned_tbins=[],
+                                                          neuron_idx=uuids_list[target_n_i[i]][:4],
+                                                          neuron_region=region_list[target_n_i[i]],
+                                                          method=method_name, save_path=kwargs['save_path'],
+                                                          save_plot=save_plot);
+                    r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
+                else:
+                    r2 = viz_single_cell_unaligned(
+                        ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
+                        neuron_idx=uuids_list[target_n_i[i]][:4],
+                        neuron_region=region_list[target_n_i[i]],
+                        method=method_name, save_path=kwargs['save_path'],
+                        save_plot=save_plot
+                    )
+                    r2_result_list[target_n_i[i]] = r2
+
     else:
         raise NotImplementedError('mode not implemented')
 
@@ -796,7 +954,6 @@ def plot_bahavior_recon(
     gt_pred_fig = plot_gt_pred(
         gt = gt.mean(0).T.cpu().numpy(),
         pred = preds.mean(0).T.detach().cpu().numpy(),
-        epoch = epoch
     )
     active_neurons = range(gt.size()[-1])
 
