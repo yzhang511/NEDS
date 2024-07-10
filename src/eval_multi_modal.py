@@ -51,7 +51,7 @@ n_time_steps = 100
 avail_mod = ['ap','behavior']
 modal_filter = {
     "input": ['ap','behavior'], # 'ap', 'behavior'
-    "output": ['ap','behavior']
+    "output": ['ap','behavior'] # 'ap', 'behavior'
 }
 
 if args.mask_type == 'input':
@@ -98,7 +98,7 @@ save_path = os.path.join(base_path,
                         f"ses-{eid}",
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
-                        f"outModal-{'-'.join(modal_filter['output'])}"
+                        f"outModal-{'-'.join(modal_filter['output'])}",
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}"
@@ -308,6 +308,7 @@ if intra_region:
     else:
         print("skipping intra_region since files exist or overwrite is False")
 
+# 4M encoding
 if modal_spike:
     modal_spike_bps_file = f'{save_path}/modal_spike/bps.npy'
     modal_spike_r2_file = f'{save_path}/modal_spike/r2.npy'
@@ -338,6 +339,7 @@ if modal_spike:
     else:
         print("skipping modal_spike since files exist or overwrite is False")
 
+# 4M decoding
 if modal_behavior:
     modal_behavior_bps_file = f'{save_path}/modal_behavior/bps.npy'
     modal_behavior_r2_file = f'{save_path}/modal_behavior/r2.npy'

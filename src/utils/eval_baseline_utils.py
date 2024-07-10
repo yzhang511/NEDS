@@ -243,7 +243,7 @@ def co_smoothing_eval(
                 bps_result_list[target_n_i[n_i]] = np.nan
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
-        
+            behav_results = {}
             for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
                 if is_aligned:
                     X = behavior_set[:, target_t_i, :]  
@@ -256,6 +256,8 @@ def co_smoothing_eval(
                                                           method=method_name, save_path=kwargs['save_path'],
                                                           save_plot=save_plot);
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
+                    behav_results[f"{kwargs['avail_beh'][i]}_r2_psth"] = _r2_psth
+                    behav_results[f"{kwargs['avail_beh'][i]}_r2_trial"] = _r2_trial
                 else:
                     r2 = viz_single_cell_unaligned(
                         ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
@@ -265,7 +267,11 @@ def co_smoothing_eval(
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = r2
-                
+            np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
+            np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
+            return {
+                f"{mode}_behav_results": behav_results
+            } 
     
     else:
         raise NotImplementedError('mode not implemented')
