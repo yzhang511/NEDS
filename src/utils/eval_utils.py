@@ -591,7 +591,7 @@ def co_smoothing_eval(
                         elif mod == 'behavior':
                             mod_dict[mod]['inputs'] = batch['target'].clone()
                             mod_dict[mod]['targets'] = batch['target'].clone()
-                            mod_dict[mod]['eval_mask'] = None
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
                     
                     outputs = model(mod_dict)
                     
@@ -685,7 +685,7 @@ def co_smoothing_eval(
                             #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['mask_mode'] = 'causal'
-                            mod_dict[mod]['eval_mask'] = None
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
                             #######
                         elif mod == 'behavior':
                             if not use_mtm:

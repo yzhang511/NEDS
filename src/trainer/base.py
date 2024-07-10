@@ -32,21 +32,29 @@ class MultiModalTrainer():
         self.session_active_neurons = []      
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
-        # self.avail_mod = [mod for mod in self.avail_mod if mod in self.modal_filter['input']]
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
         # Multi-task-Masing (MtM)
         if self.config.training.mask_type == "input":
             # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
             self.masking_schemes = self.config.training.mask_mode
-            # self.masking_schemes = ['temporal']
         else:
             self.masking_mode = None
 
-    def _forward_model_outputs(self, batch, masking_mode):
-        batch = move_batch_to_device(batch, self.accelerator.device)
-        mod_dict = {}
+        self.mixed_training = kwargs.get("mixed_training", False)
+        if self.mixed_training:
+            self.training_schemes = ['encoding', 'decoding', 'token_masking']
+        else:
+            self.training_mode = None
+
+    
+    def _forward_model_outputs(self, batch, masking_mode, training_mode):
+        
         single_modal = True if len(self.modal_filter['output']) == 1 else False
+        
+        batch = move_batch_to_device(batch, self.accelerator.device)
+        
+        mod_dict = {}
         for mod in self.mod_to_indx.keys():
             mod_dict[mod] = {}
             mod_dict[mod]['inputs_modality'] = torch.tensor(self.mod_to_indx[mod]).to(self.accelerator.device)
@@ -57,13 +65,7 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
-
-            # for single modality conversion
-            if single_modal and mod in self.modal_filter['output']:
-                mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-            else:
-                mod_dict[mod]['eval_mask'] = None
-                
+            
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
@@ -73,6 +75,31 @@ class MultiModalTrainer():
                 mod_dict[mod]['targets'] = batch['target'].clone()
             else:
                raise Exception(f"Modality not implemented yet.")
+
+            if single_modal and mod in self.modal_filter['output']:
+                mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+            else:
+                mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+
+        if not single_modal:
+            if training_mode == 'encoding':
+                for mod in self.mod_to_indx.keys():
+                    if mod == 'ap':
+                        mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                    else:
+                        mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+            elif training_mode == 'decoding':
+                for mod in self.mod_to_indx.keys():
+                    if mod == 'behavior':
+                        mod_dict[mod]['eval_mask'] = torch.ones_like(batch['target']).to(batch['target'].device, torch.int64)
+                    else:
+                        mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+            elif training_mode == 'token_masking':
+                for mod in self.mod_to_indx.keys():
+                    mod_dict[mod]['eval_mask'] = None
+            else:
+               raise Exception(f"Training objective not implemented yet.")
+
         return self.model(mod_dict)
 
     
@@ -93,16 +120,12 @@ class MultiModalTrainer():
                     self.save_model(name="best", epoch=epoch)
 
                     for mod in self.modal_filter['output']:
-                        if mod in self.modal_filter['output']:
-                            mod_ = mod
-                        else:
-                            mod_ = self.modal_filter['output'][0]
                         gt_pred_fig = self.plot_epoch(
                             gt=eval_epoch_results['eval_gt'][0][mod], 
                             preds=eval_epoch_results['eval_preds'][0][mod], 
                             epoch=epoch,
                             active_neurons=self.session_active_neurons[0][:5], 
-                            modality=mod_
+                            modality=mod
                         )
                         if self.config.wandb.use:
                             wandb.log(
@@ -122,15 +145,11 @@ class MultiModalTrainer():
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
-                    if mod in self.modal_filter['output']:
-                        mod_ = mod
-                    else:
-                        mod_ = self.modal_filter['output'][0]
                     gt_pred_fig = self.plot_epoch(
                         gt=eval_epoch_results['eval_gt'][0][mod], 
                         preds=eval_epoch_results['eval_preds'][0][mod], 
                         epoch=epoch, 
-                        modality=mod_,
+                        modality=mod,
                         active_neurons=self.session_active_neurons[0][:5]
                     )
                     if self.config.wandb.use:
@@ -167,7 +186,11 @@ class MultiModalTrainer():
         for batch in tqdm(self.train_dataloader):
             if self.config.training.mask_type == "input":
                 self.masking_mode = random.sample(self.masking_schemes, 1)[0]
-            outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
+            if self.mixed_training:
+                self.training_mode = random.sample(self.training_schemes, 1)[0]
+            outputs = self._forward_model_outputs(
+                batch, masking_mode=self.masking_mode, training_mode=self.training_mode
+            )
             loss = outputs.loss
             loss.backward()
             self.optimizer.step()
@@ -194,7 +217,11 @@ class MultiModalTrainer():
                 for batch in self.eval_dataloader:
                     if self.config.training.mask_type == "input":
                         self.masking_mode = random.sample(self.masking_schemes, 1)[0]
-                    outputs = self._forward_model_outputs(batch, masking_mode=self.masking_mode)
+                    if self.mixed_training:
+                        self.training_mode = random.sample(self.training_schemes, 1)[0]
+                    outputs = self._forward_model_outputs(
+                        batch, masking_mode=self.masking_mode, training_mode=self.training_mode
+                    )
                     loss = outputs.loss
                     eval_loss += loss.item()
                     num_neuron = batch['spikes_data'].shape[2] 
@@ -218,38 +245,21 @@ class MultiModalTrainer():
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
 
-                if len(self.session_active_neurons) < len(self.num_neurons):
-                    if 'ap' in self.modal_filter['output']:
-                        mod_ = 'ap'
-                    else:
-                        mod_ = 'behavior'
-                    active_neurons = np.argsort(gt[idx][mod_].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
-                    self.session_active_neurons.append(active_neurons)
-
                 for mod in self.modal_filter['output']:
+                    
+                    active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                    self.session_active_neurons.append(active_neurons)
+                    
                     if mod == 'ap':
-                        if 'ap' in self.modal_filter['output']:
-                            results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                                pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
-                                                metrics=["r2"], 
-                                                device=self.accelerator.device)
-                        else:
-                            print("here expected")
-                            results = metrics_list(gt = gt[idx][mod],
+                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
+                                            pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
+                                            metrics=["r2"], 
+                                            device=self.accelerator.device)
+                    elif mod == 'behavior':
+                        results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
                                             metrics=[self.metric],
                                             device=self.accelerator.device)
-                    elif mod == 'behavior':
-                        if 'behavior' in self.modal_filter['output']:
-                            results = metrics_list(gt = gt[idx][mod],
-                                                pred = preds[idx][mod],
-                                                metrics=[self.metric],
-                                                device=self.accelerator.device)
-                        else:
-                            results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                                pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
-                                                metrics=["r2"], 
-                                                device=self.accelerator.device)
                     results_list.append(results[self.metric])
 
         return {
@@ -271,15 +281,7 @@ class MultiModalTrainer():
                 modality = modality
                 )
         elif modality == 'behavior':
-            # gt shape, [batch_size, seq_len, 1]
-            # Hack: Enable drawing multiple behaviors later
-            # print(f"gt: {gt.shape}, preds: {preds.shape}")
-            # gt_pred_fig = plot_gt_pred(
-            #     gt = gt.squeeze().cpu().numpy(),
-            #     pred = preds.squeeze().detach().cpu().numpy(),
-            #     epoch = epoch
-            #     )
-            # active_neurons = [0]
+            # gt shape, [batch_size, seq_len, n_behaviors]
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch,
@@ -490,7 +492,6 @@ class BaselineTrainer():
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
         if modality == 'ap':
-            # gt shape, [batch_size, seq_len, n_neurons]
             gt_pred_fig = plot_gt_pred(
                 gt = gt.mean(0).T.cpu().numpy(),
                 pred = preds.mean(0).T.detach().cpu().numpy(),

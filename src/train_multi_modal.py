@@ -27,6 +27,7 @@ ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--use_MtM", action='store_true')
+ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 args = ap.parse_args()
@@ -73,7 +74,8 @@ log_dir = os.path.join(base_path,
                        f"outModal-{'-'.join(modal_filter['output'])}",
                        f"mask-{config.training.mask_type}",
                        f"mode-{mask_mode}",
-                       f"ratio-{args.mask_ratio}"
+                       f"ratio-{args.mask_ratio}",
+                       f"mixedTraining-{args.mixed_training}"
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -81,13 +83,14 @@ assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}".format(
+        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
             eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
             mask_mode,
-            args.mask_ratio
+            args.mask_ratio,
+            args.mixed_training
         )
     )
 os.makedirs(log_dir, exist_ok=True)
@@ -212,6 +215,7 @@ trainer_kwargs = {
     "lr_scheduler": lr_scheduler,
     "avail_mod": avail_mod,
     "modal_filter": modal_filter,
+    "mixed_training": args.mixed_training,
     "config": config,
 }
 

@@ -29,6 +29,7 @@ ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--use_MtM", action='store_true')
+ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--mask_type", type=str, default="input")
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
@@ -50,8 +51,8 @@ mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
 avail_mod = ['ap','behavior']
 modal_filter = {
-    "input": ['ap','behavior'], # 'ap', 'behavior'
-    "output": ['ap','behavior'] # 'ap', 'behavior'
+    "input": ['ap','behavior'], 
+    "output": ['ap','behavior'] 
 }
 
 if args.mask_type == 'input':
@@ -90,6 +91,7 @@ model_path = os.path.join(base_path,
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
+                        f"mixedTraining-{args.mixed_training}",
                         best_ckpt_path
                         )
 
@@ -101,20 +103,22 @@ save_path = os.path.join(base_path,
                         f"outModal-{'-'.join(modal_filter['output'])}",
                         f"mask-{args.mask_type}",
                         f"mode-{mask_mode}",
-                        f"ratio-{args.mask_ratio}"
+                        f"ratio-{args.mask_ratio}",
+                        f"mixedTraining-{args.mixed_training}",
                         )
 
 if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}".format(
+        name="ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
             eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             args.mask_type, 
             mask_mode,
-            args.mask_ratio
+            args.mask_ratio,
+            args.mixed_training
     )
 )
 
