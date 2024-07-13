@@ -10,20 +10,23 @@
 #SBATCH -t 2-12:00:00 
 #SBATCH --mem=64g
 
+mask_rartio=${1}
+
 . ~/.bashrc
 echo $TMPDIR
 conda activate ibl-mm
 
-cd ../
+cd ../..
 
 python src/eval_multi_modal.py --mask_mode temporal \
-                               --mask_ratio 0.3 \
-                               --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
+                               --mask_ratio ${mask_rartio} \
+                               --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
                                --seed 42 \
                                --base_path ./ \
                                --save_plot \
                                --mask_type embd \
+                               --mixed_training \
                                --wandb 
-cd script
+cd script/ppwang
 
 conda deactivate

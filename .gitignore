@@ -5,3 +5,4 @@ checkpoints
 results
 *.out
 *.log
+*.png

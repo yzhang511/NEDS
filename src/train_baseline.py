@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import wandb
 import warnings
-
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
 from utils.dataset_utils import get_user_datasets, load_ibl_dataset, split_both_dataset
 from datasets import load_dataset, load_from_disk, concatenate_datasets
@@ -15,19 +14,14 @@ from accelerate import Accelerator
 from loader.make_loader import make_loader
 from utils.utils import set_seed
 from utils.config_utils import config_from_kwargs, update_config
-from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
-from trainer.make import make_multimodal_trainer
-from multi_modal.encoder_embeddings import EncoderEmbedding
-from multi_modal.decoder_embeddings import DecoderEmbedding
+from trainer.make import make_baseline_trainer
+from models.baseline_encoder import BaselineEncoder
+from models.baseline_decoder import BaselineDecoder
 
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
-ap.add_argument("--mask_ratio", type=float, default=0.1)
-ap.add_argument("--mask_mode", type=str, default="temporal")
-ap.add_argument("--use_MtM", action='store_true')
-ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 args = ap.parse_args()
@@ -41,14 +35,12 @@ avail_beh = ['wheel-speed', 'whisker-motion-energy']
 print(f'Working on EID: {eid} ...')
 
 kwargs = {
-    "model": f"include:src/configs/multi_modal/mm.yaml"
+    "model": f"include:src/configs/baseline.yaml"
 }
 
 config = config_from_kwargs(kwargs)
-config = update_config(f"src/configs/multi_modal/trainer_mm.yaml", config)
+config = update_config(f"src/configs/trainer.yaml", config)
 
-config['model']['masker']['mode'] = args.mask_mode
-config['model']['masker']['ratio'] = args.mask_ratio
 set_seed(config.seed)
 
 last_ckpt_path = 'model_last.pt'
@@ -57,14 +49,11 @@ best_ckpt_path = 'model_best.pt'
 avail_mod = ['ap', 'behavior']
 
 modal_filter = {
-    "input": ['ap', 'behavior'], 
-    "output": ['ap', 'behavior']
+    "input": ['ap'], 
+    "output": ['behavior']
+    # "input": ['behavior'], 
+    # "output": ['ap']
 }
-
-if config.training.mask_type == 'input':
-    mask_mode = '-'.join(config.training.mask_mode)
-else:
-    mask_mode = args.mask_mode
 
 log_dir = os.path.join(base_path, 
                        "results",
@@ -72,10 +61,7 @@ log_dir = os.path.join(base_path,
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
-                       f"mask-{config.training.mask_type}",
-                       f"mode-{mask_mode}",
-                       f"ratio-{args.mask_ratio}",
-                       f"mixedTraining-{args.mixed_training}"
+                       'linear',
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -83,14 +69,10 @@ assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        name="ses-{}_set-train_inModal-{}_outModal-{}_linear".format(
             eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
-            config.training.mask_type, 
-            mask_mode,
-            args.mask_ratio,
-            args.mixed_training
         )
     )
 os.makedirs(log_dir, exist_ok=True)
@@ -159,38 +141,25 @@ test_dataloader = make_loader(test_dataset,
 
 encoder_embeddings, decoder_embeddings = {}, {}
 
-for mod in modal_filter["input"]:
-    encoder_embeddings[mod] = EncoderEmbedding(
-        hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
-        config=config.model.encoder,
-    )
-
-for mod in modal_filter["output"]:
-    decoder_embeddings[mod] = DecoderEmbedding(
-        hidden_size=config.model.decoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
-        output_channel=n_neurons if mod == 'ap' else n_behaviors,
-        config=config.model.decoder,
-    )
+if "ap" in modal_filter["output"]:
+    model_class = "Encoder"  
+    input_size = n_behaviors
+    output_size = n_neurons
+else: 
+    model_class = "Decoder"
+    input_size = n_neurons 
+    output_size = n_behaviors
 
 accelerator = Accelerator()
 
-NAME2MODEL = {"MultiModal": MultiModal}
-model_class = NAME2MODEL[config.model.model_class]
+NAME2MODEL = {"Encoder": BaselineEncoder, "Decoder": BaselineDecoder}
+model_class = NAME2MODEL[model_class]
 model = model_class(
-    encoder_embeddings,
-    decoder_embeddings,
-    avail_mod=avail_mod,
-    config=config.model, 
-    share_modality_embeddings=True,
+    in_channel=input_size, 
+    out_channel=output_size,
     **config.method.model_kwargs, 
     **meta_data
 )
-
-print("(train) masking mode: ", model.masker.mode)
-print("(train) masking ratio: ", model.masker.ratio)
-print("(train) masking active: ", model.masker.force_active)
 
 model = accelerator.prepare(model)
 
@@ -215,11 +184,10 @@ trainer_kwargs = {
     "lr_scheduler": lr_scheduler,
     "avail_mod": avail_mod,
     "modal_filter": modal_filter,
-    "mixed_training": args.mixed_training,
     "config": config,
 }
 
-trainer_ = make_multimodal_trainer(
+trainer_ = make_baseline_trainer(
     model=model,
     train_dataloader=train_dataloader,
     eval_dataloader=val_dataloader,

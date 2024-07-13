@@ -11,15 +11,17 @@
 #SBATCH --mem=64g
 
 . ~/.bashrc
+mask_ratio=${1}
 echo $TMPDIR
 conda activate ibl-mm
 
-cd ../
+cd ../..
 
-python src/train_multi_modal.py --eid 51e53aff-1d5d-4182-a684-aba783d50ae5 \
+python src/train_multi_modal.py --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
                                      --base_path ./ \
-                                     --mask_ratio 0.0 
+                                     --mask_ratio $mask_ratio \
+                                     --mixed_training
 
-cd script
+cd script/ppwang
 
 conda deactivate
