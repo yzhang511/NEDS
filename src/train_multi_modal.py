@@ -30,6 +30,7 @@ ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
+ap.add_argument("--num_sessions", type=int, default=1)
 args = ap.parse_args()
 
 base_path = args.base_path
@@ -68,6 +69,7 @@ else:
 
 log_dir = os.path.join(base_path, 
                        "results",
+                       f"sesNum-{args.num_sessions}",
                        f"ses-{eid}",
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
@@ -94,29 +96,29 @@ if config.wandb.use:
         )
     )
 os.makedirs(log_dir, exist_ok=True)
-_, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
-                    config.dirs.huggingface_org,
-                    eid=eid,
-                    num_sessions=1,
-                    split_method="predefined",
-                    test_session_eid=[],
-                    batch_size=config.training.train_batch_size,
-                    seed=config.seed)
+train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
+                                    config.dirs.huggingface_org,
+                                    num_sessions=args.num_sessions,
+                                    use_re=True,
+                                    split_method="predefined",
+                                    test_session_eid=[],
+                                    batch_size=config.training.train_batch_size,
+                                    seed=config.seed)
 print(meta_data)
 
 print('Start model training.')
 print('=====================')
 
-dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-train_dataset = dataset["train"]
-val_dataset = dataset["val"]
-test_dataset = dataset["test"]
-print(dataset.column_names)
+# dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
+# train_dataset = dataset["train"]
+# val_dataset = dataset["val"]
+# test_dataset = dataset["test"]
+# print(dataset.column_names)
 
 n_behaviors = len(avail_beh)
-n_neurons = len(train_dataset['cluster_regions'][0])
-meta_data['num_neurons'] = [n_neurons]
-print(meta_data)
+# n_neurons = len(train_dataset['cluster_regions'][0])
+# meta_data['num_neurons'] = [n_neurons]
+# print(meta_data)
 
 train_dataloader = make_loader(train_dataset, 
                             target=avail_beh,
@@ -125,10 +127,11 @@ train_dataloader = make_loader(train_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=True)
 
 val_dataloader = make_loader(val_dataset, 
@@ -138,10 +141,11 @@ val_dataloader = make_loader(val_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=False)
 
 test_dataloader = make_loader(test_dataset, 
@@ -151,26 +155,32 @@ test_dataloader = make_loader(test_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=False)
 
 encoder_embeddings, decoder_embeddings = {}, {}
 
+standard_channel_size =256
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
+        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        stitching=True,
+        eid_list=meta_data['eid_list'],
         config=config.model.encoder,
     )
 
 for mod in modal_filter["output"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
-        output_channel=n_neurons if mod == 'ap' else n_behaviors,
+        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        output_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        stitching=True,
+        eid_list=meta_data['eid_list'],
         config=config.model.decoder,
     )
 

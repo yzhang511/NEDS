@@ -13,12 +13,14 @@ ACT2FN["softsign"] = nn.Softsign
 from utils.config_utils import DictConfig, update_config
 from multi_modal.mm_utils import ScaleNorm, MLP, Attention
 
+from models.stitcher import StitchEncoder
+
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
 
 class EncoderEmbeddingLayer(nn.Module):
 
-    def __init__(self, hidden_size, n_channels, config: DictConfig):
+    def __init__(self, hidden_size, n_channels, config: DictConfig, stitching=False, eid_list=None):
         super().__init__()
 
         self.bias = config.bias
@@ -41,11 +43,19 @@ class EncoderEmbeddingLayer(nn.Module):
 
         self.dropout = nn.Dropout(config.dropout)
 
+        if stitching:
+            self.spike_stitch_encoder = StitchEncoder(eid_list, n_channels)
+
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
-        inputs, inputs_timestamp, inputs_modality  = d['inputs'], d['inputs_timestamp'], d['inputs_modality']
-        
-        B, N, _ = inputs.size()
+        inputs, inputs_timestamp, inputs_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
+
+        B, N, D = inputs.size()
+
+        if hasattr(self, 'spike_stitch_encoder') and D > 2:
+            # D > 2 means that the input is a spike tensor, instead of a behavior tensor
+            # stitch the spike tensor
+            inputs = self.spike_stitch_encoder(inputs, eid)
 
         x = self.token_embed(inputs)
 
@@ -67,6 +77,8 @@ class EncoderEmbedding(nn.Module):
         self, 
         n_channel,
         config: DictConfig,
+        stitching=False,
+        eid_list=None,
         **kwargs
     ):
         super().__init__() 
@@ -76,7 +88,7 @@ class EncoderEmbedding(nn.Module):
         self.max_F = config.embedder.max_F
         self.n_channel = n_channel
 
-        self.embedder = EncoderEmbeddingLayer(self.hidden_size, self.n_channel, config.embedder)
+        self.embedder = EncoderEmbeddingLayer(self.hidden_size, self.n_channel, config.embedder, stitching, eid_list)
     
     def forward(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         

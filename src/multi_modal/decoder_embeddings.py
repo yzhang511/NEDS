@@ -12,12 +12,11 @@ ACT2FN["softsign"] = nn.Softsign
 
 from utils.config_utils import DictConfig, update_config
 from multi_modal.mm_utils import ScaleNorm, MLP, FactorsProjection, Attention, CrossAttention
+from models.stitcher import StitchDecoder, StitchEncoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
-
-
 class DecoderEmbeddingLayer(nn.Module):
-    def __init__(self, hidden_size, n_channels, config: DictConfig):
+    def __init__(self, hidden_size, n_channels, config: DictConfig, stitching=False, eid_list=None):
         super().__init__()
 
         self.bias = config.bias
@@ -40,13 +39,19 @@ class DecoderEmbeddingLayer(nn.Module):
 
         self.dropout = nn.Dropout(config.dropout)
 
+        if stitching:
+            self.spike_stitch_decoder = StitchEncoder(eid_list, n_channels)
+
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
         # TO DO: Change to different sampled target tokens later
-        targets, targets_timestamp, targets_modality  = d['inputs'], d['inputs_timestamp'], d['inputs_modality']
+        targets, targets_timestamp, targets_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
         
-        B, N, _ = targets.size()
-
+        B, N, D = targets.size()
+        if hasattr(self, 'spike_stitch_decoder') and D > 2:
+            # D > 2 means that the input is a spike tensor, instead of a behavior tensor
+            # stitch the spike tensor
+            targets = self.spike_stitch_decoder(targets, eid)
         x = self.token_embed(targets)
 
         x = self.act(x) * self.scale
@@ -68,6 +73,8 @@ class DecoderEmbedding(nn.Module):
         n_channel,
         output_channel,
         config: DictConfig,
+        stitching=False,
+        eid_list=None,
         **kwargs
     ):
         super().__init__() 
@@ -78,9 +85,12 @@ class DecoderEmbedding(nn.Module):
         self.n_channel = n_channel
         self.output_channel = output_channel
 
-        self.embedder = DecoderEmbeddingLayer(self.hidden_size, self.n_channel, config.embedder)
+        self.embedder = DecoderEmbeddingLayer(self.hidden_size, self.n_channel, config.embedder, stitching, eid_list)
 
         self.out = nn.Linear(self.hidden_size, self.output_channel)
+
+        if stitching:
+            self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.output_channel)
     
     def forward_embed(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         
@@ -103,9 +113,13 @@ class DecoderEmbedding(nn.Module):
         B, N, _ = y.size()
         
         y_mod = y[decoder_mod_mask == mod_idx]
+        eid = d['eid']
         
-        d['preds'] = self.out(y_mod).reshape((B, -1, self.output_channel))
-        
+        y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
+        if self.output_channel > 2:
+            # output_channel > 2 means that the input is a spike tensor, instead of a behavior tensor
+            y_mod = self.spike_stitch_proj_decoder(y_mod, eid)
+        d['preds'] = y_mod
         return d
 
 

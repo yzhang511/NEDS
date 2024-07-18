@@ -20,7 +20,8 @@ cd ../..
 python src/train_multi_modal.py --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
                                      --base_path ./ \
                                      --mask_ratio $mask_ratio \
-                                     --mixed_training
+                                     --mixed_training \
+                                     --num_sessions 2
 
 cd script/ppwang
 
