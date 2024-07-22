@@ -16,12 +16,13 @@ from utils.utils import set_seed
 from utils.config_utils import config_from_kwargs, update_config
 from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_baseline_trainer
-from models.baseline_encoder import BaselineEncoder
-from models.baseline_decoder import BaselineDecoder
+from models.baseline_encoder import BaselineEncoder, ReducedRankEncoder
+from models.baseline_decoder import BaselineDecoder, ReducedRankDecoder
 
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
+ap.add_argument("--model", type=str, default='linear')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 args = ap.parse_args()
@@ -49,10 +50,10 @@ best_ckpt_path = 'model_best.pt'
 avail_mod = ['ap', 'behavior']
 
 modal_filter = {
-    "input": ['ap'], 
-    "output": ['behavior']
-    # "input": ['behavior'], 
-    # "output": ['ap']
+    # "input": ['ap'], 
+    # "output": ['behavior']
+    "input": ['behavior'], 
+    "output": ['ap']
 }
 
 log_dir = os.path.join(base_path, 
@@ -61,7 +62,7 @@ log_dir = os.path.join(base_path,
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
-                       'linear',
+                       args.model,
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -69,10 +70,11 @@ assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_linear".format(
+        name="ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
             eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
+            args.model
         )
     )
 os.makedirs(log_dir, exist_ok=True)
@@ -142,17 +144,32 @@ test_dataloader = make_loader(test_dataset,
 encoder_embeddings, decoder_embeddings = {}, {}
 
 if "ap" in modal_filter["output"]:
-    model_class = "Encoder"  
+    if args.model == 'linear':
+        model_class = "LinearEncoder" 
+    elif args.model == 'rrr':
+        model_class = "ReducedRankEncoder" 
+        meta_data["rank"] = 4 
+    else:
+        raise NotImplementedError
     input_size = n_behaviors
     output_size = n_neurons
 else: 
-    model_class = "Decoder"
+    if args.model == 'linear':
+        model_class = "LinearDecoder" 
+    elif args.model == 'rrr':
+        model_class = "ReducedRankDecoder" 
+        meta_data["rank"] = 4 
+    else:
+        raise NotImplementedError
     input_size = n_neurons 
     output_size = n_behaviors
 
 accelerator = Accelerator()
 
-NAME2MODEL = {"Encoder": BaselineEncoder, "Decoder": BaselineDecoder}
+NAME2MODEL = {
+    "LinearEncoder": BaselineEncoder, "ReducedRankEncoder": ReducedRankEncoder,
+    "LinearDecoder": BaselineDecoder, "ReducedRankDecoder": ReducedRankDecoder,
+}
 model_class = NAME2MODEL[model_class]
 model = model_class(
     in_channel=input_size, 

@@ -26,6 +26,7 @@ from utils.eval_baseline_utils import load_model_data_local, co_smoothing_eval
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
+ap.add_argument("--model", type=str, default='linear')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--save_plot", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
@@ -68,7 +69,7 @@ model_path = os.path.join(base_path,
                         "set-train",
                         f"inModal-{'-'.join(modal_filter['input'])}",
                         f"outModal-{'-'.join(modal_filter['output'])}",
-                        'linear',
+                        args.model,
                         best_ckpt_path
                         )
 
@@ -77,18 +78,19 @@ save_path = os.path.join(base_path,
                         f"ses-{eid}",
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
-                        f"outModal-{'-'.join(modal_filter['output'])}"
-                        'linear'
+                        f"outModal-{'-'.join(modal_filter['output'])}",
+                        args.model,
                         )
 
 if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="ses-{}_set-eval_inModal-{}_outModal-linear".format(
+        name="ses-{}_set-eval_inModal-{}_outModal{}-model-{}".format(
             eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
+            args.model,
     )
 )
 

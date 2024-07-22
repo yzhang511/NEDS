@@ -43,7 +43,8 @@ class MultiModalTrainer():
 
         self.mixed_training = kwargs.get("mixed_training", False)
         if self.mixed_training:
-            self.training_schemes = ['encoding', 'decoding', 'token_masking']
+            # self.training_schemes = ['encoding', 'decoding', 'token_masking']
+            self.training_schemes = ['encoding', 'decoding']
         else:
             self.training_mode = None
 
