@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import wandb
 import warnings
+import threading
 
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
 from utils.dataset_utils import get_user_datasets, load_ibl_dataset, split_both_dataset
@@ -13,7 +14,7 @@ from datasets import load_dataset, load_from_disk, concatenate_datasets
 from utils.dataset_utils import load_ibl_dataset
 from accelerate import Accelerator
 from loader.make_loader import make_loader
-from utils.utils import set_seed
+from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
 from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
@@ -31,6 +32,9 @@ ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 ap.add_argument("--num_sessions", type=int, default=1)
+ap.add_argument("--dummy_load", action='store_true')
+ap.add_argument("--dummy_size", type=int, default=50000)
+
 args = ap.parse_args()
 
 base_path = args.base_path
@@ -229,6 +233,8 @@ trainer_kwargs = {
     "config": config,
 }
 
+# Shared variable to signal the dummy load to stop
+stop_dummy_load = threading.Event()
 trainer_ = make_multimodal_trainer(
     model=model,
     train_dataloader=train_dataloader,
@@ -238,4 +244,18 @@ trainer_ = make_multimodal_trainer(
     **trainer_kwargs,
     **meta_data
 )
-trainer_.train()
+
+if args.dummy_load:
+    # Start the dummy load
+    print(f"Starting dummy load with {args.dummy_size} samples")
+    dummy_thread = threading.Thread(target=dummy_load, args=(stop_dummy_load, args.dummy_size))
+    dummy_thread.start()
+
+    try:
+        trainer_.train()
+    finally:
+        stop_dummy_load.set()
+        dummy_thread.join()
+        raise
+else:
+    trainer_.train()
