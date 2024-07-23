@@ -66,15 +66,23 @@ modal_filter = {
     "output": ['ap', 'behavior']
 }
 
-if config.training.mask_type == 'input':
-    mask_mode = '-'.join(config.training.mask_mode)
-else:
-    mask_mode = args.mask_mode
+train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
+                                    config.dirs.huggingface_org,
+                                    num_sessions=args.num_sessions,
+                                    use_re=True,
+                                    split_method="predefined",
+                                    test_session_eid=[],
+                                    batch_size=config.training.train_batch_size,
+                                    seed=config.seed)
+
+num_sessions = len(meta_data['eid_list'])
+mask_mode = '-'.join(config.training.mask_mode) if config.training.mask_type == 'input' else args.mask_mode
+eid_ = "multi" if num_sessions > 1 else eid[:5]
 
 log_dir = os.path.join(base_path, 
                        "results",
-                       f"sesNum-{args.num_sessions}",
-                       f"ses-{eid}",
+                       f"sesNum-{num_sessions}",
+                       f"ses-{eid_}",
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
@@ -85,12 +93,13 @@ log_dir = os.path.join(base_path,
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
-
+os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
-            eid[:5], 
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+            num_sessions,
+            eid_, 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
@@ -99,16 +108,6 @@ if config.wandb.use:
             args.mixed_training
         )
     )
-os.makedirs(log_dir, exist_ok=True)
-train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
-                                    config.dirs.huggingface_org,
-                                    num_sessions=args.num_sessions,
-                                    use_re=True,
-                                    split_method="predefined",
-                                    test_session_eid=[],
-                                    batch_size=config.training.train_batch_size,
-                                    seed=config.seed)
-print(meta_data)
 
 print('Start model training.')
 print('=====================')

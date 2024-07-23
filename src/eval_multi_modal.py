@@ -36,6 +36,7 @@ ap.add_argument("--save_plot", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
 ap.add_argument('--seed', type=int, default=42)
 ap.add_argument('--wandb', action='store_true')
+ap.add_argument("--num_sessions", type=int, default=1)
 args = ap.parse_args()
 
 base_path = args.base_path
@@ -81,10 +82,15 @@ modal_behavior = True if 'behavior' in modal_filter['output'] else False
 
 print('Start model evaluation.')
 print('=======================')
-
+if args.num_sessions > 1:
+    warnings.warn("num_sessions > 1, make sure the model is trained with multiple sessions")
+    eid_ = "multi"
+else:
+    eid_ = eid
 model_path = os.path.join(base_path, 
                         "results",
-                        f"ses-{eid}",
+                        f"sesNum-{args.num_sessions}",
+                        f"ses-{eid_}",
                         "set-train",
                         f"inModal-{'-'.join(modal_filter['input'])}",
                         f"outModal-{'-'.join(modal_filter['output'])}",
@@ -97,7 +103,8 @@ model_path = os.path.join(base_path,
 
 save_path = os.path.join(base_path,
                         "results",
-                        f"ses-{eid}",
+                        f"sesNum-{args.num_sessions}",
+                        f"ses-{eid_}",
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
                         f"outModal-{'-'.join(modal_filter['output'])}",
@@ -111,8 +118,9 @@ if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
-            eid[:5], 
+        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+            args.num_sessions,
+            eid_, 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             args.mask_type, 

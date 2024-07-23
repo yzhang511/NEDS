@@ -11,17 +11,18 @@
 #SBATCH --mem=64g
 
 . ~/.bashrc
-mask_ratio=${1}
+num_sessions=${1}
+mask_ratio=${2}
 echo $TMPDIR
 conda activate ibl-mm
 
 cd ../..
 
-python src/train_multi_modal.py --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
+python src/train_multi_modal.py --eid 3638d102-e8b6-4230-8742-e548cd87a949 \
                                      --base_path ./ \
                                      --mask_ratio $mask_ratio \
                                      --mixed_training \
-                                     --num_sessions 2 \
+                                     --num_sessions $num_sessions \
                                      --dummy_size 50000 \
                                      --dummy_load
 

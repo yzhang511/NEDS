@@ -10,7 +10,8 @@
 #SBATCH -t 2-12:00:00 
 #SBATCH --mem=64g
 
-mask_rartio=${1}
+num_sessions=${1}
+mask_rartio=${2}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -20,13 +21,14 @@ cd ../..
 
 python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_ratio ${mask_rartio} \
-                               --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
+                               --eid 3638d102-e8b6-4230-8742-e548cd87a949 \
                                --seed 42 \
                                --base_path ./ \
                                --save_plot \
                                --mask_type embd \
-                               --mixed_training \
-                               --wandb 
+                               --mixed_training  \
+                               --num_sessions ${num_sessions} \
+                               --wandb
 cd script/ppwang
 
 conda deactivate
