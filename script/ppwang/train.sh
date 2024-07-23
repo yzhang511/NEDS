@@ -23,7 +23,7 @@ python src/train_multi_modal.py --eid 3638d102-e8b6-4230-8742-e548cd87a949 \
                                      --mask_ratio $mask_ratio \
                                      --mixed_training \
                                      --num_sessions $num_sessions \
-                                     --dummy_size 50000 \
+                                     --dummy_size 100000 \
                                      --dummy_load
 
 cd script/ppwang

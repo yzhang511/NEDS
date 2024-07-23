@@ -255,6 +255,5 @@ if args.dummy_load:
     finally:
         stop_dummy_load.set()
         dummy_thread.join()
-        raise
 else:
     trainer_.train()
