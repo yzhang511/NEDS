@@ -26,10 +26,11 @@ class MultiModalTrainer():
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
+        self.eid_list = kwargs.get("eid_list", None)
 
         self.model_class = self.config.model.model_class
         self.metric = 'r2'        
-        self.session_active_neurons = []      
+        self.session_active_neurons = {}    
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
@@ -125,7 +126,7 @@ class MultiModalTrainer():
                             gt=eval_epoch_results['eval_gt'][0][mod], 
                             preds=eval_epoch_results['eval_preds'][0][mod], 
                             epoch=epoch,
-                            active_neurons=self.session_active_neurons[0][:5], 
+                            active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
                             modality=mod
                         )
                         if self.config.wandb.use:
@@ -146,12 +147,13 @@ class MultiModalTrainer():
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
+                    # take the first session for plotting
                     gt_pred_fig = self.plot_epoch(
                         gt=eval_epoch_results['eval_gt'][0][mod], 
                         preds=eval_epoch_results['eval_preds'][0][mod], 
                         epoch=epoch, 
                         modality=mod,
-                        active_neurons=self.session_active_neurons[0][:5]
+                        active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5]
                     )
                     if self.config.wandb.use:
                         wandb.log({
@@ -199,7 +201,7 @@ class MultiModalTrainer():
             self.optimizer.zero_grad()
             train_loss += loss.item()
         return{
-            "train_loss": train_loss
+            "train_loss": train_loss/len(self.train_dataloader)
         }
     
     
@@ -208,11 +210,11 @@ class MultiModalTrainer():
         self.model.eval()
         eval_loss = 0.
         session_results = {}
-        for num_neuron in self.num_neurons:
-            session_results[num_neuron] = {}
+        for eid in self.eid_list:
+            session_results[eid] = {}
             for mod in self.modal_filter['output']:
-                session_results[num_neuron][mod] = {"gt": [], "preds": []}
-                
+                session_results[eid][mod] = {"gt": [], "preds": []}
+
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
@@ -226,45 +228,48 @@ class MultiModalTrainer():
                     loss = outputs.loss
                     eval_loss += loss.item()
                     num_neuron = batch['spikes_data'].shape[2] 
+                    eid = batch['eid'][0]
 
                     for mod in self.modal_filter['output']:
                         if mod == 'ap':
-                            session_results[num_neuron][mod]["gt"].append(outputs.mod_targets[mod].clone()[:,:,:num_neuron])
-                            session_results[num_neuron][mod]["preds"].append(outputs.mod_preds[mod].clone()[:,:,:num_neuron])
+                            session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone()[:,:,:num_neuron])
+                            session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone()[:,:,:num_neuron])
                         elif mod == 'behavior':
-                            session_results[num_neuron][mod]["gt"].append(outputs.mod_targets[mod].clone())
-                            session_results[num_neuron][mod]["preds"].append(outputs.mod_preds[mod].clone())
+                            session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
+                            session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
 
             gt, preds, results_list = {}, {}, []
-            for idx, num_neuron in enumerate(self.num_neurons):
+            for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
                 for mod in self.modal_filter['output']:
-                    _gt = torch.cat(session_results[num_neuron][mod]["gt"], dim=0)
-                    _preds = torch.cat(session_results[num_neuron][mod]["preds"], dim=0)
+                    _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                    _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
                     if mod == 'ap' and 'ap' in self.modal_filter['output']:
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
 
                 for mod in self.modal_filter['output']:
-                    
-                    active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
-                    self.session_active_neurons.append(active_neurons)
-                    
+                    if len(self.session_active_neurons) < len(self.eid_list):
+                        active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                        if eid not in self.session_active_neurons:
+                            self.session_active_neurons[eid] = {}
+                        self.session_active_neurons[eid][mod] = active_neurons
                     if mod == 'ap':
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
+                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
+                                            pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
                                             metrics=["r2"], 
                                             device=self.accelerator.device)
                     elif mod == 'behavior':
-                        results = metrics_list(gt = gt[idx][mod],
-                                            pred = preds[idx][mod],
+                        # calculate r2 based on avg-trial behavior
+                        results = metrics_list(gt = gt[idx][mod].transpose(-1,0).mean(2).unsqueeze(2),
+                                            pred = preds[idx][mod].transpose(-1,0).mean(2).unsqueeze(2),
                                             metrics=[self.metric],
                                             device=self.accelerator.device)
                     results_list.append(results[self.metric])
 
         return {
-            "eval_loss": eval_loss,
+            "eval_loss": eval_loss/len(self.eval_dataloader),
             f"eval_trial_avg_{self.metric}": np.nanmean(results_list),
             "eval_gt": gt,
             "eval_preds": preds,

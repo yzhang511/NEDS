@@ -109,7 +109,7 @@ def metrics_list(gt, pred, metrics=["r2", "rsquared", "mse", "mae", "acc"], devi
     if "r2" in metrics:
         r2_list = []
         for i in range(gt.shape[0]):
-            r2s = [r2_score(y_true=gt[i].T[k], y_pred=pred[i].T[k], device=device) for k in range(len(gt[i].T))]
+            r2s = [r2_score_sklearn(y_true=gt[i].T[k].cpu().numpy(), y_pred=pred[i].T[k].cpu().numpy()) for k in range(len(gt[i].T))]
             r2_list.append(np.ma.masked_invalid(r2s).mean())
         r2 = np.mean(r2_list)
         results["r2"] = r2
