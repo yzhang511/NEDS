@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=eval-baseline
-#SBATCH --output=eval-baseline.out
+#SBATCH --output=eval-baseline-%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1

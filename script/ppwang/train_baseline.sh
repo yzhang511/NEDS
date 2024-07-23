@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=train-baseline
-#SBATCH --output=train-baseline.out
+#SBATCH --output=train-baseline-%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --job-name=ibl-fm
-#SBATCH --output=ibl-fm.out
+#SBATCH --job-name=eval-mm
+#SBATCH --output=eval-mm-%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1
