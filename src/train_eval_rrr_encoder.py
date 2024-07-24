@@ -204,7 +204,7 @@ l2 = args.l2_penalty; n_comp = args.rank
 
 if args.model == "rrr":
     model, mse_val = train_model_main(
-        train_data, l2, n_comp, None, 
+        train_data, l2, n_comp, "tmp", save=True
     )
     _, _, pred_orig = model.predict_y_fr(train_data, eid, 1)
     pred_orig = pred_orig.cpu().detach().numpy()
@@ -235,11 +235,12 @@ pred_held_out = np.clip(pred_orig, threshold, None)
 gt_held_out = data_dict["test"]["spikes_data"]
 
 bps_result_list = []
-for n_i in tqdm(range(n_neurons), desc='co-bps'): 
+for n_i in tqdm(range(n_neurons), desc='co-bps'):     
     bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
     if np.isinf(bps):
         bps = np.nan
     bps_result_list.append(bps)
+# bps_result_list.append(bits_per_spike(pred_held_out, gt_held_out))
 
 # Bits per spike calculation
 save_path = f"{save_path}/modal_spike"
