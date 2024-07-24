@@ -50,10 +50,8 @@ best_ckpt_path = 'model_best.pt'
 avail_mod = ['ap', 'behavior']
 
 modal_filter = {
-    # "input": ['ap'], 
-    # "output": ['behavior']
-    "input": ['behavior'], 
-    "output": ['ap']
+    "input": ['ap'], 
+    "output": ['behavior']
 }
 
 log_dir = os.path.join(base_path, 

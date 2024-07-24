@@ -48,8 +48,6 @@ avail_mod = ['ap','behavior']
 modal_filter = {
     "input": ['ap'], # 'ap', 'behavior'
     "output": ['behavior'],
-    # "input": ['behavior'], # 'ap', 'behavior'
-    # "output": ['ap']
 }
 
 set_seed(args.seed)

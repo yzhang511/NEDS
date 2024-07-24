@@ -1,6 +1,7 @@
 import os
 import random
 import numpy as np
+from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
 from utils.metric_utils import r2_score
@@ -537,3 +538,67 @@ var_value2label = {'block': {(0.2,): "p(left)=0.2",
                             (1.,): "reward", } }
 
 var_tasklist = ['block','choice','reward']
+
+
+def huggingface2numpy(
+    train_dataloader, val_dataloader, test_dataloader, test_dataset
+):
+    
+    train_data_dict, val_data_dict, test_data_dict = {}, {}, {}
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = []
+        data_dict['dynamic_behavior'] = []
+        data_dict['choice'] = []
+        data_dict['block'] = []
+        data_dict['reward'] = []
+        data_dict['cluster_regions'] = np.array(test_dataset['cluster_regions'][0])
+        data_dict['cluster_uuids'] = np.array(test_dataset['cluster_uuids'])[0]
+    
+    for batch in tqdm(train_dataloader):
+        train_data_dict['spikes_data'].append(batch['spikes_data'])
+        train_data_dict['dynamic_behavior'].append(batch['target'])
+        train_data_dict['choice'].append(batch['choice'])
+        train_data_dict['block'].append(batch['block'])
+        train_data_dict['reward'].append(batch['reward'])
+    
+    for batch in tqdm(val_dataloader):
+        val_data_dict['spikes_data'].append(batch['spikes_data'])
+        val_data_dict['dynamic_behavior'].append(batch['target'])
+        val_data_dict['choice'].append(batch['choice'])
+        val_data_dict['block'].append(batch['block'])
+        val_data_dict['reward'].append(batch['reward'])
+    
+    for batch in tqdm(test_dataloader):
+        test_data_dict['spikes_data'].append(batch['spikes_data'])
+        test_data_dict['dynamic_behavior'].append(batch['target'])
+        test_data_dict['choice'].append(batch['choice'])
+        test_data_dict['block'].append(batch['block'])
+        test_data_dict['reward'].append(batch['reward'])
+    
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = torch.cat(data_dict['spikes_data'], 0).numpy()
+        data_dict['dynamic_behavior'] = torch.cat(data_dict['dynamic_behavior'], 0).numpy()
+        data_dict['choice'] = torch.cat(data_dict['choice'], 0).numpy()
+        data_dict['block'] = torch.cat(data_dict['block'], 0).numpy()
+        data_dict['reward'] = torch.cat(data_dict['reward'], 0).numpy()
+
+    return {
+        "train": train_data_dict, "val": val_data_dict, "test": test_data_dict
+    }
+
+
+def _one_hot(arr):
+    uni = np.sort(np.unique(arr))
+    ret = np.zeros((len(arr), T, len(uni)))
+    for i, _uni in enumerate(uni):
+        ret[:,:,i] = (arr == _uni)
+    return ret
+
+def _std(arr):
+    mean = np.mean(arr, axis=0) # (T, N)
+    std = np.std(arr, axis=0) # (T, N)
+    std = np.clip(std, 1e-8, None) # (T, N) 
+    arr = (arr - mean) / std
+    return arr, mean, std
+    
+    
