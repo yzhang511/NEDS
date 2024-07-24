@@ -11,7 +11,8 @@
 #SBATCH --mem=64g
 
 num_sessions=${1}
-mask_rartio=${2}
+eid=${2}
+mask_rartio=${3}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -21,7 +22,7 @@ cd ../..
 
 python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_ratio ${mask_rartio} \
-                               --eid 3638d102-e8b6-4230-8742-e548cd87a949 \
+                               --eid ${eid} \
                                --seed 42 \
                                --base_path ./ \
                                --save_plot \

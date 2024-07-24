@@ -80,13 +80,15 @@ intra_region = False
 modal_spike = True if 'ap' in modal_filter['output'] else False
 modal_behavior = True if 'behavior' in modal_filter['output'] else False
 
-print('Start model evaluation.')
-print('=======================')
 if args.num_sessions > 1:
     warnings.warn("num_sessions > 1, make sure the model is trained with multiple sessions")
     eid_ = "multi"
 else:
-    eid_ = eid
+    eid_ = eid[:5]
+
+print('Start model evaluation.')
+print('=======================')
+
 model_path = os.path.join(base_path, 
                         "results",
                         f"sesNum-{args.num_sessions}",
@@ -104,7 +106,7 @@ model_path = os.path.join(base_path,
 save_path = os.path.join(base_path,
                         "results",
                         f"sesNum-{args.num_sessions}",
-                        f"ses-{eid_}",
+                        f"ses-{eid[:5]}",
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
                         f"outModal-{'-'.join(modal_filter['output'])}",
@@ -120,7 +122,7 @@ if args.wandb:
         config=args,
         name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
             args.num_sessions,
-            eid_, 
+            eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             args.mask_type, 
