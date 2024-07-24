@@ -65,10 +65,11 @@ modal_filter = {
     "input": ['ap', 'behavior'], 
     "output": ['ap', 'behavior']
 }
-
+eid_ = args.eid if args.num_sessions == 1 else None
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
                                     config.dirs.huggingface_org,
                                     num_sessions=args.num_sessions,
+                                    eid = eid_,
                                     use_re=True,
                                     split_method="predefined",
                                     test_session_eid=[],
