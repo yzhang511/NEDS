@@ -6,7 +6,6 @@
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:h100:1
 #SBATCH -t 2-12:00:00 
 #SBATCH --mem=64g
 
@@ -14,6 +13,7 @@
 num_sessions=${1}
 eid=${2}
 mask_ratio=${3}
+dummy_size=${4}
 echo $TMPDIR
 conda activate ibl-mm
 
@@ -24,7 +24,7 @@ python src/train_multi_modal.py --eid $eid \
                                      --mask_ratio $mask_ratio \
                                      --mixed_training \
                                      --num_sessions $num_sessions \
-                                     --dummy_size 130000 \
+                                     --dummy_size $dummy_size \
                                      --dummy_load
 
 cd script/ppwang
