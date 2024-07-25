@@ -587,7 +587,7 @@ def huggingface2numpy(
     }
 
 
-def _one_hot(arr):
+def _one_hot(arr, T):
     uni = np.sort(np.unique(arr))
     ret = np.zeros((len(arr), T, len(uni)))
     for i, _uni in enumerate(uni):

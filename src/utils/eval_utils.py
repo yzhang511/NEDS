@@ -609,6 +609,7 @@ def co_smoothing_eval(
                 if np.isinf(bps):
                     bps = np.nan
                 bps_result_list[target_n_i[n_i]] = bps
+            # bps_result_list = [bits_per_spike(pred_held_out, gt_held_out)]
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         
@@ -745,7 +746,6 @@ def co_smoothing_eval(
     os.makedirs(kwargs['save_path'], exist_ok=True)
     bps_all = np.array(bps_result_list)
     bps_mean = np.nanmean(bps_all)
-    bps_std = np.nanstd(bps_all)
     r2_all = np.array(r2_result_list)
     np.save(os.path.join(kwargs['save_path'], f'bps.npy'), bps_all)
     np.save(os.path.join(kwargs['save_path'], f'r2.npy'), r2_all)

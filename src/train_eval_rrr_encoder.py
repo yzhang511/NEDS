@@ -173,10 +173,11 @@ smooth_w = 2; T = config.data.max_time_length
 for k in ["train", "test"]:
     if args.encode_static_behavior:
         X = np.concatenate(
-            [_one_hot(data_dict[k][v]) for v in ["block", "choice", "reward"]], axis=2
+            [_one_hot(data_dict[k][v], T) for v in ["block", "choice", "reward"]], axis=2
         )
         X = np.concatenate([X, data_dict[k]["dynamic_behavior"]], axis=2)
-    X = data_dict[k]["dynamic_behavior"].astype(np.float64)
+    else:
+        X = data_dict[k]["dynamic_behavior"].astype(np.float64)
     y = data_dict[k]["spikes_data"]
     y = gaussian_filter1d(y, smooth_w, axis=1)  # (K, T, N)
     train_data[eid]["X"].append(X)
