@@ -254,7 +254,8 @@ class MultiModalTrainer():
                         active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
                         if eid not in self.session_active_neurons:
                             self.session_active_neurons[eid] = {}
-                            self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
+                            if 'behavior' in self.modal_filter['output']:
+                                self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
                         self.session_active_neurons[eid][mod] = active_neurons
                     if mod == 'ap':
                         results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),

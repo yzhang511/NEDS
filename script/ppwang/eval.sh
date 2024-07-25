@@ -12,7 +12,8 @@
 
 num_sessions=${1}
 eid=${2}
-mask_rartio=${3}
+model_mode=${3}
+mask_rartio=${4}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -29,6 +30,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_type embd \
                                --mixed_training  \
                                --num_sessions ${num_sessions} \
+                               --model_mode ${model_mode} \
                                --wandb
 cd script/ppwang
 

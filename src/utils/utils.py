@@ -17,7 +17,7 @@ def dummy_load(stop_event, dummy_size=60000, check_interval=5, device="cuda"):
     dummy_linear = torch.nn.Linear(dummy_size, 1024).cuda()
     with torch.no_grad():
         while not stop_event.is_set():
-            x = dummy_linear(x)
+            x_ = dummy_linear(x)
             time.sleep(check_interval)  # Adjust the sleep interval as needed
 
 def set_seed(seed):
