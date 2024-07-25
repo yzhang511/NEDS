@@ -34,6 +34,7 @@ ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--dummy_load", action='store_true')
 ap.add_argument("--dummy_size", type=int, default=50000)
+ap.add_argument("--model_mode", type=str, default="mm")
 
 args = ap.parse_args()
 
@@ -61,9 +62,21 @@ best_ckpt_path = 'model_best.pt'
 
 avail_mod = ['ap', 'behavior']
 
+if args.model_mode == "mm":
+    input_modal = ['ap', 'behavior']
+    output_modal = ['ap', 'behavior']
+elif args.model_mode == "decoding":
+    input_modal = ['ap']
+    output_modal = ['behavior']
+elif args.model_mode == "encoding":
+    input_modal = ['behavior']
+    output_modal = ['ap']
+else:
+    raise ValueError(f"model_mode {args.model_mode} not supported")
+
 modal_filter = {
-    "input": ['ap', 'behavior'], 
-    "output": ['ap', 'behavior']
+    "input": input_modal,
+    "output": output_modal
 }
 eid_ = args.eid if args.num_sessions == 1 else None
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 

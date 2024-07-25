@@ -11,7 +11,9 @@
 #SBATCH --mem=64g
 
 num_sessions=${1}
-mask_rartio=${2}
+eid=${2}
+model_mode=${3}
+mask_rartio=${4}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -21,13 +23,14 @@ cd ../..
 
 python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_ratio ${mask_rartio} \
-                               --eid 3638d102-e8b6-4230-8742-e548cd87a949 \
+                               --eid ${eid} \
                                --seed 42 \
                                --base_path ./ \
                                --save_plot \
                                --mask_type embd \
                                --mixed_training  \
                                --num_sessions ${num_sessions} \
+                               --model_mode ${model_mode} \
                                --wandb
 cd script/ppwang
 
