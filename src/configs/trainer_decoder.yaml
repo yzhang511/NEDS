@@ -1,7 +1,7 @@
 seed: 42
 
 savestring: test
-wandb_project: multi_modal
+wandb_project: mm
 log_to_wandb: false
 
 verbosity: 0
@@ -10,7 +10,7 @@ verbosity: 0
 wandb:
   use: true
   entity: null
-  project: multi_modal
+  project: mm
   run_name: 671c7ea7
 
 # Logging directories
@@ -115,7 +115,7 @@ method:
 optimizer:
   gradient_accumulation_steps: 1
   lr: 5.e-4
-  wd: 0.1
+  wd: 1 
   eps: 1.e-8
   warmup_pct: 0.15 # cosine/linear
   gamma: 0.95     # step

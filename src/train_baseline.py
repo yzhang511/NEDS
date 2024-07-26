@@ -8,8 +8,6 @@ import wandb
 import warnings
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
 from utils.dataset_utils import get_user_datasets, load_ibl_dataset, split_both_dataset
-from datasets import load_dataset, load_from_disk, concatenate_datasets
-from utils.dataset_utils import load_ibl_dataset
 from accelerate import Accelerator
 from loader.make_loader import make_loader
 from utils.utils import set_seed
@@ -20,125 +18,154 @@ from models.baseline_encoder import BaselineEncoder, ReducedRankEncoder
 from models.baseline_decoder import BaselineDecoder, ReducedRankDecoder
 
 
+# -----------
+# USER INPUTS
+# -----------
 ap = argparse.ArgumentParser()
-ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
-ap.add_argument("--model", type=str, default='linear')
-ap.add_argument("--overwrite", action='store_true')
-ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
+ap.add_argument("--eid", type=str, default="db4df448-e449-4a6f-a0e7-288711e7a75a")
+ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
+ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
+ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
+ap.add_argument("--overwrite", action="store_true")
+ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--num_sessions", type=int, default=1)
+ap.add_argument("--model_mode", type=str, default="decoding")
 args = ap.parse_args()
 
-base_path = args.base_path
 
+# ------
+# CONFIG
+# ------
 eid = args.eid
-
-avail_beh = ['wheel-speed', 'whisker-motion-energy']
-    
-print(f'Working on EID: {eid} ...')
+base_path = args.base_path
+avail_beh = args.behavior 
+avail_mod = args.modality
+num_sessions = args.num_sessions
+n_behaviors = len(avail_beh)
+if num_sessions > 1:
+    assert args.model != "linear", "Linear baselines do not support multi-session training."
 
 kwargs = {
     "model": f"include:src/configs/baseline.yaml"
 }
-
 config = config_from_kwargs(kwargs)
-config = update_config(f"src/configs/trainer.yaml", config)
+if args.model_mode == "decoding":
+    config = update_config(f"src/configs/trainer_decoder.yaml", config)
+elif args.model_mode == "encoding":
+    config = update_config(f"src/configs/trainer_encoder.yaml", config)
 
 set_seed(config.seed)
 
+if args.model_mode == "decoding":
+    input_modal = ['ap']
+    output_modal = ['behavior']
+elif args.model_mode == "encoding":
+    input_modal = ['behavior']
+    output_modal = ['ap']
+else:
+    raise ValueError(f"model_mode {args.model_mode} not supported")
+    
+modal_filter = {"input": input_modal, "output": output_modal}
+
+
+# ---------
+# LOAD DATA
+# ---------
+eid_ = args.eid if args.num_sessions == 1 else None
+
+train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
+    config.dirs.dataset_cache_dir, 
+    config.dirs.huggingface_org,
+    num_sessions=args.num_sessions,
+    eid = eid_,
+    use_re=True,
+    split_method="predefined",
+    test_session_eid=[],
+    batch_size=config.training.train_batch_size,
+    seed=config.seed
+)
+
+num_sessions = len(meta_data['eid_list'])
+eid_ = "multi" if num_sessions > 1 else eid[:5]
+
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
-
-avail_mod = ['ap', 'behavior']
-
-modal_filter = {
-    "input": ['ap'], 
-    "output": ['behavior']
-}
-
-log_dir = os.path.join(base_path, 
+log_dir = os.path.join(base_path,
                        "results",
-                       f"ses-{eid}",
+                       f"sesNum-{num_sessions}",
+                       f"ses-{eid_}",
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
-                       args.model,
+                       args.model
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
+os.makedirs(log_dir, exist_ok=True)
 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
-            eid[:5], 
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
+            num_sessions,
+            eid_,
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             args.model
         )
     )
-os.makedirs(log_dir, exist_ok=True)
-_, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
-                    config.dirs.huggingface_org,
-                    eid=eid,
-                    num_sessions=1,
-                    split_method="predefined",
-                    test_session_eid=[],
-                    batch_size=config.training.train_batch_size,
-                    seed=config.seed)
-print(meta_data)
 
-print('Start model training.')
-print('=====================')
+train_dataloader = make_loader(
+    train_dataset, 
+    target=avail_beh,
+    load_meta=config.data.load_meta,
+    batch_size=config.training.train_batch_size, 
+    pad_to_right=True, 
+    pad_value=-1.,
+    max_time_length=config.data.max_time_length,
+    max_space_length=meta_data['num_neurons'][0],
+    dataset_name=config.data.dataset_name,
+    sort_by_depth=config.data.sort_by_depth,
+    sort_by_region=config.data.sort_by_region,
+    stitching=True,
+    shuffle=True
+)
 
-dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-train_dataset = dataset["train"]
-val_dataset = dataset["val"]
-test_dataset = dataset["test"]
-print(dataset.column_names)
+val_dataloader = make_loader(
+    val_dataset, 
+    target=avail_beh,
+    load_meta=config.data.load_meta,
+    batch_size=config.training.test_batch_size, 
+    pad_to_right=True, 
+    pad_value=-1.,
+    max_time_length=config.data.max_time_length,
+    max_space_length=meta_data['num_neurons'][0],
+    dataset_name=config.data.dataset_name,
+    sort_by_depth=config.data.sort_by_depth,
+    sort_by_region=config.data.sort_by_region,
+    stitching=True,
+    shuffle=False
+)
 
-n_behaviors = len(avail_beh)
-n_neurons = len(train_dataset['cluster_regions'][0])
-meta_data['num_neurons'] = [n_neurons]
-print(meta_data)
+test_dataloader = make_loader(
+    test_dataset, 
+    target=avail_beh,
+    load_meta=config.data.load_meta,
+    batch_size=config.training.test_batch_size, 
+    pad_to_right=True, 
+    pad_value=-1.,
+    max_time_length=config.data.max_time_length,
+    max_space_length=meta_data['num_neurons'][0],
+    dataset_name=config.data.dataset_name,
+    sort_by_depth=config.data.sort_by_depth,
+    sort_by_region=config.data.sort_by_region,
+    stitching=True,
+    shuffle=False
+)
 
-train_dataloader = make_loader(train_dataset, 
-                            target=avail_beh,
-                            load_meta=config.data.load_meta,
-                            batch_size=config.training.train_batch_size, 
-                            pad_to_right=True, 
-                            pad_value=-1.,
-                            max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
-                            dataset_name=config.data.dataset_name,
-                            sort_by_depth=config.data.sort_by_depth,
-                            sort_by_region=config.data.sort_by_region,
-                            shuffle=True)
-
-val_dataloader = make_loader(val_dataset, 
-                            target=avail_beh,
-                            load_meta=config.data.load_meta,
-                            batch_size=config.training.test_batch_size, 
-                            pad_to_right=True, 
-                            pad_value=-1.,
-                            max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
-                            dataset_name=config.data.dataset_name,
-                            sort_by_depth=config.data.sort_by_depth,
-                            sort_by_region=config.data.sort_by_region,
-                            shuffle=False)
-
-test_dataloader = make_loader(test_dataset, 
-                            target=avail_beh,
-                            load_meta=config.data.load_meta,
-                            batch_size=config.training.test_batch_size, 
-                            pad_to_right=True, 
-                            pad_value=-1.,
-                            max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
-                            dataset_name=config.data.dataset_name,
-                            sort_by_depth=config.data.sort_by_depth,
-                            sort_by_region=config.data.sort_by_region,
-                            shuffle=False)
-
+# --------
+# TRAINING
+# --------
 encoder_embeddings, decoder_embeddings = {}, {}
 
 if "ap" in modal_filter["output"]:
@@ -149,8 +176,7 @@ if "ap" in modal_filter["output"]:
         meta_data["rank"] = 4 
     else:
         raise NotImplementedError
-    input_size = n_behaviors
-    output_size = n_neurons
+    input_size, output_size = n_behaviors, meta_data['num_neurons']
 else: 
     if args.model == 'linear':
         model_class = "LinearDecoder" 
@@ -159,8 +185,7 @@ else:
         meta_data["rank"] = 4 
     else:
         raise NotImplementedError
-    input_size = n_neurons 
-    output_size = n_behaviors
+    input_size, output_size = meta_data['num_neurons'], n_behaviors
 
 accelerator = Accelerator()
 
@@ -169,6 +194,8 @@ NAME2MODEL = {
     "LinearDecoder": BaselineDecoder, "ReducedRankDecoder": ReducedRankDecoder,
 }
 model_class = NAME2MODEL[model_class]
+
+print(meta_data)
 model = model_class(
     in_channel=input_size, 
     out_channel=output_size,
