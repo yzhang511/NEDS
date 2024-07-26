@@ -10,7 +10,7 @@ from sklearn.cluster import SpectralClustering
 from sklearn.metrics import accuracy_score
 import time
 
-def dummy_load(stop_event, dummy_size=60000, check_interval=2, device="cuda"):
+def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
     # Start dummy load after 2 hours, adjust the sleep interval as needed
     # time.sleep(7200)
     # x = torch.rand(dummy_size, dummy_size).to(device)
