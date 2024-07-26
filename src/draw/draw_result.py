@@ -11,7 +11,8 @@ argparser.add_argument("--result_dir", type=str, default="results")
 args = argparser.parse_args()
 
 results_dict = {}
-
+output_dir = os.path.join(args.result_dir, "tables")
+os.makedirs(output_dir, exist_ok=True)
 # get all files ending with .npy in the result directory
 for root, dirs, files in os.walk(args.result_dir):
     for file in files:
@@ -40,7 +41,7 @@ for file_path, data in results_dict.items():
         model_type = "encoding"
     else:
         model_type = "unknown"
-    print(in_modal, out_modal, target_modal, model_type)
+    # print(in_modal, out_modal, target_modal, model_type)
     cleaned_results_dict[ses_num] = cleaned_results_dict.get(ses_num, {})
     cleaned_results_dict[ses_num][eid] = cleaned_results_dict[ses_num].get(eid, {})
     cleaned_results_dict[ses_num][eid][model_type] = cleaned_results_dict[ses_num][eid].get(model_type, {})
@@ -110,7 +111,53 @@ for ses_num, ses_data in cleaned_results_dict.items():
 # create result for each ses
 # get unique ses
 ses = df["ses"].unique()
+average_df = df[df["sesNum"] == "1"]
+# calculate the average of each ses
+average_df = average_df.groupby(["model_type", "target_modal"])
+
+ses_avg_df = pd.DataFrame(columns=["model_type", "target_modal", "sesNum", "bps", "spike_r2_psth", "spike_r2_trial", "wheel-speed_r2_trial", "whisker-motion-energy_r2_trial", "wheel-speed_r2_psth", "whisker-motion-energy_r2_psth"])
+# df["model_type"].unique(), df["target_modal"].unique()
+# get combination of model_type and target_modal
+
+comb = [(model_type, target_modal) for model_type in df["model_type"].unique() for target_modal in df["target_modal"].unique()]
+
+for (model_type, target_modal)in comb:
+    if model_type == "unknown":
+        continue
+    if  model_type == "decoding" and target_modal == "spike":
+        continue
+    if model_type == "encoding" and target_modal == "behavior":
+        continue
+    group_df = average_df.get_group((model_type, target_modal))
+    ses_avg_dict = { "model_type": model_type, "target_modal": target_modal, "sesNum":1 }
+    for col in group_df.columns:
+        if col in ["model_type", "target_modal", "ses", "sesNum"]:
+            continue
+        # calculate the average of each column
+        avg = group_df[col].mean()
+        # add the average to the ses_avg_df
+        ses_avg_dict[col] = avg
+
+    ses_avg_df = ses_avg_df._append(ses_avg_dict, ignore_index=True)
+print(ses_avg_df.to_csv(os.path.join(output_dir, "average.csv"), index=False))
 
 for s in ses:
     ses_df = df[df["ses"] == s]
-    print(ses_df)
+    # take rows where sesNum == 1
+    ses_df = ses_df[ses_df["sesNum"] == "1"]
+    sns.set(style="whitegrid")
+    fig, ax = plt.subplots(1, 5, figsize=(20, 5))
+    sns.boxplot(x="model_type", y="bps", data=ses_df, ax=ax[0])
+    sns.boxplot(x="model_type", y="spike_r2_psth", data=ses_df, ax=ax[1])
+    sns.boxplot(x="model_type", y="spike_r2_trial", data=ses_df, ax=ax[2])
+    sns.boxplot(x="model_type", y="wheel-speed_r2_trial", data=ses_df, ax=ax[3])
+    sns.boxplot(x="model_type", y="whisker-motion-energy_r2_trial", data=ses_df, ax=ax[4])
+
+    ax[0].set_title(f"ses-{s} bps")
+    ax[1].set_title(f"ses-{s} spike_r2_psth")
+    ax[2].set_title(f"ses-{s} spike_r2_trial")
+    ax[3].set_title(f"ses-{s} wheel-speed_r2_trial")
+    ax[4].set_title(f"ses-{s} whisker-motion-energy_r2_trial")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"ses-{s}.png"))
+    plt.close()

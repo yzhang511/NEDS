@@ -13,7 +13,8 @@
 num_sessions=${1}
 eid=${2}
 model_mode=${3}
-mask_ratio=${4}
+dummy_size=${4}
+mask_ratio=${5}
 echo $TMPDIR
 conda activate ibl-mm
 
@@ -24,7 +25,7 @@ python src/train_multi_modal.py --eid $eid \
                                      --mask_ratio $mask_ratio \
                                      --mixed_training \
                                      --num_sessions $num_sessions \
-                                     --dummy_size 60000 \
+                                     --dummy_size $dummy_size \
                                      --dummy_load \
                                      --model_mode $model_mode 
 
