@@ -161,3 +161,56 @@ for s in ses:
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, f"ses-{s}.png"))
     plt.close()
+
+# draw comparison between ses 1 and ses 10
+ses_1_df = df[df["sesNum"] == "1"]
+ses_10_df = df[df["sesNum"] == "10"]
+
+# draw scatter plot for model_type == "multi-modal" and target_modal == "spike"
+for target_modal in df["target_modal"].unique():
+    ses_1_df_ = ses_1_df[(ses_1_df["model_type"] == "multi-modal") & (ses_1_df["target_modal"] == target_modal)]
+    ses_10_df_ = ses_10_df[(ses_10_df["model_type"] == "multi-modal") & (ses_10_df["target_modal"] == target_modal)]
+    if target_modal == "spike":
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        ax[0].scatter(ses_1_df_["bps"], ses_10_df_["bps"])
+        ax[0].set_title(f"bps ses-1 vs ses-10 {target_modal}")
+        ax[0].set_xlabel("ses-1")
+        ax[0].set_ylabel("ses-10")
+        ax[1].scatter(ses_1_df_["spike_r2_psth"], ses_10_df_["spike_r2_psth"])
+        ax[1].set_title(f"spike_r2_psth ses-1 vs ses-10 {target_modal}")
+        ax[1].set_xlabel("ses-1")
+        ax[1].set_ylabel("ses-10")
+        # add a line to the scatter plot
+        x = np.linspace(0, 1, 100)
+        y = x
+        ax[0].plot(x, y, color="red")
+        ax[1].plot(x, y, color="red")
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"ses-1_vs_ses-10_{target_modal}.png"))
+        plt.close()
+    elif target_modal == "behavior":
+        fig, ax = plt.subplots(1, 4, figsize=(20, 5))
+        ax[0].scatter(ses_1_df_["wheel-speed_r2_trial"], ses_10_df_["wheel-speed_r2_trial"])
+        ax[0].set_title(f"wheel-speed_r2_trial ses-1 vs ses-10 {target_modal}")
+        ax[0].set_xlabel("ses-1")
+        ax[0].set_ylabel("ses-10")
+        ax[1].scatter(ses_1_df_["whisker-motion-energy_r2_trial"], ses_10_df_["whisker-motion-energy_r2_trial"])
+        ax[1].set_title(f"whisker-motion-energy_r2_trial ses-1 vs ses-10 {target_modal}")
+        ax[1].set_xlabel("ses-1")
+        ax[1].set_ylabel("ses-10")
+        ax[2].scatter(ses_1_df_["wheel-speed_r2_psth"], ses_10_df_["wheel-speed_r2_psth"])
+        ax[2].set_title(f"wheel-speed_r2_psth ses-1 vs ses-10 {target_modal}")
+        ax[2].set_xlabel("ses-1")
+        ax[2].set_ylabel("ses-10")
+        ax[3].scatter(ses_1_df_["whisker-motion-energy_r2_psth"], ses_10_df_["whisker-motion-energy_r2_psth"])
+        ax[3].set_title(f"whisker-motion-energy_r2_psth ses-1 vs ses-10 {target_modal}")
+        ax[3].set_xlabel("ses-1")
+        ax[3].set_ylabel("ses-10")
+        # add a line to the scatter plot
+        x = np.linspace(0, 1, 100)
+        y = x
+        for i in range(4):
+            ax[i].plot(x, y, color="red")
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"ses-1_vs_ses-10_{target_modal}.png"))
+        plt.close()
