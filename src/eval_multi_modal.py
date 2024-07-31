@@ -38,6 +38,7 @@ ap.add_argument('--seed', type=int, default=42)
 ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
+ap.add_argument("--use_contrastive", default=True, action='store_true')
 
 args = ap.parse_args()
 
@@ -115,6 +116,7 @@ model_path = os.path.join(base_path,
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
+                        f"contrast-{args.use_contrastive}",
                         best_ckpt_path
                         )
 
@@ -129,6 +131,7 @@ save_path = os.path.join(base_path,
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
+                        f"contrast-{args.use_contrastive}",
                         )
 
 if args.wandb:

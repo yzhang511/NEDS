@@ -31,6 +31,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --mixed_training  \
                                --num_sessions ${num_sessions} \
                                --model_mode ${model_mode} \
+                               --use_contrastive True \
                                --wandb
 cd script/ppwang
 
