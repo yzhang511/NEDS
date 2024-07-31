@@ -144,6 +144,8 @@ class MultiModalTrainer():
                             )
 
                 print(f"epoch: {epoch} eval loss: {eval_epoch_results['eval_loss']} trial avg {self.metric}: {eval_epoch_results[f'eval_trial_avg_{self.metric}']}")
+                if self.config.model.use_contrastive:
+                    print(f"epoch: {epoch} eval s2b acc: {eval_epoch_results['eval_s2b_acc']} eval b2s acc: {eval_epoch_results['eval_b2s_acc']}")
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
@@ -172,7 +174,9 @@ class MultiModalTrainer():
                 wandb.log({
                     "train_loss": train_epoch_results['train_loss'],
                     "eval_loss": eval_epoch_results['eval_loss'],
-                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}']
+                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
+                    f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
+                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc']
                 })
                 
         self.save_model(name="last", epoch=epoch)
@@ -214,6 +218,8 @@ class MultiModalTrainer():
             session_results[eid] = {}
             for mod in self.modal_filter['output']:
                 session_results[eid][mod] = {"gt": [], "preds": []}
+            session_results[eid]['s2b_acc'] = []
+            session_results[eid]['b2s_acc'] = []
 
         if self.eval_dataloader:
             with torch.no_grad():  
@@ -237,8 +243,11 @@ class MultiModalTrainer():
                         elif mod == 'behavior':
                             session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
                             session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
+                    if outputs.contrastive_dict:
+                        session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
+                        session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
 
-            gt, preds, results_list = {}, {}, []
+            gt, preds, s2b_acc_list, b2s_acc_list, results_list = {}, {}, [], [], []
             for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
                 for mod in self.modal_filter['output']:
@@ -269,12 +278,22 @@ class MultiModalTrainer():
                                             metrics=[self.metric],
                                             device=self.accelerator.device)
                     results_list.append(results[self.metric])
+                if self.config.model.use_contrastive:
+                    assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
+                    assert len(session_results[eid]['s2b_acc']) > 0
+                    s2b_acc_list.append(np.mean(session_results[eid]['s2b_acc']))
+                    b2s_acc_list.append(np.mean(session_results[eid]['b2s_acc']))
+                else:
+                    s2b_acc_list = [0]
+                    b2s_acc_list = [0]
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
             f"eval_trial_avg_{self.metric}": np.nanmean(results_list),
             "eval_gt": gt,
             "eval_preds": preds,
+            "eval_s2b_acc": np.mean(s2b_acc_list),
+            "eval_b2s_acc": np.mean(b2s_acc_list)
         }
 
     

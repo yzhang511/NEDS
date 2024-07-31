@@ -1,7 +1,7 @@
 model_class: MultiModal
 
 use_session: false
-
+use_contrastive: true
 masker:
   force_active: true         
   mode: temporal              # masking mode

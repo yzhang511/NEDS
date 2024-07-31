@@ -103,7 +103,8 @@ log_dir = os.path.join(base_path,
                        f"mask-{config.training.mask_type}",
                        f"mode-{mask_mode}",
                        f"ratio-{args.mask_ratio}",
-                       f"mixedTraining-{args.mixed_training}"
+                       f"mixedTraining-{args.mixed_training}",
+                       f"contrast-{config.model.use_contrastive}",
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -111,7 +112,7 @@ os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
             num_sessions,
             eid_, 
             '-'.join(modal_filter['input']),
@@ -119,7 +120,8 @@ if config.wandb.use:
             config.training.mask_type, 
             mask_mode,
             args.mask_ratio,
-            args.mixed_training
+            args.mixed_training,
+            config.model.use_contrastive
         )
     )
 

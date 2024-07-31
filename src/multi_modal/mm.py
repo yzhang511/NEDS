@@ -13,6 +13,7 @@ from transformers.activations import ACT2FN
 ACT2FN["softsign"] = nn.Softsign
 
 from utils.config_utils import DictConfig, update_config
+from utils.metric_utils import clip_contrastive_loss
 from models.model_output import ModelOutput
 from multi_modal.encoder_embeddings import EncoderLayer
 from multi_modal.decoder_embeddings import DecoderLayer
@@ -28,6 +29,7 @@ class MultiModalOutput(ModelOutput):
     mod_n_examples: Optional[torch.LongTensor] = None
     mod_preds: Optional[torch.FloatTensor] = None
     mod_targets: Optional[torch.FloatTensor] = None
+    contrastive_dict: Optional[Dict[str, torch.Tensor]] = None
 
 
 class MultiModal(nn.Module):
@@ -75,6 +77,11 @@ class MultiModal(nn.Module):
         
         self.decoder = nn.ModuleList([DecoderLayer(idx, config.decoder.transformer) for idx in range(self.n_dec_layers)])
         self.decoder_norm = nn.LayerNorm(self.hidden_size) 
+
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.spike_projection = nn.Linear(100 * self.hidden_size, 768)
+        self.behavior_projection = nn.Linear(100 * self.hidden_size, 768)
+        self.use_contrastive = config.use_contrastive
 
         self.loss_mod = {
             'ap': nn.PoissonNLLLoss(reduction="none", log_input=True),
@@ -215,7 +222,7 @@ class MultiModal(nn.Module):
     
 
     def forward_loss(self, 
-        decoder_mod_dict: Dict[str, Any], target_gts: torch.Tensor, 
+        decoder_mod_dict: Dict[str, Any], target_gts: torch.Tensor, contrastive_loss_dict=None
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
 
         mod_loss, mod_n_examples, mod_preds, mod_targets = {}, {}, {}, {}
@@ -235,10 +242,53 @@ class MultiModal(nn.Module):
             mod_targets[mod] = targets
 
         loss = sum(mod_loss.values()) / sum(mod_n_examples.values())
+        if contrastive_loss_dict is not None:
+            loss += contrastive_loss_dict["loss"]
+            loss /= 2
+            contrastive_dict = {k: v for k, v in contrastive_loss_dict.items() if k != "loss"}
+        else:
+            contrastive_dict = None
 
-        return loss, mod_loss, mod_n_examples, mod_preds, mod_targets
+        return loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict
 
-    
+    def forward_logits(self, x: torch.Tensor, decoder_mod_mask: torch.Tensor) -> torch.Tensor:
+        B, _, _ = x.shape
+        assert 'ap' in self.mod_to_indx and 'behavior' in self.mod_to_indx, "AP and behavior modalities must be present in the model."
+        spike_features = x[decoder_mod_mask == self.mod_to_indx['ap']]
+        spike_features = spike_features.reshape(B, -1)
+        spike_features = self.spike_projection(spike_features)
+
+        behavior_features = x[decoder_mod_mask == self.mod_to_indx['behavior']]
+        behavior_features = behavior_features.reshape(B, -1)
+        behavior_features = self.behavior_projection(behavior_features)
+        
+        # normalize features
+        spike_features = spike_features / spike_features.norm(dim=1, keepdim=True)
+        behavior_features = behavior_features / behavior_features.norm(dim=1, keepdim=True)
+
+        # compute logits
+        logit_scale = self.logit_scale.exp()
+        logits_per_spike = logit_scale * spike_features @ behavior_features.T
+        logits_per_behavior = logit_scale * behavior_features @ spike_features.T
+        
+        logits = torch.stack([logits_per_spike, logits_per_behavior], dim=0)
+        return logits
+
+    def forward_contrastive_loss(self, logits):
+        spike_logits = logits[0]
+        behavior_logits = logits[1]
+
+        loss_spike, s2b_acc = clip_contrastive_loss(spike_logits)
+        loss_behavior, b2s_acc = clip_contrastive_loss(behavior_logits)
+
+        return {
+            "loss_spike": loss_spike.item(),
+            "loss_behavior": loss_behavior.item(),
+            "loss": (loss_spike + loss_behavior) / 2,
+            "s2b_acc": s2b_acc.item(),
+            "b2s_acc": b2s_acc.item(),
+        }
+
     def forward(
             self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
         ) -> MultiModalOutput:
@@ -288,7 +338,10 @@ class MultiModal(nn.Module):
 
         x = encoder_tokens + encoder_emb
         x = self.forward_encoder(x, encoder_attn_mask=encoder_attn_mask)
-
+        contrastive_loss_dict = None
+        if self.use_contrastive:
+            logits = self.forward_logits(x, decoder_mod_mask)
+            contrastive_loss_dict = self.forward_contrastive_loss(logits)
         context = self.decoder_proj_context(x) + encoder_emb
         y = decoder_tokens + decoder_emb
         y = self.forward_decoder(y, context, encoder_attn_mask=encoder_attn_mask, decoder_attn_mask=decoder_attn_mask)
@@ -297,14 +350,15 @@ class MultiModal(nn.Module):
                             for mod, d in decoder_mod_dict.items()
                             if mod in self.decoder_embeddings}
 
-        loss, mod_loss, mod_n_examples, mod_preds, mod_targets = self.forward_loss(decoder_mod_dict, target_gts)
+        loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict = self.forward_loss(decoder_mod_dict, target_gts, contrastive_loss_dict)
 
         return MultiModalOutput(
             loss=loss,
             mod_loss=mod_loss,
             mod_n_examples=mod_n_examples,
             mod_preds=mod_preds,
-            mod_targets=mod_targets
+            mod_targets=mod_targets,
+            contrastive_dict=contrastive_dict
         )
 
     
