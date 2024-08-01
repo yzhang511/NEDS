@@ -8,7 +8,7 @@ then
     while IFS= read -r line
     do
         echo "Train on ses eid: $line"
-        sbatch --gres=gpu:1 -t 12:00:00  train.sh 1 $line $model_mode 60000 0.1
+        sbatch --gres=gpu:h100:1 -t 18:00:00  train.sh 1 $line $model_mode 120000 0.1
     done < "../../data/train_eids.txt"
 fi
 
