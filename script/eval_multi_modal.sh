@@ -30,7 +30,8 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --base_path /scratch/bcxj/yzhang39 \
                                --save_plot \
                                --mask_type embd \
-                               --overwrite
+                               --overwrite \
+                               --mixed_training \
 
 conda deactivate
 

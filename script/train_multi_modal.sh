@@ -24,6 +24,7 @@ python src/train_multi_modal.py --mask_ratio 0.1 \
                                 --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
                                 --base_path /scratch/bcxj/yzhang39 \
                                 --overwrite \
+                                --mixed_training \
 
 # check mask_type in train_mm.yaml
 # --use_MtM
