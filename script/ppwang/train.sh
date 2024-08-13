@@ -21,13 +21,14 @@ conda activate ibl-mm
 cd ../..
 
 python src/train_multi_modal.py --eid $eid \
-                                     --base_path ./ \
-                                     --mask_ratio $mask_ratio \
-                                     --mixed_training \
-                                     --num_sessions $num_sessions \
-                                     --dummy_size $dummy_size \
-                                     --dummy_load \
-                                     --model_mode $model_mode 
+                                --base_path ./ \
+                                --mask_ratio $mask_ratio \
+                                --mixed_training \
+                                --num_sessions $num_sessions \
+                                --dummy_size $dummy_size \
+                                --dummy_load \
+                                --model_mode $model_mode \
+                                --use_contrastive
 
 cd script/ppwang
 

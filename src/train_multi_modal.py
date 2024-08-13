@@ -35,7 +35,7 @@ ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--dummy_load", action='store_true')
 ap.add_argument("--dummy_size", type=int, default=50000)
 ap.add_argument("--model_mode", type=str, default="mm")
-ap.add_argument("--use_contrastive", type=bool, default=False)
+ap.add_argument("--use_contrastive", action='store_true')
 
 args = ap.parse_args()
 
@@ -47,11 +47,11 @@ avail_beh = ['wheel-speed', 'whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
 if args.use_contrastive:
-    model_config = f"src/configs/multi_modal/mm_contrastive.yaml"
+    model_config = "src/configs/multi_modal/mm_contrastive.yaml"
 else:
-    model_config = f"src/configs/multi_modal/mm.yaml"
+    model_config = "src/configs/multi_modal/mm.yaml"
 kwargs = {
-    "model": model_config,
+    "model": f"include:{model_config}",
 }
 
 config = config_from_kwargs(kwargs)
