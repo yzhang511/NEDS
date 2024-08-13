@@ -38,7 +38,7 @@ ap.add_argument('--seed', type=int, default=42)
 ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
-ap.add_argument("--use_contrastive", default=True, action='store_true')
+ap.add_argument("--use_contrastive", type=bool, default=False)
 
 args = ap.parse_args()
 
@@ -138,7 +138,7 @@ if args.wandb:
     wandb.init(
         project="multi_modal",
         config=args,
-        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}".format(
             args.num_sessions,
             eid[:5], 
             '-'.join(modal_filter['input']),
@@ -146,7 +146,8 @@ if args.wandb:
             args.mask_type, 
             mask_mode,
             args.mask_ratio,
-            args.mixed_training
+            args.mixed_training,
+            args.use_contrastive
     )
 )
 
