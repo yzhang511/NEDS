@@ -20,15 +20,29 @@ conda activate ibl-mm
 
 cd ../..
 
-python src/train_multi_modal.py --eid $eid \
-                                --base_path ./ \
-                                --mask_ratio $mask_ratio \
-                                --mixed_training \
-                                --num_sessions $num_sessions \
-                                --dummy_size $dummy_size \
-                                --dummy_load \
-                                --model_mode $model_mode \
-                                --use_contrastive
+if [ $model_mode = "mm" ]; then
+    python src/train_multi_modal.py --eid $eid \
+                                    --base_path ./ \
+                                    --mask_ratio $mask_ratio \
+                                    --mixed_training \
+                                    --num_sessions $num_sessions \
+                                    --dummy_size $dummy_size \
+                                    --dummy_load \
+                                    --model_mode $model_mode \
+                                    --use_contrastive 
+elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
+then
+    python src/train_multi_modal.py --eid $eid \
+                                    --base_path ./ \
+                                    --mask_ratio $mask_ratio \
+                                    --mixed_training \
+                                    --num_sessions $num_sessions \
+                                    --dummy_size $dummy_size \
+                                    --dummy_load \
+                                    --model_mode $model_mode 
+else
+    echo "model_mode: $model_mode not supported"
+fi
 
 cd script/ppwang
 
