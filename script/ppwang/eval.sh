@@ -20,19 +20,32 @@ echo $TMPDIR
 conda activate ibl-mm
 
 cd ../..
-
-python src/eval_multi_modal.py --mask_mode temporal \
-                               --mask_ratio ${mask_rartio} \
-                               --eid ${eid} \
-                               --seed 42 \
-                               --base_path ./ \
-                               --save_plot \
-                               --mask_type embd \
-                               --mixed_training  \
-                               --num_sessions ${num_sessions} \
-                               --model_mode ${model_mode} \
-                               --use_contrastive True \
-                               --wandb
+if [ $model_mode = "mm" ]; then
+    python src/eval_multi_modal.py --mask_mode temporal \
+                                --mask_ratio ${mask_rartio} \
+                                --eid ${eid} \
+                                --seed 42 \
+                                --base_path ./ \
+                                --save_plot \
+                                --mask_type embd \
+                                --mixed_training  \
+                                --num_sessions ${num_sessions} \
+                                --model_mode ${model_mode} \
+                                --use_contrastive \
+                                --wandb
+elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
+then
+    python src/eval_multi_modal.py --mask_mode temporal \
+                                --mask_ratio ${mask_rartio} \
+                                --eid ${eid} \
+                                --seed 42 \
+                                --base_path ./ \
+                                --save_plot \
+                                --mask_type embd \
+                                --mixed_training  \
+                                --num_sessions ${num_sessions} \
+                                --model_mode ${model_mode} \
+                                --wandb
 cd script/ppwang
 
 conda deactivate
