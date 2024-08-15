@@ -23,7 +23,7 @@ cd ../
 
 
 python src/eval_multi_modal.py --mask_mode temporal \
-                               --mask_ratio 0.1 \
+                               --mask_ratio 0.0 \
                                --eid db4df448-e449-4a6f-a0e7-288711e7a75a \
                                --wandb \
                                --seed 42 \
@@ -32,6 +32,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_type embd \
                                --overwrite \
                                --mixed_training \
+                               --model_mode mm \
 
 conda deactivate
 

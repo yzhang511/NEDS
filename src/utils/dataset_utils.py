@@ -13,16 +13,16 @@ class DATASET_MODES:
     trainval = "trainval"
 
 DATA_COLUMNS = ['spikes_sparse_data', 'spikes_sparse_indices', 'spikes_sparse_indptr', 'spikes_sparse_shape','cluster_depths']
-TARGET_EIDS="data/target_eids.txt"
-TEST_RE_EIDS="data/test_re_eids.txt"
+TARGET_EIDS="data/train_eids.txt"
+TEST_RE_EIDS="data/test_eids.txt"
 
-def get_target_eids():
+def get_train_eids():
     with open(TARGET_EIDS) as file:
-        include_eids = [line.rstrip() for line in file]
+        include_eids = [line.rstrip().replace("'", "") for line in file]
     return include_eids
-def get_test_re_eids():
+def get_test_eids():
     with open(TEST_RE_EIDS) as file:
-        include_eids = [line.rstrip() for line in file]
+        include_eids = [line.rstrip().replace("'", "") for line in file]
     return include_eids
 
 def get_sparse_from_binned_spikes(binned_spikes):
@@ -249,9 +249,10 @@ def load_ibl_dataset(cache_dir,
 
         num_neuron_set = set()
         eids_set = set()
+        eid_list = {}
         if use_re:
-            target_eids = get_target_eids()
-            test_re_eids = get_test_re_eids()
+            target_eids = get_train_eids()
+            test_re_eids = get_test_eids()
             train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] in target_eids]
             # remove the test_re_eids from the train_session_eid_dir
             train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] not in test_re_eids]
@@ -279,6 +280,8 @@ def load_ibl_dataset(cache_dir,
                 eid_prefix = dataset_eid.split('_')[0] if train_aligned else dataset_eid
                 eid_prefix = eid_prefix.split('/')[1]
                 eids_set.add(eid_prefix)
+                assert eid_prefix not in eid_list, f"Duplicate eid found: {eid_prefix}"
+                eid_list[eid_prefix] = binned_spikes_data.shape[2]
             except Exception as e:
                 print("Error loading dataset: ", dataset_eid)
                 print(e)
@@ -295,7 +298,8 @@ def load_ibl_dataset(cache_dir,
         meta_data = {
             "num_neurons": num_neuron_set,
             "num_sessions": len(eids_set),
-            "eids": eids_set
+            "eids": eids_set,
+            "eid_list": eid_list
         }
     elif split_method == 'session_based':
         print("Loading train dataset sessions...")

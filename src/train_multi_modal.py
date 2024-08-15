@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import wandb
 import warnings
+import threading
 
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
 from utils.dataset_utils import get_user_datasets, load_ibl_dataset, split_both_dataset
@@ -13,7 +14,7 @@ from datasets import load_dataset, load_from_disk, concatenate_datasets
 from utils.dataset_utils import load_ibl_dataset
 from accelerate import Accelerator
 from loader.make_loader import make_loader
-from utils.utils import set_seed
+from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
 from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
@@ -30,6 +31,11 @@ ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
 ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
+ap.add_argument("--num_sessions", type=int, default=1)
+ap.add_argument("--dummy_load", action='store_true')
+ap.add_argument("--dummy_size", type=int, default=50000)
+ap.add_argument("--model_mode", type=str, default="mm")
+
 args = ap.parse_args()
 
 base_path = args.base_path
@@ -56,19 +62,42 @@ best_ckpt_path = 'model_best.pt'
 
 avail_mod = ['ap', 'behavior']
 
+if args.model_mode == "mm":
+    input_modal = ['ap', 'behavior']
+    output_modal = ['ap', 'behavior']
+elif args.model_mode == "decoding":
+    input_modal = ['ap']
+    output_modal = ['behavior']
+elif args.model_mode == "encoding":
+    input_modal = ['behavior']
+    output_modal = ['ap']
+else:
+    raise ValueError(f"model_mode {args.model_mode} not supported")
+
 modal_filter = {
-    "input": ['ap', 'behavior'], 
-    "output": ['ap', 'behavior']
+    "input": input_modal,
+    "output": output_modal
 }
 
-if config.training.mask_type == 'input':
-    mask_mode = '-'.join(config.training.mask_mode)
-else:
-    mask_mode = args.mask_mode
+eid_ = args.eid if args.num_sessions == 1 else None
+train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
+                                    config.dirs.huggingface_org,
+                                    num_sessions=args.num_sessions,
+                                    eid = eid_,
+                                    use_re=True,
+                                    split_method="predefined",
+                                    test_session_eid=[],
+                                    batch_size=config.training.train_batch_size,
+                                    seed=config.seed)
+
+num_sessions = len(meta_data['eid_list'])
+mask_mode = '-'.join(config.training.mask_mode) if config.training.mask_type == 'input' else args.mask_mode
+eid_ = "multi" if num_sessions > 1 else eid[:5]
 
 log_dir = os.path.join(base_path, 
                        "results",
-                       f"ses-{eid}",
+                       f"sesNum-{num_sessions}",
+                       f"ses-{eid_}",
                        "set-train",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
@@ -79,12 +108,14 @@ log_dir = os.path.join(base_path,
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
+os.makedirs(log_dir, exist_ok=True)
 
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
-            eid[:5], 
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+            num_sessions,
+            eid_, 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
@@ -93,30 +124,13 @@ if config.wandb.use:
             args.mixed_training
         )
     )
-os.makedirs(log_dir, exist_ok=True)
-_, _, _, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
-                    config.dirs.huggingface_org,
-                    eid=eid,
-                    num_sessions=1,
-                    split_method="predefined",
-                    test_session_eid=[],
-                    batch_size=config.training.train_batch_size,
-                    seed=config.seed)
+
 print(meta_data)
 
 print('Start model training.')
-print('=====================')
-
-dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-train_dataset = dataset["train"]
-val_dataset = dataset["val"]
-test_dataset = dataset["test"]
-print(dataset.column_names)
+print('=====================')  
 
 n_behaviors = len(avail_beh)
-n_neurons = len(train_dataset['cluster_regions'][0])
-meta_data['num_neurons'] = [n_neurons]
-print(meta_data)
 
 train_dataloader = make_loader(train_dataset, 
                             target=avail_beh,
@@ -125,10 +139,11 @@ train_dataloader = make_loader(train_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=True)
 
 val_dataloader = make_loader(val_dataset, 
@@ -138,10 +153,11 @@ val_dataloader = make_loader(val_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=False)
 
 test_dataloader = make_loader(test_dataset, 
@@ -151,26 +167,37 @@ test_dataloader = make_loader(test_dataset,
                             pad_to_right=True, 
                             pad_value=-1.,
                             max_time_length=config.data.max_time_length,
-                            max_space_length=n_neurons,
+                            max_space_length=meta_data['num_neurons'][0],
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            stitching=True,
                             shuffle=False)
 
 encoder_embeddings, decoder_embeddings = {}, {}
 
+standard_channel_size = 512
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
+        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        stitching=True if mod == 'ap' else False,
+        # n_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
+        # stitching=False,
+        eid_list=meta_data['eid_list'],
         config=config.model.encoder,
     )
 
 for mod in modal_filter["output"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
-        n_channel=n_neurons if mod == 'ap' else n_behaviors,
-        output_channel=n_neurons if mod == 'ap' else n_behaviors,
+        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        output_channel=standard_channel_size if mod == 'ap' else n_behaviors,
+        stitching=True if mod == 'ap' else False,
+        # n_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
+        # output_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
+        # stitching=False,
+        eid_list=meta_data['eid_list'],
         config=config.model.decoder,
     )
 
@@ -219,6 +246,8 @@ trainer_kwargs = {
     "config": config,
 }
 
+# Shared variable to signal the dummy load to stop
+stop_dummy_load = threading.Event()
 trainer_ = make_multimodal_trainer(
     model=model,
     train_dataloader=train_dataloader,
@@ -229,3 +258,18 @@ trainer_ = make_multimodal_trainer(
     **meta_data
 )
 trainer_.train()
+
+if args.dummy_load:
+    # Start the dummy load
+    print(f"Starting dummy load with {args.dummy_size} samples")
+    dummy_thread = threading.Thread(target=dummy_load, args=(stop_dummy_load, args.dummy_size))
+    dummy_thread.start()
+
+    try:
+        trainer_.train()
+    finally:
+        stop_dummy_load.set()
+        dummy_thread.join()
+else:
+    trainer_.train()
+    

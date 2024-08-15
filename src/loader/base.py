@@ -214,7 +214,6 @@ class LengthGroupedSampler(Sampler):
         return iter(indices)
 
 
-
 class LengthStitchGroupedSampler(Sampler):
     r"""
     Sampler that samples indices in a way that groups together features of the dataset of roughly the same length while
@@ -247,6 +246,32 @@ class LengthStitchGroupedSampler(Sampler):
         indices = get_length_grouped_indices_stitched(self.lengths, self.batch_size)
         return iter(indices)
 
+
+class SessionSampler(Sampler):
+    """Custom Sampler that batches data by session ID (eid)."""
+    def __init__(self, dataset, shuffle=True):
+        self.data_source = dataset
+        self.shuffle = shuffle
+        self.indices_by_eid = self._group_by_eid()
+        
+    def _group_by_eid(self):
+        from collections import defaultdict
+        indices_by_eid = defaultdict(list)
+        for idx, data in enumerate(self.data_source):
+            indices_by_eid[data['eid']].append(idx)
+        return indices_by_eid
+
+    def __iter__(self):
+        group_indices = list(self.indices_by_eid.values())
+        if self.shuffle:
+            np.random.shuffle(group_indices)
+        for indices in group_indices:
+            if self.shuffle:
+                np.random.shuffle(indices)
+            yield from indices
+
+    def __len__(self):
+        return len(self.data_source)
 
 
 class BaseDataset(torch.utils.data.Dataset):
