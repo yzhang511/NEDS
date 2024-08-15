@@ -273,8 +273,8 @@ class MultiModalTrainer():
                                             device=self.accelerator.device)
                     elif mod == 'behavior':
                         # calculate r2 based on avg-trial behavior
-                        results = metrics_list(gt = gt[idx][mod].transpose(-1,0).mean(2).unsqueeze(2),
-                                            pred = preds[idx][mod].transpose(-1,0).mean(2).unsqueeze(2),
+                        results = metrics_list(gt = gt[idx][mod],
+                                            pred = preds[idx][mod],
                                             metrics=[self.metric],
                                             device=self.accelerator.device)
                     results_list.append(results[self.metric])
