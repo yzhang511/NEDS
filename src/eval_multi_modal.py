@@ -38,14 +38,15 @@ ap.add_argument('--seed', type=int, default=42)
 ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
-ap.add_argument("--use_contrastive", type=bool, default=False)
+ap.add_argument("--use_contrastive", action='store_true')
 
 args = ap.parse_args()
 
 base_path = args.base_path
 
 eid = args.eid
-
+print(args.use_contrastive)
+exit()
 avail_beh = ['wheel-speed', 'whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
