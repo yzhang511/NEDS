@@ -45,8 +45,7 @@ args = ap.parse_args()
 base_path = args.base_path
 
 eid = args.eid
-print(args.use_contrastive)
-exit()
+
 avail_beh = ['wheel-speed', 'whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
