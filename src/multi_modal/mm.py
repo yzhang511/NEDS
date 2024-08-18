@@ -85,15 +85,7 @@ class MultiModal(nn.Module):
         shared_modalities = self.encoder_modalities & self.decoder_modalities
         for mod in shared_modalities:
             self.decoder_embeddings[mod].embedder.mod_emb = self.encoder_embeddings[mod].embedder.mod_emb 
-            ###
-            # self.decoder_embeddings[mod].embedder.token_embed = self.encoder_embeddings[mod].embedder.token_embed
-            # self.decoder_embeddings[mod].embedder.projection = self.encoder_embeddings[mod].embedder.projection
-            # self.decoder_embeddings[mod].embedder.pos_embed = self.encoder_embeddings[mod].embedder.pos_embed
-            # if hasattr(self.encoder_embeddings[mod].embedder, 'spike_stitch_encoder'):
-            #     self.decoder_embeddings[mod].embedder.spike_stitch_encoder = \
-            #     self.encoder_embeddings[mod].embedder.spike_stitch_encoder
-            ###
-
+            
     
     def cat_encoder_tensors(self, mod_dict: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor]:
         encoder_tokens = []

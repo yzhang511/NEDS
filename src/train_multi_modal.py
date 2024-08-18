@@ -35,6 +35,7 @@ ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--dummy_load", action='store_true')
 ap.add_argument("--dummy_size", type=int, default=50000)
 ap.add_argument("--model_mode", type=str, default="mm")
+ap.add_argument("--stitching", action='store_true')
 
 args = ap.parse_args()
 
@@ -104,7 +105,8 @@ log_dir = os.path.join(base_path,
                        f"mask-{config.training.mask_type}",
                        f"mode-{mask_mode}",
                        f"ratio-{args.mask_ratio}",
-                       f"mixedTraining-{args.mixed_training}"
+                       f"mixedTraining-{args.mixed_training}",
+                       f"stitching-{args.stitching}",
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -113,7 +115,7 @@ os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_stitching-{}".format(
             num_sessions,
             eid_, 
             '-'.join(modal_filter['input']),
@@ -121,7 +123,8 @@ if config.wandb.use:
             config.training.mask_type, 
             mask_mode,
             args.mask_ratio,
-            args.mixed_training
+            args.mixed_training,
+            args.stitching,
         )
     )
 
@@ -176,14 +179,18 @@ test_dataloader = make_loader(test_dataset,
 
 encoder_embeddings, decoder_embeddings = {}, {}
 
-standard_channel_size = 512
+if args.stitching:
+    n_channel_dict = {'ap': 256, 'behavior': n_behaviors}
+    output_channel_dict = {'ap': 256, 'behavior': n_behaviors}
+else:
+    n_channel_dict = {'ap': meta_data['num_neurons'][0], 'behavior': n_behaviors}
+    output_channel_dict = {'ap': meta_data['num_neurons'][0], 'behavior': n_behaviors}
+
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
-        stitching=True if mod == 'ap' else False,
-        # n_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
-        # stitching=False,
+        n_channel=n_channel_dict[mod],
+        stitching=args.stitching if mod == 'ap' else False,
         eid_list=meta_data['eid_list'],
         config=config.model.encoder,
     )
@@ -191,12 +198,9 @@ for mod in modal_filter["input"]:
 for mod in modal_filter["output"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
-        n_channel=standard_channel_size if mod == 'ap' else n_behaviors,
-        output_channel=standard_channel_size if mod == 'ap' else n_behaviors,
-        stitching=True if mod == 'ap' else False,
-        # n_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
-        # output_channel=meta_data['num_neurons'][0] if mod == 'ap' else n_behaviors,
-        # stitching=False,
+        n_channel=n_channel_dict[mod],
+        output_channel=output_channel_dict[mod],
+        stitching=args.stitching if mod == 'ap' else False,
         eid_list=meta_data['eid_list'],
         config=config.model.decoder,
     )

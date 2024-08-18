@@ -1,7 +1,7 @@
 seed: 42
 
 savestring: test
-wandb_project: multi_modal
+wandb_project: ablation
 log_to_wandb: false
 
 verbosity: 0
@@ -10,14 +10,14 @@ verbosity: 0
 wandb:
   use: true
   entity: null
-  project: multi_modal
+  project: ablation
   run_name: 671c7ea7
 
 # Logging directories
 dirs:
-  checkpoint_dir: checkpoints  # save model state dicts (todo optimizer states)
-  log_dir: results  # save tensorboard logs
-  dataset_cache_dir: checkpoints/datasets_cache  # save dataset cache
+  checkpoint_dir: /scratch/bcxj/yzhang39/checkpoints  # save model state dicts (todo optimizer states)
+  log_dir: /scratch/bcxj/yzhang39/results  # save tensorboard logs
+  dataset_cache_dir: /scratch/bcxj/yzhang39/checkpoints/datasets_cache  # save dataset cache
   # dataset_dir: /home/ppwang/neural-data-transformers/data/lfads_lorenz.h5
   # pretrained_model_path: checkpoints/models/ndt1/ssl/temporal/model_best_multi-session.pt
   dataset_dir: neurofm123/671c7ea7-6726-4fbe-adeb-f89c2c8e489b_aligned

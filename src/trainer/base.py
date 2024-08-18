@@ -30,7 +30,7 @@ class MultiModalTrainer():
 
         self.model_class = self.config.model.model_class
         self.metric = 'r2'        
-        self.session_active_neurons = {}      
+        self.session_active_neurons = {}    
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
@@ -107,19 +107,35 @@ class MultiModalTrainer():
     
     def train(self):
         best_eval_loss = torch.tensor(float('inf'))
-        best_eval_trial_avg_metric = -torch.tensor(float('inf'))
+        ###
+        best_eval_avg_spike_bps = -torch.tensor(float('inf'))
+        best_eval_avg_behave_r2 = -torch.tensor(float('inf'))
+        ###
         
         for epoch in range(self.config.training.num_epochs):
+            
             train_epoch_results = self.train_epoch(epoch)
             eval_epoch_results = self.eval_epoch()
-            print(f"epoch: {epoch} train loss: {train_epoch_results['train_loss'] }")
+            print(f"epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
 
             if eval_epoch_results:
-                if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
+                
+                ###
+                if eval_epoch_results[f'eval_avg_behave_r2'] > best_eval_avg_behave_r2:
                     best_eval_loss = eval_epoch_results[f'eval_loss']
-                    best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
-                    print(f"epoch: {epoch} best eval loss: {best_eval_loss} trial avg {self.metric}: {best_eval_trial_avg_metric}")
-                    self.save_model(name="best", epoch=epoch)
+                    best_eval_avg_behave_r2 = eval_epoch_results[f'eval_avg_behave_r2']
+                    print(f"epoch: {epoch} best eval loss: {best_eval_loss} avg r2: {best_eval_avg_behave_r2}")
+                    self.save_model(name="best_behavior", epoch=epoch)
+                ###
+                
+                ###
+                if eval_epoch_results[f'eval_avg_spike_bps'] > best_eval_avg_spike_bps:
+                # if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
+                    best_eval_loss = eval_epoch_results[f'eval_loss']
+                    best_eval_avg_spike_bps = eval_epoch_results[f'eval_avg_spike_bps']
+                    print(f"epoch: {epoch} best eval loss: {best_eval_loss} avg bps: {best_eval_avg_spike_bps}")
+                    self.save_model(name="best_ap", epoch=epoch)
+                ###
 
                     for mod in self.modal_filter['output']:
                         gt_pred_fig = self.plot_epoch(
@@ -142,11 +158,13 @@ class MultiModalTrainer():
                             gt_pred_fig['plot_r2'].savefig(
                                 os.path.join(self.log_dir, f"best_r2_fig_{mod}_{epoch}.png")
                             )
-
-                print(f"epoch: {epoch} eval loss: {eval_epoch_results['eval_loss']} trial avg {self.metric}: {eval_epoch_results[f'eval_trial_avg_{self.metric}']}")
+                ###
+                print(f"epoch: {epoch} eval loss: {eval_epoch_results['eval_loss']} avg bps: {eval_epoch_results[f'eval_avg_spike_bps']} avg r2: {eval_epoch_results[f'eval_avg_behave_r2']}")
+                ###
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
+                    # take the first session for plotting
                     gt_pred_fig = self.plot_epoch(
                         gt=eval_epoch_results['eval_gt'][0][mod], 
                         preds=eval_epoch_results['eval_preds'][0][mod], 
@@ -171,14 +189,23 @@ class MultiModalTrainer():
                 wandb.log({
                     "train_loss": train_epoch_results['train_loss'],
                     "eval_loss": eval_epoch_results['eval_loss'],
-                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}']
+                    ###
+                    f"eval_avg_spike_bps": eval_epoch_results[f'eval_avg_spike_bps'],
+                    f"eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
+                    ###
+                    # f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
                 })
                 
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
             wandb.log({"best_eval_loss": best_eval_loss,
-                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric})
+                       ###
+                       "best_eval_avg_spike_bps": best_eval_avg_spike_bps,
+                       "best_eval_avg_behave_r2": best_eval_avg_behave_r2}
+                       ###
+                       # f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric}
+                     )
 
     
     def train_epoch(self, epoch):
@@ -213,7 +240,7 @@ class MultiModalTrainer():
             session_results[eid] = {}
             for mod in self.modal_filter['output']:
                 session_results[eid][mod] = {"gt": [], "preds": []}
-                
+
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
@@ -236,8 +263,11 @@ class MultiModalTrainer():
                         elif mod == 'behavior':
                             session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
                             session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
-
-            gt, preds, results_list = {}, {}, []
+ 
+            gt, preds = {}, {}
+            ###
+            bps_results_list, r2_results_list = [], []
+            ###
             for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
                 for mod in self.modal_filter['output']:
@@ -249,7 +279,6 @@ class MultiModalTrainer():
                     preds[idx][mod] = _preds
 
                 for mod in self.modal_filter['output']:
-                    
                     if len(self.session_active_neurons) < len(self.eid_list):
                         active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
                         if eid not in self.session_active_neurons:
@@ -257,22 +286,34 @@ class MultiModalTrainer():
                             if 'behavior' in self.modal_filter['output']:
                                 self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
                         self.session_active_neurons[eid][mod] = active_neurons
-                    
+                        
                     if mod == 'ap':
                         results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
                                             pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
-                                            metrics=["r2"], 
+                                            # metrics=["r2"], 
+                        ###
+                                            metrics=["bps"], 
                                             device=self.accelerator.device)
-                    elif mod == 'behavior':                        
+                        bps_results_list.append(results["bps"])
+                        ###
+                    elif mod == 'behavior':
+                        # calculate r2 based on avg-trial behavior
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
-                                            metrics=[self.metric],
+                                            # metrics=[self.metric],
+                        ###
+                                            metrics=["behave_r2"],
                                             device=self.accelerator.device)
-                    results_list.append(results[self.metric])
+                        r2_results_list.append(results["behave_r2"])
+                        ###
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
-            f"eval_trial_avg_{self.metric}": np.nanmean(results_list),
+            # f"eval_trial_avg_{self.metric}": np.nanmean(results_list),
+            ###
+            f"eval_avg_spike_bps": np.nanmean(bps_results_list),
+            f"eval_avg_behave_r2": np.nanmean(r2_results_list),
+            ###
             "eval_gt": gt,
             "eval_preds": preds,
         }
