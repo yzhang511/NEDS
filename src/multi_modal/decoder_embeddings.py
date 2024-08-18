@@ -90,7 +90,7 @@ class DecoderEmbedding(nn.Module):
         self.out = nn.Linear(self.hidden_size, self.output_channel)
 
         if stitching:
-            self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.output_channel)
+            self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size)
     
     def forward_embed(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         
@@ -115,10 +115,14 @@ class DecoderEmbedding(nn.Module):
         y_mod = y[decoder_mod_mask == mod_idx]
         eid = d['eid']
         
-        y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
+        # y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
         if self.output_channel > 2:
-            # output_channel > 2 means that the input is a spike tensor, instead of a behavior tensor
             y_mod = self.spike_stitch_proj_decoder(y_mod, eid)
+            C, N = y_mod.size()
+            T = C // B 
+            y_mod = y_mod.reshape((B, T, N))
+        else:
+            y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
         d['preds'] = y_mod
         return d
 
