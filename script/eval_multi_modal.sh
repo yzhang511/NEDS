@@ -33,6 +33,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --overwrite \
                                --mixed_training \
                                --model_mode mm \
+                               --stitching \
 
 conda deactivate
 

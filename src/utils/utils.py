@@ -1,6 +1,7 @@
 import os
 import random
 import numpy as np
+from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
 from utils.metric_utils import r2_score
@@ -8,14 +9,18 @@ from sklearn.metrics import r2_score as r2_score_sklearn
 from sklearn.cluster import SpectralClustering
 from sklearn.metrics import accuracy_score
 import time
+import glob
 
-def dummy_load(stop_event, dummy_size=90000, check_interval=5, device="cuda"):
+def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
     # Start dummy load after 2 hours, adjust the sleep interval as needed
     # time.sleep(7200)
-    x = torch.rand(dummy_size, dummy_size).cuda()
-    while not stop_event.is_set():
-        x.cuda()
-        time.sleep(check_interval)  # Adjust the sleep interval as needed
+    # x = torch.rand(dummy_size, dummy_size).to(device)
+    # load dummy linear layer
+    dummy_linear = torch.nn.Linear(dummy_size, dummy_size).to(device)
+    with torch.no_grad():
+        while not stop_event.is_set():
+            x_ = dummy_linear(torch.rand(2048,dummy_size).to(device))
+            time.sleep(check_interval)  # Adjust the sleep interval as needed
 
 def set_seed(seed):
     # set seed for reproducibility
@@ -103,9 +108,102 @@ def plt_condition_avg_r2(gt, pred, epoch=0, neuron_idx=0, condition_idx=0, first
     fig.suptitle("Epoch: {}, Neuron: {}, Condition: {}, Avg {} trials".format(epoch, neuron_idx, condition_idx, first_n))
     return fig
 
+
+from scipy.special import gammaln
+def neg_log_likelihood(rates, spikes, zero_warning=True):
+    """Calculates Poisson negative log likelihood given rates and spikes.
+    formula: -log(e^(-r) / n! * r^n)
+           = r - n*log(r) + log(n!)
+
+    Parameters
+    ----------
+    rates : np.ndarray
+        numpy array containing rate predictions
+    spikes : np.ndarray
+        numpy array containing true spike counts
+    zero_warning : bool, optional
+        Whether to print out warning about 0 rate
+        predictions or not
+
+    Returns
+    -------
+    float
+        Total negative log-likelihood of the data
+    """
+    assert (
+            spikes.shape == rates.shape
+    ), f"neg_log_likelihood: Rates and spikes should be of the same shape. spikes: {spikes.shape}, rates: {rates.shape}"
+
+    if np.any(np.isnan(spikes)):
+        mask = np.isnan(spikes)
+        rates = rates[~mask]
+        spikes = spikes[~mask]
+
+    assert not np.any(np.isnan(rates)), "neg_log_likelihood: NaN rate predictions found"
+
+    assert np.all(rates >= 0), "neg_log_likelihood: Negative rate predictions found"
+    if np.any(rates == 0):
+        if zero_warning:
+            logger.warning(
+                "neg_log_likelihood: Zero rate predictions found. Replacing zeros with 1e-9"
+            )
+        rates[rates == 0] = 1e-9
+
+    result = rates - spikes * np.log(rates) + gammaln(spikes + 1.0)
+    return np.sum(result)
+
+
+def bits_per_spike(rates, spikes):
+    """Computes bits per spike of rate predictions given spikes.
+    Bits per spike is equal to the difference between the log-likelihoods (in base 2)
+    of the rate predictions and the null model (i.e. predicting mean firing rate of each neuron)
+    divided by the total number of spikes.
+
+    Parameters
+    ----------
+    rates : np.ndarray
+        3d numpy array containing rate predictions
+    spikes : np.ndarray
+        3d numpy array containing true spike counts
+
+    Returns
+    -------
+    float
+        Bits per spike of rate predictions
+    """
+    nll_model = neg_log_likelihood(rates, spikes)
+    null_rates = np.tile(
+        np.nanmean(spikes, axis=tuple(range(spikes.ndim - 1)), keepdims=True),
+        spikes.shape[:-1] + (1,),
+    )
+    nll_null = neg_log_likelihood(null_rates, spikes, zero_warning=False)
+    return (nll_null - nll_model) / np.nansum(spikes) / np.log(2)
+
+
 # metrics list, return different metrics results
 def metrics_list(gt, pred, metrics=["r2", "rsquared", "mse", "mae", "acc"], device="cpu"):
     results = {}
+    
+    if "bps" in metrics:
+        gt, pred = gt.transpose(-1,0).cpu().numpy(), pred.transpose(-1,0).cpu().numpy()
+        bps_list = []
+        for i in range(gt.shape[-1]): 
+            bps = bits_per_spike(pred[:,:,[i]], gt[:,:,[i]])
+            if np.isinf(bps):
+                bps = np.nan
+            bps_list.append(bps)
+        mean_bps = np.nanmean(bps_list)
+        results["bps"] = mean_bps
+        
+    if "behave_r2" in metrics:
+        r2_list = []
+        gt, pred = gt.transpose(-1,0).cpu().numpy(), pred.transpose(-1,0).cpu().numpy()
+        for i in range(gt.shape[0]):
+           r2 = r2_score_sklearn(gt[i].flatten(), pred[i].flatten())
+           r2_list.append(r2)
+        mean_r2 = np.nanmean(r2_list)
+        results["behave_r2"] = mean_r2
+
     if "r2" in metrics:
         r2_list = []
         for i in range(gt.shape[0]):
@@ -537,3 +635,142 @@ var_value2label = {'block': {(0.2,): "p(left)=0.2",
                             (1.,): "reward", } }
 
 var_tasklist = ['block','choice','reward']
+
+
+def huggingface2numpy(
+    train_dataloader, val_dataloader, test_dataloader, test_dataset
+):
+    
+    train_data_dict, val_data_dict, test_data_dict = {}, {}, {}
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = []
+        data_dict['dynamic_behavior'] = []
+        data_dict['choice'] = []
+        data_dict['block'] = []
+        data_dict['reward'] = []
+        data_dict['cluster_regions'] = np.array(test_dataset['cluster_regions'][0])
+        data_dict['cluster_uuids'] = np.array(test_dataset['cluster_uuids'])[0]
+    
+    for batch in tqdm(train_dataloader):
+        train_data_dict['spikes_data'].append(batch['spikes_data'])
+        train_data_dict['dynamic_behavior'].append(batch['target'])
+        train_data_dict['choice'].append(batch['choice'])
+        train_data_dict['block'].append(batch['block'])
+        train_data_dict['reward'].append(batch['reward'])
+    
+    for batch in tqdm(val_dataloader):
+        val_data_dict['spikes_data'].append(batch['spikes_data'])
+        val_data_dict['dynamic_behavior'].append(batch['target'])
+        val_data_dict['choice'].append(batch['choice'])
+        val_data_dict['block'].append(batch['block'])
+        val_data_dict['reward'].append(batch['reward'])
+    
+    for batch in tqdm(test_dataloader):
+        test_data_dict['spikes_data'].append(batch['spikes_data'])
+        test_data_dict['dynamic_behavior'].append(batch['target'])
+        test_data_dict['choice'].append(batch['choice'])
+        test_data_dict['block'].append(batch['block'])
+        test_data_dict['reward'].append(batch['reward'])
+    
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = torch.cat(data_dict['spikes_data'], 0).numpy()
+        data_dict['dynamic_behavior'] = torch.cat(data_dict['dynamic_behavior'], 0).numpy()
+        data_dict['choice'] = torch.cat(data_dict['choice'], 0).numpy()
+        data_dict['block'] = torch.cat(data_dict['block'], 0).numpy()
+        data_dict['reward'] = torch.cat(data_dict['reward'], 0).numpy()
+
+    return {
+        "train": train_data_dict, "val": val_data_dict, "test": test_data_dict
+    }
+
+
+def _one_hot(arr, T):
+    uni = np.sort(np.unique(arr))
+    ret = np.zeros((len(arr), T, len(uni)))
+    for i, _uni in enumerate(uni):
+        ret[:,:,i] = (arr == _uni)
+    return ret
+
+def _std(arr):
+    mean = np.mean(arr, axis=0) # (T, N)
+    std = np.std(arr, axis=0) # (T, N)
+    std = np.clip(std, 1e-8, None) # (T, N) 
+    arr = (arr - mean) / std
+    return arr, mean, std
+
+def get_npy_files(log_dir, 
+                  model_mode='mm',
+                  num_sessions=1,
+                  use_contrastive=True,
+                  mixed_training=True,
+                    ):
+    """
+    Get the npy files for each session
+    """
+    if model_mode == 'mm':
+        model_mode = 'ap-behavior'
+    elif model_mode == 'decoding':
+        model_mode = 'ap'
+    elif model_mode == 'encoding':
+        model_mode = 'behavior'
+    else:
+        raise ValueError("Unknown model_mode")
+    model_mode = f"inModal-{model_mode}"
+    # get the npy files under sesNum-{num_sessions}/set-eval
+    pattern = f"{log_dir}/sesNum-{num_sessions}/**/*{model_mode}/**/*.npy"
+    npy_files = glob.glob(pattern, recursive=True)
+
+    # filter the npy files
+    if use_contrastive:
+        npy_files = [f for f in npy_files if 'contrast-True' in f]
+    else:
+        npy_files = [f for f in npy_files if 'contrast-False' in f]
+    if mixed_training:
+        npy_files = [f for f in npy_files if 'mixedTraining-True' in f]
+    else:
+        npy_files = [f for f in npy_files if 'mixedTraining-False' in f]
+
+    # get behav modal, decoding
+    behav_modal = [f for f in npy_files if 'modal_behavior' in f]
+    # remove bps in decoding
+    behav_modal = [f for f in behav_modal if 'bps' not in f]
+
+    spike_modal = [f for f in npy_files if 'modal_spike' in f]
+    # remove r2 in spike
+    spike_modal = [f for f in spike_modal if 'r2' not in f]
+
+    npy_files = {
+        'spike': spike_modal,
+        'behavior': behav_modal
+    }
+
+    return npy_files
+
+def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energy']):
+    r2_list = []
+    for npy_file in npy_files['behavior']:
+        decoding_data = np.load(npy_file, allow_pickle=True)
+        decoding_data = decoding_data.item()
+        # only remain key with r2_trial
+        decoding_data = {k: decoding_data[k] for k in decoding_data if 'r2_trial' in k}
+        # only remain key with avail_beh
+        decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
+        r2_list.append(decoding_data)
+    print("total {} sessions of behavior decoding".format(len(r2_list)))
+    # return r2 for each session
+    behav_result = {avail_beh[i]: [] for i in range(len(avail_beh))}
+    for r2 in r2_list:
+        for beh in avail_beh:
+            behav_result[beh].append(np.mean(r2[f'{beh}_r2_trial']))
+    return behav_result
+
+def return_spike_bps(npy_files):
+    bps_list = []
+    for npy_file in npy_files['spike']:
+        encoding_data = np.load(npy_file, allow_pickle=True)
+        mean_bps = np.nanmean(encoding_data)
+        bps_list.append(mean_bps)
+    print("total {} sessions of spike encoding".format(len(bps_list)))
+    return bps_list
+    
+    

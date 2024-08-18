@@ -72,12 +72,13 @@ def load_model_data_local(**kwargs):
         dataset, 
         target=avail_beh,
         batch_size=len(dataset),
-        pad_to_right=True, pad_value=-1.,
+        pad_to_right=True, 
+        pad_value=-1.,
         max_time_length=config.data.max_time_length,
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
-        load_meta=config.data.load_meta,
-        use_nemo=False, shuffle=False,
+        stitching=True,
+        shuffle=False,
     )
 
     return model, accelerator, dataset, dataloader

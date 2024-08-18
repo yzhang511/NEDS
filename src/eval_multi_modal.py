@@ -38,6 +38,7 @@ ap.add_argument('--seed', type=int, default=42)
 ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
+ap.add_argument("--stitching", action='store_true')
 
 args = ap.parse_args()
 
@@ -82,7 +83,7 @@ else:
 set_seed(args.seed)
 
 last_ckpt_path = 'model_last.pt'
-best_ckpt_path = 'model_best.pt'
+best_ckpt_path = 'model_best_ap.pt'
 
 spike_recon = False
 behave_recon = False
@@ -115,6 +116,7 @@ model_path = os.path.join(base_path,
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
+                        f"stitching-{args.stitching}",
                         best_ckpt_path
                         )
 
@@ -129,13 +131,14 @@ save_path = os.path.join(base_path,
                         f"mode-{mask_mode}",
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
+                        f"stitching-{args.stitching}",
                         )
 
 if args.wandb:
     wandb.init(
-        project="multi_modal",
+        project="ablation",
         config=args,
-        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_stitching-{}".format(
             args.num_sessions,
             eid[:5], 
             '-'.join(modal_filter['input']),
@@ -143,7 +146,8 @@ if args.wandb:
             args.mask_type, 
             mask_mode,
             args.mask_ratio,
-            args.mixed_training
+            args.mixed_training,
+            args.stitching,
     )
 )
 

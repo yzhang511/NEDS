@@ -120,7 +120,7 @@ class DecoderEmbedding(nn.Module):
         eid, num_neuron = d['eid'], d['num_neuron']
 
         y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
-        if hasattr(self, 'spike_stitch_proj_decoder') and D > 2:
+        if hasattr(self, 'spike_stitch_proj_decoder'):
             # output_channel > 2 means that the input is a spike tensor, instead of a behavior tensor
             y_mod = self.spike_stitch_proj_decoder(y_mod, eid)
         
