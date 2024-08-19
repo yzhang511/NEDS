@@ -25,7 +25,7 @@ python src/train_multi_modal.py --mask_ratio 0.0 \
                                 --base_path /scratch/bcxj/yzhang39 \
                                 --overwrite \
                                 --mixed_training \
-                                --model_mode mm \
+                                --model_mode decoding \
                                 --stitching \
 
 python src/eval_multi_modal.py --mask_mode temporal \
@@ -38,7 +38,7 @@ python src/eval_multi_modal.py --mask_mode temporal \
                                --mask_type embd \
                                --overwrite \
                                --mixed_training \
-                               --model_mode mm \
+                               --model_mode decoding \
                                --stitching \
 
 # check mask_type in train_mm.yaml

@@ -83,7 +83,7 @@ else:
 set_seed(args.seed)
 
 last_ckpt_path = 'model_last.pt'
-best_ckpt_path = 'model_best_ap.pt'
+best_ckpt_path = 'model_best_ap.pt' if args.model_mode != "decoding" else 'model_best_behavior.pt'
 
 spike_recon = False
 behave_recon = False
