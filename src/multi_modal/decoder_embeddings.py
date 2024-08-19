@@ -23,14 +23,6 @@ class DecoderEmbeddingLayer(nn.Module):
         self.n_channels = n_channels
         self.input_dim = self.n_channels*config.mult
 
-        self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
-
-        self.projection = nn.Linear(self.input_dim, hidden_size)
-
-        self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
-
-        self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
-
         self.mod_emb = nn.Embedding(config.n_modality, hidden_size)
 
         self.pos = config.pos
@@ -39,8 +31,16 @@ class DecoderEmbeddingLayer(nn.Module):
 
         self.dropout = nn.Dropout(config.dropout)
 
-        if stitching:
-            self.spike_stitch_decoder = StitchEncoder(eid_list, n_channels)
+        if stitching and self.n_channels > 2:
+            # stitch the spike tensor
+            self.spike_stitch_decoder = StitchEncoder(eid_list=eid_list, 
+                                                      n_channels=hidden_size)
+        else:
+            # non-stitching for behavior tensor
+            self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
+            self.projection = nn.Linear(self.input_dim, hidden_size)
+            self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
+            self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
 
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
@@ -51,12 +51,11 @@ class DecoderEmbeddingLayer(nn.Module):
         if hasattr(self, 'spike_stitch_decoder') and D > 2:
             # D > 2 means that the input is a spike tensor, instead of a behavior tensor
             # stitch the spike tensor
-            targets = self.spike_stitch_decoder(targets, eid)
-        x = self.token_embed(targets)
-
-        x = self.act(x) * self.scale
-
-        x = self.projection(x)
+            x = self.spike_stitch_decoder(targets, eid)
+        else:
+            x = self.token_embed(targets)
+            x = self.act(x) * self.scale
+            x = self.projection(x)
 
         x_embed = self.mod_emb(targets_modality)[None,None,:].expand(B,N,-1).clone()
 
