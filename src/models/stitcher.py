@@ -5,17 +5,28 @@ class StitchEncoder(nn.Module):
 
     def __init__(self, 
                  eid_list:dict,
-                 n_channels:int,):
+                 n_channels:int,
+                 scale:int = 1):
         super().__init__()
 
         stitcher_dict = {}
+        project_dict = {}
         # iterate key, value pairs in the dictionary
         for key, val in eid_list.items():
-            stitcher_dict[str(key)] = nn.Linear(int(val), n_channels)
+            # token embedding layer
+            stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2)
+            # projection layer
+            project_dict[str(key)] = nn.Linear(int(val) * 2, n_channels)
         self.stitcher_dict = nn.ModuleDict(stitcher_dict)
+        self.project_dict = nn.ModuleDict(project_dict)
+        self.scale = scale
+        self.act = nn.Softsign()
 
     def forward(self, x, block_idx):
-        return self.stitcher_dict[block_idx](x)
+        x = self.stitcher_dict[block_idx](x)
+        x = self.act(x) * self.scale
+        x = self.project_dict[block_idx](x)
+        return x
     
 class StitchDecoder(nn.Module):
 

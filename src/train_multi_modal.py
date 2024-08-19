@@ -187,7 +187,7 @@ test_dataloader = make_loader(test_dataset,
 
 encoder_embeddings, decoder_embeddings = {}, {}
 
-standard_channel_size =256
+standard_channel_size =465
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
