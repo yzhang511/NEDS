@@ -5,5 +5,5 @@ model_mode=${2} # mm, decoding, encoding
 while IFS= read -r line
 do
     echo "Eval on ses eid: $line"
-    sbatch eval.sh $num_sessions $line $model_mode 0.1
+    sbatch --gres=gpu:h100:1  eval.sh $num_sessions $line $model_mode 0.1
 done < "../../data/train_eids.txt"

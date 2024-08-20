@@ -656,6 +656,7 @@ def get_npy_files(log_dir,
 def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energy']):
     r2_list = []
     for npy_file in npy_files['behavior']:
+        ses = _get_session(npy_file)
         decoding_data = np.load(npy_file, allow_pickle=True)
         decoding_data = decoding_data.item()
         # only remain key with r2_trial
@@ -663,6 +664,7 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
         # only remain key with avail_beh
         decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
         r2_list.append(decoding_data)
+        print(f"sessions {ses} behav r2: {decoding_data}")
     print("total {} sessions of behavior decoding".format(len(r2_list)))
     # return r2 for each session
     behav_result = {avail_beh[i]: [] for i in range(len(avail_beh))}
@@ -674,10 +676,15 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
 def return_spike_bps(npy_files):
     bps_list = []
     for npy_file in npy_files['spike']:
+        ses = _get_session(npy_file)
         encoding_data = np.load(npy_file, allow_pickle=True)
         mean_bps = np.nanmean(encoding_data)
         bps_list.append(mean_bps)
+        print(f"sessions {ses} bps: {mean_bps:.3f}")
     print("total {} sessions of spike encoding".format(len(bps_list)))
     return bps_list
-    
+
+def _get_session(npy_file):
+    ses = npy_file.split('ses-')[1].split('/')[0]
+    return ses
     

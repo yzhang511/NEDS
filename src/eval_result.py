@@ -13,7 +13,7 @@ argparser.add_argument('--seed', type=int, default=42)
 args = argparser.parse_args()
 set_seed(42)
 avail_behav = ['wheel-speed', 'whisker-motion-energy']
-
+print(f"Results of model: {args.model_mode}, Use contrastive: {args.use_contrastive}, Mixed training: {args.mixed_training}")
 npy_files = get_npy_files(log_dir=args.log_dir, 
                           model_mode=args.model_mode, 
                           num_sessions=args.num_sessions,
