@@ -37,10 +37,14 @@ class DecoderEmbeddingLayer(nn.Module):
                                                       n_channels=hidden_size)
         else:
             # non-stitching for behavior tensor
-            self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
-            self.projection = nn.Linear(self.input_dim, hidden_size)
-            self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
-            self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
+            self.behavior_stitch_decoder = StitchEncoder(eid_list=eid_list,
+                                                            n_channels=hidden_size,
+                                                            stitcher_type='behavior',
+                                                            behavior_channel=self.n_channels)
+            # self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
+            # self.projection = nn.Linear(self.input_dim, hidden_size)
+            # self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
+            # self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
 
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
@@ -53,9 +57,7 @@ class DecoderEmbeddingLayer(nn.Module):
             # stitch the spike tensor
             x = self.spike_stitch_decoder(targets, eid)
         else:
-            x = self.token_embed(targets)
-            x = self.act(x) * self.scale
-            x = self.projection(x)
+            x = self.behavior_stitch_decoder(targets, eid)
 
         x_embed = self.mod_emb(targets_modality)[None,None,:].expand(B,N,-1).clone()
 
@@ -90,8 +92,9 @@ class DecoderEmbedding(nn.Module):
             # add stitch decoder for spike tensor
             self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size)
         else:
-            # add linear layer for behavior tensor
-            self.out = nn.Linear(self.hidden_size, self.output_channel)
+            # add stitcher for behavior tensor
+            self.behavior_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size, 'behavior', self.output_channel)
+            # self.out = nn.Linear(self.hidden_size, self.output_channel)
     
     def forward_embed(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         
@@ -122,7 +125,7 @@ class DecoderEmbedding(nn.Module):
             C, N = y_mod.size()
             y_mod = y_mod.reshape((B, -1, N))
         else:
-            y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
+            y_mod = self.behavior_stitch_proj_decoder(y_mod, eid).reshape((B, -1, self.output_channel))
         d['preds'] = y_mod
         return d
 

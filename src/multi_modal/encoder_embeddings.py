@@ -40,11 +40,15 @@ class EncoderEmbeddingLayer(nn.Module):
             self.spike_stitch_encoder = StitchEncoder(eid_list=eid_list, 
                                                       n_channels=hidden_size)
         else:
-            # non-stitching for behavior tensor
-            self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
-            self.projection = nn.Linear(self.input_dim, hidden_size)
-            self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
-            self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
+            # stitching for behavior tensor
+            self.behavior_stitch_encoder = StitchEncoder(eid_list=eid_list,
+                                                            n_channels=hidden_size,
+                                                            stitcher_type='behavior',
+                                                            behavior_channel=self.n_channels)
+            # self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
+            # self.projection = nn.Linear(self.input_dim, hidden_size)
+            # self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
+            # self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
 
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
@@ -57,9 +61,7 @@ class EncoderEmbeddingLayer(nn.Module):
             # stitch the spike tensor
             x = self.spike_stitch_encoder(inputs, eid)
         else:
-            x = self.token_embed(inputs)
-            x = self.act(x) * self.scale
-            x = self.projection(x)
+            x = self.behavior_stitch_encoder(inputs, eid)
 
         x_embed = self.mod_emb(inputs_modality)[None,None,:].expand(B,N,-1).clone()
 
