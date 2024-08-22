@@ -271,13 +271,14 @@ class MultiModalTrainer():
                                             pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
                                             metrics=["r2"], 
                                             device=self.accelerator.device)
+                        results_list.append(results['r2'])
                     elif mod == 'behavior':
                         # calculate r2 based on avg-trial behavior
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
                                             metrics=["rsquared"],
                                             device=self.accelerator.device)
-                    results_list.append(results["rsquared"])
+                        results_list.append(results["rsquared"])
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
                     assert len(session_results[eid]['s2b_acc']) > 0
