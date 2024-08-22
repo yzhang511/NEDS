@@ -603,8 +603,10 @@ def co_smoothing_eval(
 
             gt_held_out = gt[:,target_t_i][:,:,target_n_i]
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
-
-            for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
+            trial_len = 2.
+            mean_fr = gt_held_out.sum(1).mean(0) / trial_len
+            keep_idxs = np.argwhere(mean_fr >= 1/0.1).flatten()
+            for n_i in tqdm(keep_idxs, desc='co-bps'): 
                 bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
                 if np.isinf(bps):
                     bps = np.nan

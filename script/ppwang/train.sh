@@ -28,8 +28,7 @@ if [ $model_mode = "mm" ]; then
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
                                     --dummy_load \
-                                    --model_mode $model_mode \
-                                    --use_contrastive 
+                                    --model_mode $model_mode 
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/train_multi_modal.py --eid $eid \

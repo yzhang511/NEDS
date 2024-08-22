@@ -275,9 +275,9 @@ class MultiModalTrainer():
                         # calculate r2 based on avg-trial behavior
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
-                                            metrics=[self.metric],
+                                            metrics=["rsquared"],
                                             device=self.accelerator.device)
-                    results_list.append(results[self.metric])
+                    results_list.append(results["rsquared"])
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
                     assert len(session_results[eid]['s2b_acc']) > 0
