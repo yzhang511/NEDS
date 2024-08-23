@@ -44,11 +44,8 @@ class MultiModalTrainer():
 
         self.mixed_training = kwargs.get("mixed_training", False)
         if self.mixed_training:
-            # self.training_schemes = ['encoding', 'decoding', 'token_masking']
+            self.training_schemes = ['encoding', 'decoding', 'token_masking']
             # self.training_schemes = ['encoding', 'decoding']
-            self.training_schemes = [
-                'encoding', 'decoding', 'spike-spike', 'behavior-behavior', 'token_masking'
-            ]
         else:
             self.training_mode = None
 
@@ -102,12 +99,6 @@ class MultiModalTrainer():
             elif training_mode == 'token_masking':
                 for mod in self.mod_to_indx.keys():
                     mod_dict[mod]['eval_mask'] = None
-            elif training_mode == 'spike-spike':
-                mod_dict['ap']['eval_mask'] = None
-                mod_dict['behavior']['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
-            elif training_mode == 'behavior-behavior':
-                mod_dict['behavior']['eval_mask'] = None
-                mod_dict['ap']['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
             else:
                raise Exception(f"Training objective not implemented yet.")
 
@@ -280,16 +271,11 @@ class MultiModalTrainer():
                                 self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
                         self.session_active_neurons[eid][mod] = active_neurons
                     if mod == 'ap':
-                        # results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
-                        #                     pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
-                        #                     metrics=["r2"], 
-                        #                     device=self.accelerator.device)
-                        # spike_r2_results_list.append(results["r2"])
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]],
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]], 
-                                            metrics=["rsquared"], 
+                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
+                                            pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
+                                            metrics=["r2"], 
                                             device=self.accelerator.device)
-                        spike_r2_results_list.append(results["rsquared"])
+                        spike_r2_results_list.append(results["r2"])
                     elif mod == 'behavior':
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
