@@ -311,7 +311,7 @@ class MultiModalTrainer():
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
-            f"eval_trial_avg_{self.metric}": (spike_r2 + behave_r2) / 2,
+            f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2]),
             f"eval_avg_spike_r2": spike_r2,
             f"eval_avg_behave_r2": behave_r2,
             "eval_gt": gt,
