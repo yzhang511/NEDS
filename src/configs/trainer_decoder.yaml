@@ -1,7 +1,7 @@
 seed: 42
 
 savestring: test
-wandb_project: 4m-single
+wandb_project: mm
 log_to_wandb: false
 
 verbosity: 0
@@ -10,7 +10,7 @@ verbosity: 0
 wandb:
   use: true
   entity: null
-  project: 4m-single
+  project: mm
   run_name: 671c7ea7
 
 # Logging directories
@@ -28,12 +28,12 @@ dirs:
 
 # Training configuration
 training:
-  num_epochs: 1000
+  num_epochs: 2000
   train_batch_size: 16
   test_batch_size: 16  
   shuffle_test_dataloader: false    # Shuffle test dataloader between epochs
 
-  save_plot_every_n_epochs: 20  # Plot the model output every n epochs
+  save_plot_every_n_epochs: 5  # Plot the model output every n epochs
   save_every: 100  # Save checkpoint
   eval_every: null  # Eval model
 
@@ -114,8 +114,8 @@ method:
 
 optimizer:
   gradient_accumulation_steps: 1
-  lr: 2.e-4
-  wd: 0.01
+  lr: 5.e-4
+  wd: 1 
   eps: 1.e-8
   warmup_pct: 0.15 # cosine/linear
   gamma: 0.95     # step
