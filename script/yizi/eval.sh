@@ -1,15 +1,17 @@
 #!/bin/bash
 
-#SBATCH --job-name=eval-mm
-#SBATCH --output=eval-mm-%j.out
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="train_eval"
+#SBATCH --output="train_eval.%j.out"
 #SBATCH -N 1
-#SBATCH -n 1
+#SBACTH --array=0
+#SBATCH -c 8
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
-#SBATCH -t 2-12:00:00 
-#SBATCH --mem=64g
-
+#SBATCH --mem 150000
+#SBATCH --gpus=1
+#SBATCH -t 0-5
+#SBATCH --export=ALL
 
 num_sessions=${1}
 eid=${2}
@@ -26,7 +28,7 @@ if [ $model_mode = "mm" ]; then
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path /u/yzhang39/multi_modal_foundation_model \
                                 --save_plot \
                                 --mask_type embd \
                                 --mixed_training  \
@@ -39,7 +41,7 @@ then
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path /u/yzhang39/multi_modal_foundation_model \
                                 --save_plot \
                                 --mask_type embd \
                                 --num_sessions ${num_sessions} \
