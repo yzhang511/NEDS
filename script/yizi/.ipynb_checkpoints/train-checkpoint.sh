@@ -1,13 +1,17 @@
 #!/bin/bash
 
-#SBATCH --job-name=train-mm
-#SBATCH --output=train-mm-%j.out
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="train_eval"
+#SBATCH --output="train_eval.%j.out"
 #SBATCH -N 1
-#SBATCH -n 1
+#SBACTH --array=0
+#SBATCH -c 8
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH -t 2-12:00:00 
-#SBATCH --mem=64g
+#SBATCH --mem 150000
+#SBATCH --gpus=1
+#SBATCH -t 0-2
+#SBATCH --export=ALL
 
 . ~/.bashrc
 num_sessions=${1}
