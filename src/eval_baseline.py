@@ -51,9 +51,9 @@ if num_sessions > 1:
 
 model_config = f"src/configs/baseline.yaml"
 if args.model_mode == "decoding":
-    trainer_config = update_config(f"src/configs/trainer_decoder.yaml", config)
+    trainer_config = update_config(f"src/configs/trainer_decoder.yaml", model_config)
 elif args.model_mode == "encoding":
-    trainer_config = update_config(f"src/configs/trainer_encoder.yaml", config)
+    trainer_config = update_config(f"src/configs/trainer_encoder.yaml", model_config)
 
 
 set_seed(args.seed)
@@ -89,7 +89,7 @@ model_path = os.path.join(
     base_path, 
     "results",
     f"sesNum-{args.num_sessions}",
-    f"ses-{eid}",
+    f"ses-{eid[:5]}",
     "set-train",
     f"inModal-{'-'.join(modal_filter['input'])}",
     f"outModal-{'-'.join(modal_filter['output'])}",
@@ -101,7 +101,7 @@ save_path = os.path.join(
     base_path,
     "results",
     f"sesNum-{args.num_sessions}",
-    f"ses-{eid}",
+    f"ses-{eid[:5]}",
     "set-eval",
     f"inModal-{'-'.join(modal_filter['input'])}",
     f"outModal-{'-'.join(modal_filter['output'])}",
@@ -110,7 +110,7 @@ save_path = os.path.join(
 
 if args.wandb:
     wandb.init(
-        project="mm",
+        project="rrr",
         config=args,
         name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal{}-model-{}".format(
             args.num_sessions,

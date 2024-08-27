@@ -28,26 +28,25 @@ if [ $model_mode = "mm" ]; then
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path /u/yzhang39/multi_modal_foundation_model \
                                 --save_plot \
                                 --mask_type embd \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
-                                --wandb
+                                --wandb  
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path /u/yzhang39/multi_modal_foundation_model \
                                 --save_plot \
                                 --mask_type embd \
-                                --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
-                                --wandb
+                                --wandb 
 else
     echo "model_mode: $model_mode not supported"
 fi
