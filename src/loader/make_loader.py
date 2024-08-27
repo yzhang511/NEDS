@@ -37,18 +37,18 @@ def make_loader(dataset,
     print(f"len(dataset): {len(dataset)}")
 
     if stitching:
-        # train_sampler = LengthStitchGroupedSampler(
-        #     dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
-        # )
-        session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle)
-        # batch by neuron lengths makes multi-session training easier and NDT2 training faster
+        session_sampler = LengthStitchGroupedSampler(
+            dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
+        )
+        
+        # session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle)
+        
         dataloader = torch.utils.data.DataLoader(
             dataset,
             sampler=session_sampler, 
             batch_size=batch_size,
         )
     else:
-        # the original data loader - each batch can contain different neuron lengths
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
     return dataloader

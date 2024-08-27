@@ -10,7 +10,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 150000
 #SBATCH --gpus=1
-#SBATCH -t 0-2
+#SBATCH -t 0-4
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -26,7 +26,7 @@ cd ../..
 
 if [ $model_mode = "mm" ]; then
     python src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
+                                    --base_path /projects/bcxj/yzhang39/ \
                                     --mask_ratio $mask_ratio \
                                     --mixed_training \
                                     --num_sessions $num_sessions \
@@ -35,7 +35,7 @@ if [ $model_mode = "mm" ]; then
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
+                                    --base_path /projects/bcxj/yzhang39/ \
                                     --mask_ratio $mask_ratio \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \

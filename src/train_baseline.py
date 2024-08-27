@@ -173,7 +173,7 @@ if "ap" in modal_filter["output"]:
         model_class = "LinearEncoder" 
     elif args.model == 'rrr':
         model_class = "ReducedRankEncoder" 
-        meta_data["rank"] = 4 
+        meta_data["rank"] = 5 # 4
     else:
         raise NotImplementedError
     input_size, output_size = n_behaviors, meta_data['num_neurons']

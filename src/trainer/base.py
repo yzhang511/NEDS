@@ -273,7 +273,9 @@ class MultiModalTrainer():
 
                 for mod in self.modal_filter['output']:
                     if len(self.session_active_neurons) < len(self.eid_list):
-                        active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                        mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
+                        active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
+                        # active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
                         if eid not in self.session_active_neurons:
                             self.session_active_neurons[eid] = {}
                             if 'behavior' in self.modal_filter['output']:
@@ -394,6 +396,8 @@ class BaselineTrainer():
         else:
             data_dict['inputs'] = batch['spikes_data']
             data_dict['targets'] = batch['target']
+        data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
+        data_dict['num_neuron'] = batch['spikes_data'].shape[2]
         return self.model(data_dict)
 
     
@@ -530,7 +534,7 @@ class BaselineTrainer():
                                         pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
                                         metrics=["r2"], 
                                         device=self.accelerator.device)
-                    results_list.append(results[self.metric])
+                    results_list.append(results["r2"])
 
         return {
             "eval_loss": eval_loss,

@@ -22,7 +22,6 @@ from torch.optim.lr_scheduler import OneCycleLR
 from scipy.ndimage import gaussian_filter1d
 from sklearn.linear_model import RidgeCV
 from utils.eval_utils import bits_per_spike, viz_single_cell
-from models.rrr_encoder import train_model, train_model_main
 
 
 # -----------
@@ -34,7 +33,6 @@ ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
 ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
 ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
-ap.add_argument("--encode_static_behavior", action="store_true")
 ap.add_argument("--rank", type=int, default=3)
 ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--save_plot", action="store_true")
@@ -52,10 +50,10 @@ avail_beh = args.behavior
 avail_mod = args.modality
 kwargs = {"model": f"include:src/configs/baseline.yaml"}
 config = config_from_kwargs(kwargs)
-config = update_config(f"src/configs/trainer_encoder.yaml", config)
+config = update_config(f"src/configs/trainer_decoder.yaml", config)
 modal_filter = {
-    "input": ['behavior'], 
-    "output": ['ap']
+    "input": ['ap'], 
+    "output": ['behavior']
 }
 log_dir = os.path.join(
     base_path, "results", f"ses-{eid}", "set-train",
@@ -80,7 +78,7 @@ set_seed(config.seed)
 
 if args.wandb:
     wandb.init(
-        project="multi_modal",
+        project="baseline_decoder",
         config=args,
         name="ses-{}_set-eval_{}-sessions_inModal-{}_outModal{}-model-{}".format(
             eid[:5], 
@@ -168,33 +166,12 @@ train_data = {
     eid: {"X": [], "y": [], "setup": {"uuids": data_dict['train']['cluster_uuids']}}
 }
 
-smooth_w = 2; T = config.data.max_time_length
+T = config.data.max_time_length
 for k in ["train", "test"]:
-    if args.encode_static_behavior:
-        X = np.concatenate(
-            [_one_hot(data_dict[k][v], T) for v in ["block", "choice", "reward"]], axis=2
-        )
-        X = np.concatenate([X, data_dict[k]["dynamic_behavior"]], axis=2)
-    else:
-        X = data_dict[k]["dynamic_behavior"].astype(np.float64)
+    X = data_dict[k]["dynamic_behavior"].astype(np.float64)
     y = data_dict[k]["spikes_data"]
-    y = gaussian_filter1d(y, smooth_w, axis=1)  # (K, T, N)
     train_data[eid]["X"].append(X)
     train_data[eid]["y"].append(y)
-
-_, mean_X, std_X = _std(train_data[eid]["X"][0])
-_, mean_y, std_y = _std(train_data[eid]["y"][0])
-for i in range(2):
-    K = train_data[eid]["X"][i].shape[0]
-    train_data[eid]["X"][i] = np.concatenate(
-        [(train_data[eid]["X"][i]-mean_X)/std_X, np.ones((K,T,1))], axis=2
-    )
-    train_data[eid]["y"][i] = (train_data[eid]["y"][i]-mean_y)/std_y
-
-train_data[eid]["setup"]["mean_y_TN"] = mean_y
-train_data[eid]["setup"]["std_y_TN"] = std_y
-train_data[eid]["setup"]["mean_X_Tv"] = mean_X
-train_data[eid]["setup"]["std_X_Tv"] = std_X
 
 
 # --------
@@ -203,26 +180,22 @@ train_data[eid]["setup"]["std_X_Tv"] = std_X
 l2 = 100
 n_comp = args.rank
 if args.model == "rrr":
-    model, mse_val = train_model_main(
-        train_data, l2, n_comp, "tmp", save=True
-    )
-    _, _, pred_orig = model.predict_y_fr(train_data, eid, 1)
-    pred_orig = pred_orig.cpu().detach().numpy()
+    raise NotImplementedError
 
 elif args.model == "linear":
-    X_train, X_test = train_data[eid]["X"]
-    y_train, y_test = train_data[eid]["y"]
-    reg_model = RidgeCV(alphas=[1e-4, 1e-3, 1e-2, 1e-1, 1, 1e2, 1e3, 1e4], fit_intercept=False).fit(
-        X_train[:,:,:-1].reshape((-1, X_train.shape[-1]-1)), 
-        y_train.reshape((-1, y_train.shape[-1]))
-    ) 
-    K_test = X_test.shape[0]
-    pred_orig = reg_model.predict(
-        X_test[:,:,:-1].reshape((K_test*T, X_test.shape[-1]-1))
-    )
-    pred_orig = pred_orig.reshape((K_test, T, -1))
-    pred_orig = pred_orig * train_data[eid]["setup"]["std_y_TN"] + \
-                train_data[eid]["setup"]["mean_y_TN"]
+    X_train, X_test = train_data[eid]["y"]
+    y_train, y_test = train_data[eid]["X"]
+    pred = []
+    for i in range(y_test.shape[-1]):
+        reg_model = RidgeCV(alphas=[1e-4, 1e-3, 1e-2, 1e-1, 1, 1e2, 1e3, 1e4]).fit(
+            X_train.reshape((-1, X_train.shape[-1])), 
+            y_train[:,:,i].flatten()
+        ) 
+        K_test = X_test.shape[0]
+        pred_orig = reg_model.predict(
+            X_test.reshape((-1, X_test.shape[-1]))
+        )
+        pred.append(pred_orig.reshape(K_test, T, -1))
 else:
      raise NotImplementedError
 
@@ -230,66 +203,41 @@ else:
 # ----
 # EVAL
 # ----
-trial_len = 2.
-threshold = 1e-3
-pred_held_out = np.clip(pred_orig, threshold, None)
-gt_held_out = data_dict["test"]["spikes_data"]
-mean_fr = gt_held_out.sum(1).mean(0) / trial_len
-keep_idxs = np.argwhere(mean_fr >= 1/0.1).flatten()
-# print(mean_fr)
 
-bps_result_list = []
-for n_i in tqdm(keep_idxs, desc='co-bps'):     
-    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-    if np.isinf(bps):
-        bps = np.nan
-    bps_result_list.append(bps)
-    
-# Bits per spike calculation
-save_path = f"{save_path}/modal_spike"
-os.makedirs(save_path, exist_ok=True)
-bps_all = np.array(bps_result_list)
-bps_mean, bps_std = np.nanmean(bps_all), np.nanstd(bps_all)
-np.save(os.path.join(save_path, f"bps.npy"), bps_all)
-results = {"mean_bps": bps_mean}
+results = {}
 
-# Single-neuron visualization
-if args.save_plot:
+for k in ["train", "test"]:
+    X = np.concatenate(
+        [_one_hot(data_dict[k][v], T) for v in ["choice", "reward", "block"]], axis=2
+    )
 
-    for k in ["train", "test"]:
-        X = np.concatenate(
-            [_one_hot(data_dict[k][v], T) for v in ["block", "choice", "reward"]], axis=2
-        )
-        
-    X_all, y_all, y_all_pred = model.predict_y_fr(train_data, eid, 1)
-    X_all = X_all.cpu().detach().numpy()
-    y_all = y_all.cpu().detach().numpy()
-    y_all_pred = y_all_pred.cpu().detach().numpy()   
-    # nis = np.where(mse_val["r2s_val"][eid]>0.3)[0].tolist()
-    nis = list(range(n_neurons))
+var_name2idx = {'block': [2], 'choice': [0], 'reward': [1]}
+var_value2label = {'block': {(0.2,): "p(left)=0.2", (0.5,): "p(left)=0.5", (0.8,): "p(left)=0.8",},
+                   'choice': {(-1.0,): "right", (1.0,): "left"},
+                   'reward': {(0.,): "no reward", (1.,): "reward", }}
+var_tasklist = ['block', 'choice', 'reward']
+var_behlist = []
+
+avail_beh = ['wheel-speed', 'whisker-motion-energy']
+for i in range(y_test.shape[-1]):
     r2_result_list = []
-    for ni in nis:
-        X = X_all.copy()
-        X[:,:,:-2] = np.round(X_all[:,:,:-2], 0)
-        y = y_all[:,:,ni] #/0.01
-        y_pred = y_all_pred[:,:,ni] #/0.01
-        _r2_psth, _r2_trial = viz_single_cell(
-            X, y, y_pred, "temp", 
-            {"block": [0,1,2], "choice": [3,4], "reward":[5,6],}, 
-            ["block", "choice","reward"], None, [],
-            subtract_psth=None, aligned_tbins=[19], clusby="y_pred"
-        )
-        plt.savefig(os.path.join(save_path, f"{ni}_{mse_val['r2s_val'][eid][ni]:.2f}.png")); 
-        plt.close('all')
-        r2_result_list.append([_r2_psth, _r2_trial])
-
-    r2_all = np.array(r2_result_list)
-    r2_psth_mean = np.nanmean(r2_result_list.T[0]) 
-    r2_trial_mean = np.nanstd(r2_result_list.T[1])
-    np.save(os.path.join(save_path, f"r2.npy"), r2_all)
+    y = y_test[:,:,[i]]
+    y_pred = pred[i] 
+    _r2_psth, _r2_trial = viz_single_cell(
+        X, y, y_pred, 
+        var_name2idx, var_tasklist, var_value2label, var_behlist, 
+        subtract_psth='task', 
+        aligned_tbins=[],
+        neuron_idx=avail_beh[i],
+        neuron_region='',
+        method=args.model, 
+        save_path=save_path,
+        save_plot=False,
+    )
+    plt.close('all')
     results.update({
-        "mean_r2_psth": r2_psth_mean,
-        "mean_r2_trial": r2_trial_mean,
+        f"{avail_beh[i]}_r2_psth": _r2_psth,
+        f"{avail_beh[i]}_r2_trial": _r2_trial,
     })
     
 print(results)
