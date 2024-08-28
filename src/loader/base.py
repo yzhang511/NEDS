@@ -5,6 +5,7 @@ from utils.dataset_utils import get_binned_spikes_from_sparse
 from torch.utils.data.sampler import Sampler
 from typing import List, Optional, Tuple, Dict
 from torch.utils.data import Dataset
+from numpy.random import default_rng
 
 def _pad_seq_right_to_n(
     seq: np.ndarray,
@@ -215,9 +216,10 @@ class LengthGroupedSampler(Sampler):
 
 class SessionSampler(Sampler):
     """Custom Sampler that batches data by session ID (eid)."""
-    def __init__(self, dataset, shuffle=True):
+    def __init__(self, dataset, shuffle=True, seed=42):
         self.data_source = dataset
         self.shuffle = shuffle
+        self.random_state = default_rng(seed)
         self.indices_by_eid = self._group_by_eid()
         
     def _group_by_eid(self):
@@ -230,10 +232,10 @@ class SessionSampler(Sampler):
     def __iter__(self):
         group_indices = list(self.indices_by_eid.values())
         if self.shuffle:
-            np.random.shuffle(group_indices)
+            self.random_state.shuffle(group_indices)
         for indices in group_indices:
             if self.shuffle:
-                np.random.shuffle(indices)
+                self.random_state.shuffle(indices)
             yield from indices
 
     def __len__(self):

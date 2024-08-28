@@ -16,6 +16,7 @@ def make_loader(dataset,
                  use_nemo=False,
                  dataset_name = "ibl",
                  stitching = False,
+                 seed=42,
                  shuffle = True):
     
     dataset = BaseDataset(dataset=dataset, 
@@ -37,11 +38,11 @@ def make_loader(dataset,
     print(f"len(dataset): {len(dataset)}")
 
     if stitching:
-        session_sampler = LengthStitchGroupedSampler(
-            dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
-        )
+        # session_sampler = LengthStitchGroupedSampler(
+        #     dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
+        # )
         
-        # session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle)
+        session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
         
         dataloader = torch.utils.data.DataLoader(
             dataset,
