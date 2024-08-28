@@ -145,7 +145,9 @@ train_dataloader = make_loader(train_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
+                            # stitching=True if args.num_sessions > 1 else False,
                             stitching=True,
+                            seed=config.seed,
                             shuffle=True)
 
 val_dataloader = make_loader(val_dataset, 
@@ -159,7 +161,9 @@ val_dataloader = make_loader(val_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=True if args.num_sessions > 1 else False,
+                            # stitching=True if args.num_sessions > 1 else False,
+                            stitching=True,
+                            seed=config.seed,
                             shuffle=False)
 
 test_dataloader = make_loader(test_dataset, 
@@ -173,7 +177,9 @@ test_dataloader = make_loader(test_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=True if args.num_sessions > 1 else False,
+                            # stitching=True if args.num_sessions > 1 else False,
+                            stitching=True,
+                            seed=config.seed,
                             shuffle=False)
 
 encoder_embeddings, decoder_embeddings = {}, {}
