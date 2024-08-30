@@ -36,6 +36,7 @@ ap.add_argument("--dummy_load", action='store_true')
 ap.add_argument("--dummy_size", type=int, default=50000)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--use_contrastive", action='store_true')
+ap.add_argument("--use_prompt", action='store_true')
 
 args = ap.parse_args()
 
@@ -46,10 +47,16 @@ eid = args.eid
 avail_beh = ['wheel-speed', 'whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
-if args.use_contrastive:
+if args.use_contrastive and not args.use_prompt:
     model_config = "src/configs/multi_modal/mm_contrastive.yaml"
-else:
+elif args.use_prompt and not args.use_contrastive:
+    model_config = "src/configs/multi_modal/mm_prompt.yaml"
+elif args.use_prompt and args.use_contrastive:
+    model_config = "src/configs/multi_modal/mm_contrastive_prompt.yaml"
+elif not args.use_prompt and not args.use_contrastive:
     model_config = "src/configs/multi_modal/mm.yaml"
+else:
+    raise ValueError("Invalid configuration")
 kwargs = {
     "model": f"include:{model_config}",
 }
@@ -109,6 +116,7 @@ log_dir = os.path.join(base_path,
                        f"ratio-{args.mask_ratio}",
                        f"mixedTraining-{args.mixed_training}",
                        f"contrast-{config.model.use_contrastive}",
+                       f"prompt-{config.model.use_prompt}",
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -116,7 +124,7 @@ os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}_prompt-{}".format(
             num_sessions,
             eid_, 
             '-'.join(modal_filter['input']),
@@ -125,7 +133,8 @@ if config.wandb.use:
             mask_mode,
             args.mask_ratio,
             args.mixed_training,
-            config.model.use_contrastive
+            config.model.use_contrastive,
+            args.use_prompt
         )
     )
 

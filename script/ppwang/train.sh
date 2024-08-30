@@ -27,6 +27,8 @@ if [ $model_mode = "mm" ]; then
                                     --mixed_training \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
+                                    --use_contrastive \
+                                    --use_prompt \
                                     --model_mode $model_mode 
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then

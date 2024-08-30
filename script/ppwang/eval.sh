@@ -32,6 +32,8 @@ if [ $model_mode = "mm" ]; then
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
+                                --use_contrastive \
+                                --use_prompt \
                                 --wandb  
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then

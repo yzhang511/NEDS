@@ -217,9 +217,11 @@ def metrics_list(gt, pred, metrics=["bps", "r2", "rsquared", "mse", "mae", "acc"
         for i in range(gt.shape[-1]):
             r2_list = []
             for j in range(gt.shape[0]):
-                r2 = r2_score(y_true=gt[j,:,i], y_pred=pred[j,:,i], device=device) 
+                r2 = r2_score(y_true=gt[j,:,i], y_pred=pred[j,:,i], device=device)
+                if np.isinf(r2):
+                    r2 = np.nan
                 r2_list.append(r2)
-            r2 += np.mean(r2_list)
+            r2 += np.nanmean(r2_list)
         results["rsquared"] = r2 / gt.shape[-1]
         
     if "mse" in metrics:

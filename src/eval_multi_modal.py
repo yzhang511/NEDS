@@ -39,6 +39,7 @@ ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--use_contrastive", action='store_true')
+ap.add_argument("--use_prompt", action='store_true')
 
 args = ap.parse_args()
 
@@ -117,6 +118,7 @@ model_path = os.path.join(base_path,
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
                         f"contrast-{args.use_contrastive}",
+                        f"prompt-{args.use_prompt}",
                         best_ckpt_path
                         )
 
@@ -132,13 +134,14 @@ save_path = os.path.join(base_path,
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
                         f"contrast-{args.use_contrastive}",
+                        f"prompt-{args.use_prompt}"
                         )
 
 if args.wandb:
     wandb.init(
         project="4m-single",
         config=args,
-        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}".format(
+        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}_prompt-{}".format(
             args.num_sessions,
             eid[:5], 
             '-'.join(modal_filter['input']),
@@ -147,7 +150,8 @@ if args.wandb:
             mask_mode,
             args.mask_ratio,
             args.mixed_training,
-            args.use_contrastive
+            args.use_contrastive,
+            args.use_prompt
     )
 )
 
