@@ -67,7 +67,8 @@ config = update_config(f"src/configs/multi_modal/trainer_mm.yaml", config)
 config['model']['masker']['mode'] = args.mask_mode
 config['model']['masker']['ratio'] = args.mask_ratio
 set_seed(config.seed)
-
+torch.use_deterministic_algorithms(True)
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8" 
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 

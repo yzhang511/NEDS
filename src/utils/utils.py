@@ -31,6 +31,8 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False  # ADD
+    torch.backends.cudnn.enabled = True     # ADD
     print('seed set to {}'.format(seed))
 
 def move_batch_to_device(batch, device):
