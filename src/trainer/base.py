@@ -91,14 +91,12 @@ class MultiModalTrainer():
                 for mod in self.mod_to_indx.keys():
                     if mod == 'ap':
                         mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-                        mod_dict[mod]['inputs'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.float32)
                     else:
                         mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
             elif training_mode == 'decoding':
                 for mod in self.mod_to_indx.keys():
                     if mod == 'behavior':
                         mod_dict[mod]['eval_mask'] = torch.ones_like(batch['target']).to(batch['target'].device, torch.int64)
-                        mod_dict[mod]['inputs'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.float32)
                     else:
                         mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
             elif training_mode == 'token_masking':
@@ -107,11 +105,9 @@ class MultiModalTrainer():
             elif training_mode == 'spike-spike':
                 mod_dict['ap']['eval_mask'] = None
                 mod_dict['behavior']['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
-                mod_dict['behavior']['inputs'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.float32)
             elif training_mode == 'behavior-behavior':
                 mod_dict['behavior']['eval_mask'] = None
                 mod_dict['ap']['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-                mod_dict['ap']['inputs'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.float32)
             else:
                raise Exception(f"Training objective not implemented yet.")
 

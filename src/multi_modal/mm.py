@@ -84,8 +84,10 @@ class MultiModal(nn.Module):
             self.spike_projection = nn.Linear(100 * self.hidden_size, 768)
             self.behavior_projection = nn.Linear(100 * self.hidden_size, 768)
         if self.use_prompt:
-            self.spike_prompt = nn.Linear(self.hidden_size, self.hidden_size)
-            self.behavior_prompt = nn.Linear(self.hidden_size, self.hidden_size)
+            self.spike_decoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
+            self.behavior_decoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
+            self.spike_encoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
+            self.behavior_encoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
         self.loss_mod = {
             'ap': nn.PoissonNLLLoss(reduction="none", log_input=True),
             'behavior': nn.MSELoss(reduction="none"),
@@ -103,7 +105,6 @@ class MultiModal(nn.Module):
         encoder_mask = []
         attention_mask = []
         mod_mask = []
-        mod_embed = []
 
         for mod, d in mod_dict.items():
             encoder_tokens.append(d['x'])
@@ -111,19 +112,15 @@ class MultiModal(nn.Module):
             encoder_mask.append(d['inputs_mask'])
             attention_mask.append(d['encoder_attn_mask'])
             mod_mask.append(torch.full_like(d['inputs_mask'], self.mod_to_indx[mod], dtype=torch.int16))
-            mod_embed.append(d['mod_embed'])
 
-        if len(mod_embed) == 2:
-            mod_embed[0], mod_embed[1] = mod_embed[1], mod_embed[0]
     
         encoder_tokens = torch.cat(encoder_tokens, dim=1)
         encoder_emb = torch.cat(encoder_emb, dim=1)
         encoder_mask = torch.cat(encoder_mask, dim=1)
         attention_mask = torch.cat(attention_mask, dim=1)
         mod_mask = torch.cat(mod_mask, dim=1)
-        mod_embed = torch.cat(mod_embed, dim=1)
 
-        return encoder_tokens, encoder_emb, encoder_mask, attention_mask, mod_mask, mod_embed
+        return encoder_tokens, encoder_emb, encoder_mask, attention_mask, mod_mask
 
     
     def cat_decoder_tensors(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[torch.Tensor]:
@@ -156,14 +153,14 @@ class MultiModal(nn.Module):
     
     def forward_mask_encoder(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[torch.Tensor]:
         
-        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask, mod_embed = self.cat_encoder_tensors(mod_dict)
+        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask = self.cat_encoder_tensors(mod_dict)
 
         B, N, _ = encoder_tokens.size()
 
         encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
         
         encoder_tokens[:,encoder_mask_ids,:] = 0.
-        encoder_emb[:,encoder_mask_ids,:] = 0.
+        # encoder_emb[:,encoder_mask_ids,:] = 0.
 
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
@@ -173,7 +170,6 @@ class MultiModal(nn.Module):
         # context_mask = repeat(context_mask, "n1 n2 -> b n1 n2", b=B)
         ###
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
-        encoder_tokens = encoder_tokens + mod_embed if len(mod_dict) > 1  and self.use_prompt else encoder_tokens
         return encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask
 
     
@@ -305,8 +301,20 @@ class MultiModal(nn.Module):
         B, N, D = context.size()
         spike_context = context[:, :N//2, :]
         behavior_context = context[:, N//2:, :]
-        spike_adapt = self.spike_prompt(spike_context)
-        behavior_adapt = self.behavior_prompt(behavior_context)
+        spike_adapt = self.spike_decoder_prompt(spike_context)
+        behavior_adapt = self.behavior_decoder_prompt(behavior_context)
+        # concatenate adapted features and swap modalities
+        adapt = torch.cat([behavior_adapt, spike_adapt], dim=1)
+        return adapt
+
+    def forward_encoder_prompt(self, context):
+        # assert mod has 2
+        assert len(self.avail_mod) == 2, "Only two modalities are supported for contrastive loss."
+        B, N, D = context.size()
+        spike_context = context[:, :N//2, :]
+        behavior_context = context[:, N//2:, :]
+        spike_adapt = self.spike_encoder_prompt(spike_context)
+        behavior_adapt = self.behavior_encoder_prompt(behavior_context)
         # concatenate adapted features and swap modalities
         adapt = torch.cat([behavior_adapt, spike_adapt], dim=1)
         return adapt
@@ -359,6 +367,8 @@ class MultiModal(nn.Module):
         decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, decoder_mod_mask = self.forward_mask_decoder(decoder_mod_dict)
 
         # Encoder
+        # prompt for encoder
+        encoder_tokens = encoder_tokens + self.forward_encoder_prompt(encoder_tokens) if self.use_prompt else encoder_tokens
         x = encoder_tokens + encoder_emb
         x = self.forward_encoder(x, encoder_attn_mask=encoder_attn_mask)
 

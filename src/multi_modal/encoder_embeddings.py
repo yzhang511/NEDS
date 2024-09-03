@@ -47,9 +47,7 @@ class EncoderEmbeddingLayer(nn.Module):
             self.projection = nn.Linear(self.input_dim, hidden_size)
             self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
             self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
-        self.use_prompt = config.use_prompt
-        if self.use_prompt:
-            self.mod_embed = nn.Linear(hidden_size, hidden_size)
+
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
         inputs, inputs_timestamp, inputs_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
@@ -67,8 +65,6 @@ class EncoderEmbeddingLayer(nn.Module):
 
         if self.pos:
             x_embed += self.pos_embed(inputs_timestamp)
-        # mod prompt
-        d['mod_embed'] = self.mod_embed(x) if self.use_prompt else torch.zeros_like(x)
 
         return self.dropout(x), x_embed
 
