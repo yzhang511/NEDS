@@ -135,11 +135,13 @@ class MultiModalTrainer():
                     best_eval_avg_spike_r2 = eval_epoch_results['eval_avg_spike_r2']
                     print(f"epoch: {epoch} best trial avg spike r2: {best_eval_avg_spike_r2}")
                     self.save_model(name="best_spike", epoch=epoch)
+                    wandb.log({"best_spike_epoch": epoch})
 
                 if eval_epoch_results[f'eval_avg_behave_r2'] > best_eval_avg_behave_r2:
                     best_eval_avg_behave_r2 = eval_epoch_results['eval_avg_behave_r2']
                     print(f"epoch: {epoch} best trial avg behavior r2: {best_eval_avg_behave_r2}")
                     self.save_model(name="best_behave", epoch=epoch)
+                    wandb.log({"best_behave_epoch": epoch})
                 #####
                 
                 if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
@@ -199,21 +201,31 @@ class MultiModalTrainer():
 
             if self.config.wandb.use:
                 wandb.log({
+                    #####
                     "train_loss": train_epoch_results['train_loss'],
+                    "train_spike_loss": train_epoch_results['train_spike_loss'],
+                    "train_behave_loss": train_epoch_results['train_behave_loss'],
                     "eval_loss": eval_epoch_results['eval_loss'],
+                    "eval_spike_loss": eval_epoch_results['eval_spike_loss'],
+                    "eval_behave_loss": eval_epoch_results['eval_behave_loss'],
+                    #####
                     f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
                     f"eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
                     f"eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
                     f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
-                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc']
+                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc'],
                 })
                 
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
+            #####
             wandb.log({"best_eval_loss": best_eval_loss,
-                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric}
+                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric},
+                       "best_eval_avg_spike_r2": best_eval_avg_spike_r2},
+                       "best_eval_avg_behave_r2": best_eval_avg_behave_r2},
                      )
+            #####
 
     
     def train_epoch(self, epoch):
