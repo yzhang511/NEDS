@@ -221,9 +221,10 @@ class MultiModalTrainer():
         if self.config.wandb.use:
             #####
             wandb.log({"best_eval_loss": best_eval_loss,
-                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric},
-                       "best_eval_avg_spike_r2": best_eval_avg_spike_r2},
-                       "best_eval_avg_behave_r2": best_eval_avg_behave_r2},
+                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric,
+                       "best_eval_avg_spike_r2": best_eval_avg_spike_r2,
+                       "best_eval_avg_behave_r2": best_eval_avg_behave_r2,
+                      }
                      )
             #####
 
