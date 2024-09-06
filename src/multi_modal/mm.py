@@ -242,7 +242,16 @@ class MultiModal(nn.Module):
             mod_preds[mod] = preds
             mod_targets[mod] = targets
 
-        loss = sum(mod_loss.values()) / sum(mod_n_examples.values())
+        #####
+        for mod, d in decoder_mod_dict.items():
+            if mod_n_examples[mod] == 0:
+                mod_loss[mod] *= mod_n_examples[mod]
+            else:
+                mod_loss[mod] /= mod_n_examples[mod]                
+        loss = sum(mod_loss.values())
+        #####
+        # loss = sum(mod_loss.values()) / sum(mod_n_examples.values())
+        
         if contrastive_loss_dict is not None:
             loss += contrastive_loss_dict["loss"]
             loss /= 2
@@ -306,14 +315,13 @@ class MultiModal(nn.Module):
             
             if mod_dict[mod]['masking_mode']:
                 self.masker.mode = mod_dict[mod]['masking_mode']
-                # print(f"masking mode: {self.masker.mode}")
-                # print(f"unmask inputs: {mod_dict[mod]['inputs'].sum()}")
                 mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
-                # print(f"mask inputs: {mod_dict[mod]['inputs'].sum()}")
-                # print(f"spike mask: {spike_mask.sum()}")
                 mod_dict[mod]['spike_mask'] = spike_mask
             else:
-                # print(f"masking mode: {self.masker.mode}")
+                #####
+                if mod_dict[mod]['training_mode'] in ['behavior-behavior', 'token_masking']:
+                    self.masker.mode == 'causal'
+                #####
                 if mod_dict[mod]['eval_mask'] is None:
                     _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
                 else:

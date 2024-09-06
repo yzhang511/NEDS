@@ -90,7 +90,10 @@ class DecoderEmbedding(nn.Module):
         )
 
         if stitching:
-            self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size, mod=mod)
+            #####
+            self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.n_channel, mod=mod)
+            #####
+            # self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size, mod=mod)
         else:
             self.out = nn.Linear(self.hidden_size, self.output_channel)
     
@@ -112,10 +115,17 @@ class DecoderEmbedding(nn.Module):
         n_mod : int,
     ) -> Dict[str, torch.Tensor]:   
         
-        B, N, _ = y.size()
+        B, N, P = y.size()
         
         y_mod = y[decoder_mod_mask == mod_idx]
         eid = d['eid']
+
+        #####
+        if mod_idx == 0:
+            y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
+        elif mod_idx == 1:
+            y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
+        #####
         
         # y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
         if hasattr(self, 'spike_stitch_proj_decoder'):

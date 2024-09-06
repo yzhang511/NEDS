@@ -136,7 +136,7 @@ save_path = os.path.join(base_path,
 
 if args.wandb:
     wandb.init(
-        project="4m-single",
+        project="4m-benchmark",
         config=args,
         name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}".format(
             args.num_sessions,
