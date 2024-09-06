@@ -105,21 +105,6 @@ else:
 print('Start model evaluation.')
 print('=======================')
 
-model_path = os.path.join(base_path, 
-                        "results",
-                        f"sesNum-{args.num_sessions}",
-                        f"ses-{eid_}",
-                        "set-train",
-                        f"inModal-{'-'.join(modal_filter['input'])}",
-                        f"outModal-{'-'.join(modal_filter['output'])}",
-                        f"mask-{args.mask_type}",
-                        f"mode-{mask_mode}",
-                        f"ratio-{args.mask_ratio}",
-                        f"mixedTraining-{args.mixed_training}",
-                        f"contrast-{args.use_contrastive}",
-                        best_ckpt_path
-                        )
-
 save_path = os.path.join(base_path,
                         "results",
                         f"sesNum-{args.num_sessions}",
@@ -151,19 +136,72 @@ if args.wandb:
     )
 )
 
-configs = {
-    'model_config': model_config,
-    'model_path': model_path,
-    'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
-    'dataset_path': None, 
-    'seed': 42,
-    'mask_name': mask_name,
-    'eid': eid,
-    'avail_mod': avail_mod,
-    'avail_beh': avail_beh,
-}  
+avg_state_dict = []
+for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
+    model_path = os.path.join(base_path, 
+                            "results",
+                            f"sesNum-{args.num_sessions}",
+                            f"ses-{eid_}",
+                            "set-train",
+                            f"inModal-{'-'.join(modal_filter['input'])}",
+                            f"outModal-{'-'.join(modal_filter['output'])}",
+                            f"mask-{args.mask_type}",
+                            f"mode-{mask_mode}",
+                            f"ratio-{args.mask_ratio}",
+                            f"mixedTraining-{args.mixed_training}",
+                            f"contrast-{args.use_contrastive}",
+                            best_ckpt_path
+                            )
+    
+    configs = {
+        'model_config': model_config,
+        'model_path': model_path,
+        'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+        'dataset_path': None, 
+        'seed': 42,
+        'mask_name': mask_name,
+        'eid': eid,
+        'avail_mod': avail_mod,
+        'avail_beh': avail_beh,
+    }  
+    
+    model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+    model_state_dict = model.state_dict()
+    avg_state_dict.append(model_state_dict)
 
-model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+for key in model_state_dict:
+    model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
+    
+model.load_state_dict(model_state_dict)
+
+# model_path = os.path.join(base_path, 
+#                         "results",
+#                         f"sesNum-{args.num_sessions}",
+#                         f"ses-{eid_}",
+#                         "set-train",
+#                         f"inModal-{'-'.join(modal_filter['input'])}",
+#                         f"outModal-{'-'.join(modal_filter['output'])}",
+#                         f"mask-{args.mask_type}",
+#                         f"mode-{mask_mode}",
+#                         f"ratio-{args.mask_ratio}",
+#                         f"mixedTraining-{args.mixed_training}",
+#                         f"contrast-{args.use_contrastive}",
+#                         best_ckpt_path
+#                         )
+
+# configs = {
+#     'model_config': model_config,
+#     'model_path': model_path,
+#     'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+#     'dataset_path': None, 
+#     'seed': 42,
+#     'mask_name': mask_name,
+#     'eid': eid,
+#     'avail_mod': avail_mod,
+#     'avail_beh': avail_beh,
+# }  
+
+# model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 
 print("(eval) masking ratio: ", model.masker.ratio)
 print("(eval) masking mask regions: ", model.masker.mask_regions)
