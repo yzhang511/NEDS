@@ -380,7 +380,8 @@ class MultiModal(nn.Module):
 
         # Decoder
         # prompt for decoder
-        decoder_tokens = decoder_tokens + self.forward_decoder_prompt(x) if self.use_prompt else decoder_tokens
+        decoder_tokens = decoder_tokens + self.forward_decoder_prompt(x) if self.use_prompt else decoder_tokens # feature adaptation
+        # decoder_tokens = decoder_tokens + self.forward_decoder_prompt(decoder_tokens) if self.use_prompt else decoder_tokens # token adaptation
         context = self.decoder_proj_context(x) + encoder_emb
         y = decoder_tokens + decoder_emb
         y = self.forward_decoder(y, context, encoder_attn_mask=encoder_attn_mask, decoder_attn_mask=decoder_attn_mask)
