@@ -605,6 +605,9 @@ def co_smoothing_eval(
                             mod_dict[mod]['masking_mode'] = model.masker.mode # change later
                         else:
                             mod_dict[mod]['masking_mode'] = None
+                        #####
+                        mod_dict[mod]['training_mode'] = 'encoding'
+                        #####
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
@@ -712,6 +715,9 @@ def co_smoothing_eval(
                             mod_dict[mod]['masking_mode'] = model.masker.mode # change later
                         else:
                             mod_dict[mod]['masking_mode'] = None
+                        #####
+                        mod_dict[mod]['training_mode'] = 'decoding'
+                        #####
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
@@ -1587,4 +1593,3 @@ def compute_R2_main(y, y_pred, clip=True):
     else:
         return r2s
         
-

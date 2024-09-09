@@ -44,8 +44,6 @@ class MultiModalTrainer():
 
         self.mixed_training = kwargs.get("mixed_training", False)
         if self.mixed_training:
-            # self.training_schemes = ['encoding', 'decoding', 'token_masking']
-            # self.training_schemes = ['encoding', 'decoding']
             self.training_schemes = [
                 'encoding', 'decoding', 'spike-spike', 'behavior-behavior', 'token_masking'
             ]
@@ -70,6 +68,9 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
+            #####
+            mod_dict[mod]['training_mode'] = training_mode
+            #####
             
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
@@ -117,6 +118,10 @@ class MultiModalTrainer():
     def train(self):
         best_eval_loss = torch.tensor(float('inf'))
         best_eval_trial_avg_metric = -torch.tensor(float('inf'))
+        #####
+        best_eval_avg_spike_r2 = -torch.tensor(float('inf'))
+        best_eval_avg_behave_r2 = -torch.tensor(float('inf'))
+        #####
         
         for epoch in range(self.config.training.num_epochs):
             train_epoch_results = self.train_epoch(epoch)
@@ -124,6 +129,21 @@ class MultiModalTrainer():
             print(f"epoch: {epoch} train loss: {train_epoch_results['train_loss'] }")
 
             if eval_epoch_results:
+
+                #####
+                if eval_epoch_results[f'eval_avg_spike_r2'] > best_eval_avg_spike_r2:
+                    best_eval_avg_spike_r2 = eval_epoch_results['eval_avg_spike_r2']
+                    print(f"epoch: {epoch} best trial avg spike r2: {best_eval_avg_spike_r2}")
+                    self.save_model(name="best_spike", epoch=epoch)
+                    wandb.log({"best_spike_epoch": epoch})
+
+                if eval_epoch_results[f'eval_avg_behave_r2'] > best_eval_avg_behave_r2:
+                    best_eval_avg_behave_r2 = eval_epoch_results['eval_avg_behave_r2']
+                    print(f"epoch: {epoch} best trial avg behavior r2: {best_eval_avg_behave_r2}")
+                    self.save_model(name="best_behave", epoch=epoch)
+                    wandb.log({"best_behave_epoch": epoch})
+                #####
+                
                 if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
                     best_eval_loss = eval_epoch_results[f'eval_loss']
                     best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
@@ -181,25 +201,40 @@ class MultiModalTrainer():
 
             if self.config.wandb.use:
                 wandb.log({
+                    #####
                     "train_loss": train_epoch_results['train_loss'],
+                    "train_spike_loss": train_epoch_results['train_spike_loss'],
+                    "train_behave_loss": train_epoch_results['train_behave_loss'],
                     "eval_loss": eval_epoch_results['eval_loss'],
+                    "eval_spike_loss": eval_epoch_results['eval_spike_loss'],
+                    "eval_behave_loss": eval_epoch_results['eval_behave_loss'],
+                    #####
                     f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
                     f"eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
                     f"eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
                     f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
-                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc']
+                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc'],
                 })
                 
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
+            #####
             wandb.log({"best_eval_loss": best_eval_loss,
-                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric}
+                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric,
+                       "best_eval_avg_spike_r2": best_eval_avg_spike_r2,
+                       "best_eval_avg_behave_r2": best_eval_avg_behave_r2,
+                      }
                      )
+            #####
 
     
     def train_epoch(self, epoch):
         train_loss = 0.
+        #####
+        train_spike_loss = 0.
+        train_behave_loss = 0.
+        #####
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
@@ -216,8 +251,16 @@ class MultiModalTrainer():
             self.lr_scheduler.step()
             self.optimizer.zero_grad()
             train_loss += loss.item()
+            #####
+            train_spike_loss += outputs.mod_loss['ap'].item()
+            train_behave_loss += outputs.mod_loss['behavior'].item()
+            #####
         return{
-            "train_loss": train_loss/len(self.train_dataloader)
+            "train_loss": train_loss/len(self.train_dataloader),
+            #####
+            "train_spike_loss": train_spike_loss/len(self.train_dataloader),
+            "train_behave_loss": train_behave_loss/len(self.train_dataloader),
+            #####
         }
     
     
@@ -225,6 +268,10 @@ class MultiModalTrainer():
         
         self.model.eval()
         eval_loss = 0.
+        #####
+        eval_spike_loss = 0.
+        eval_behave_loss = 0.
+        #####
         session_results = {}
         for eid in self.eid_list:
             session_results[eid] = {}
@@ -234,31 +281,68 @@ class MultiModalTrainer():
             session_results[eid]['b2s_acc'] = []
 
         if self.eval_dataloader:
+            #####
             with torch.no_grad():  
-                for batch in self.eval_dataloader:
-                    if self.config.training.mask_type == "input":
-                        self.masking_mode = random.sample(self.masking_schemes, 1)[0]
-                    if self.mixed_training:
-                        self.training_mode = random.sample(self.training_schemes, 1)[0]
-                    outputs = self._forward_model_outputs(
-                        batch, masking_mode=self.masking_mode, training_mode=self.training_mode
-                    )
-                    loss = outputs.loss
-                    eval_loss += loss.item()
-                    num_neuron = batch['spikes_data'].shape[2] 
-                    eid = batch['eid'][0]
 
-                    for mod in self.modal_filter['output']:
-                        if mod == 'ap':
-                            session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone()[:,:,:num_neuron])
-                            session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone()[:,:,:num_neuron])
-                        elif mod == 'behavior':
-                            session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
-                            session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
-                    if outputs.contrastive_dict:
-                        session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
-                        session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
+                if 'ap' in self.modal_filter['output']:
+                    
+                    for batch in self.eval_dataloader:
+                        
+                        if self.config.training.mask_type == "input":
+                            self.masking_mode = random.sample(self.masking_schemes, 1)[0]
+                        # if self.mixed_training:
+                            # self.training_mode = random.sample(self.training_schemes, 1)[0]
+                        
+                        outputs = self._forward_model_outputs(
+                            batch, masking_mode=self.masking_mode, training_mode="encoding"
+                        )
+                        loss = outputs.loss
+                        eval_loss += loss.item()
+                        eval_spike_loss += outputs.mod_loss['ap'].item()
+                        num_neuron = batch['spikes_data'].shape[2] 
+                        eid = batch['eid'][0]
 
+                        session_results[eid]['ap']["gt"].append(
+                            outputs.mod_targets['ap'].clone()[:,:,:num_neuron]
+                        )
+                        session_results[eid]['ap']["preds"].append(
+                            outputs.mod_preds['ap'].clone()[:,:,:num_neuron]
+                        )
+    
+                        if outputs.contrastive_dict:
+                            session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
+                            session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
+
+                if 'behavior' in self.modal_filter['output']:
+                    
+                    for batch in self.eval_dataloader:
+                        
+                        if self.config.training.mask_type == "input":
+                            self.masking_mode = random.sample(self.masking_schemes, 1)[0]
+                        # if self.mixed_training:
+                            # self.training_mode = random.sample(self.training_schemes, 1)[0]
+                        
+                        outputs = self._forward_model_outputs(
+                            batch, masking_mode=self.masking_mode, training_mode="decoding"
+                        )
+                        loss = outputs.loss
+                        eval_loss += loss.item()
+                        eval_behave_loss += outputs.mod_loss['behavior'].item()
+                        num_neuron = batch['spikes_data'].shape[2] 
+                        eid = batch['eid'][0]
+
+                        session_results[eid]['behavior']["gt"].append(
+                            outputs.mod_targets['behavior'].clone()[:,:,:num_neuron]
+                        )
+                        session_results[eid]['behavior']["preds"].append(
+                            outputs.mod_preds['behavior'].clone()[:,:,:num_neuron]
+                        )
+    
+                        if outputs.contrastive_dict:
+                            session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
+                            session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
+            #####
+            
             gt, preds, s2b_acc_list, b2s_acc_list = {}, {}, [], []
             spike_r2_results_list, behave_r2_results_list = [], []
             for idx, eid in enumerate(self.eid_list):
@@ -271,27 +355,32 @@ class MultiModalTrainer():
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
 
+                #####
+                if eid not in self.session_active_neurons:
+                    self.session_active_neurons[eid] = {}
+
                 for mod in self.modal_filter['output']:
-                    if len(self.session_active_neurons) < len(self.eid_list):
-                        mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
-                        active_neurons = np.argwhere(mean_fr > 1).flatten().tolist()
-                        # active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
-                        if eid not in self.session_active_neurons:
-                            self.session_active_neurons[eid] = {}
-                            if 'behavior' in self.modal_filter['output']:
-                                self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
-                        self.session_active_neurons[eid][mod] = active_neurons
+                    
                     if mod == 'ap':
-                        # results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
-                        #                     pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
-                        #                     metrics=["r2"], 
-                        #                     device=self.accelerator.device)
-                        # spike_r2_results_list.append(results["r2"])
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]],
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]], 
-                                            metrics=["rsquared"], 
-                                            device=self.accelerator.device)
-                        spike_r2_results_list.append(results["rsquared"])
+                        mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
+                        active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
+                        # active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                        self.session_active_neurons[eid][mod] = active_neurons
+                        
+                    if mod == 'behavior':
+                        self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
+                #####
+                    
+                    if mod == 'ap':
+                        #####
+                        results = metrics_list(
+                            gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
+                            pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
+                            metrics=["bps"], 
+                            device=self.accelerator.device
+                        )
+                        spike_r2_results_list.append(results["bps"])
+                        #####
                     elif mod == 'behavior':
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
@@ -313,6 +402,10 @@ class MultiModalTrainer():
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
+            #####
+            "eval_spike_loss": eval_spike_loss/len(self.eval_dataloader),
+            "eval_behave_loss": eval_behave_loss/len(self.eval_dataloader),
+            #####
             f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2]),
             f"eval_avg_spike_r2": spike_r2,
             f"eval_avg_behave_r2": behave_r2,
