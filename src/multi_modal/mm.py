@@ -247,7 +247,7 @@ class MultiModal(nn.Module):
             if mod_n_examples[mod] == 0:
                 mod_loss[mod] *= mod_n_examples[mod]
             else:
-                mod_loss[mod] /= mod_n_examples[mod]                
+                mod_loss[mod] /= mod_n_examples[mod]     
         loss = sum(mod_loss.values())
         #####
         # loss = sum(mod_loss.values()) / sum(mod_n_examples.values())

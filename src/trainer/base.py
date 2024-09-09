@@ -6,7 +6,6 @@ from utils.utils import move_batch_to_device, metrics_list, plot_gt_pred, plot_n
 from tqdm import tqdm
 import random
 
-
 class MultiModalTrainer():
     def __init__(
         self,
@@ -247,6 +246,78 @@ class MultiModalTrainer():
             )
             loss = outputs.loss
             loss.backward()
+            #####
+            
+            # is_multi_modal = (len(self.modal_filter['output']) > 1)
+            
+            # # Gradient Modulation 
+            # if is_multi_modal:
+            #     score_s = outputs.mod_loss['ap'].clone()
+            #     score_b = outputs.mod_loss['behavior'].clone()
+            #     score_total = loss.clone()
+    
+            #     # ratio_s = score_s / score_b
+            #     # ratio_b = 1 / ratio_s
+
+            #     ratio_s = score_s / score_total
+            #     ratio_b = 1 - ratio_s
+    
+            #     """
+            #     Below is the Eq.(10) in CVPR paper:
+            #             1 - tanh(alpha * rho_t_u), if rho_t_u > 1
+            #     k_t_u =
+            #             1,                         else
+            #     coeff_u is k_t_u, where t means iteration steps and u is modality indicator, either a or v.
+            #     """
+            #     relu = torch.nn.ReLU(inplace=True)
+            #     tanh = torch.nn.Tanh()
+
+            #     # Tunable Parameters
+            #     alpha = 0.1
+            #     modulation_starts = 0
+            #     modulation_ends = 2000
+                
+            #     # if ratio_s > 1:
+            #     if ratio_s > 1/2:
+            #         coeff_s = 1 - tanh(alpha * relu(ratio_s))
+            #         coeff_b = 1
+            #     else:
+            #         coeff_s = 1 - tanh(alpha * relu(ratio_b))
+            #         coeff_b = 1
+
+            #     if modulation_starts <= epoch <= modulation_ends: 
+
+            #         for mod in self.modal_filter['output']:
+
+            #             for param in self.model.encoder_embeddings[mod].parameters():
+        
+            #                 if mod == 'ap':
+            #                     param.grad = param.grad * coeff_s + \
+            #                          torch.zeros_like(param.grad).normal_(
+            #                              0, param.grad.std().item() + 1e-8
+            #                          )
+        
+            #                 if mod == 'behavior':
+            #                     param.grad = param.grad * coeff_b + \
+            #                          torch.zeros_like(param.grad).normal_(
+            #                              0, param.grad.std().item() + 1e-8
+            #                          )
+
+            #             for param in self.model.decoder_embeddings[mod].parameters():
+        
+            #                 if mod == 'ap':
+            #                     param.grad = param.grad * coeff_s + \
+            #                          torch.zeros_like(param.grad).normal_(
+            #                              0, param.grad.std().item() + 1e-8
+            #                          )
+        
+            #                 if mod == 'behavior':
+            #                     param.grad = param.grad * coeff_b + \
+            #                          torch.zeros_like(param.grad).normal_(
+            #                              0, param.grad.std().item() + 1e-8
+            #                          )
+
+            #####
             self.optimizer.step()
             self.lr_scheduler.step()
             self.optimizer.zero_grad()

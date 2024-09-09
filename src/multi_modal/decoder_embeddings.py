@@ -121,10 +121,11 @@ class DecoderEmbedding(nn.Module):
         eid = d['eid']
 
         #####
-        if mod_idx == 0:
-            y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
-        elif mod_idx == 1:
-            y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
+        if len(torch.unique(decoder_mod_mask)) > 1:
+            if mod_idx == 0:
+                y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
+            elif mod_idx == 1:
+                y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
         #####
         
         # y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
