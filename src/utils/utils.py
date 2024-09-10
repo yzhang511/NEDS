@@ -11,6 +11,7 @@ from sklearn.metrics import accuracy_score
 import time
 import glob
 
+@torch.no_grad()
 def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
     # Start dummy load after 2 hours, adjust the sleep interval as needed
     # time.sleep(7200)
