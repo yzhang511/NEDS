@@ -119,7 +119,8 @@ save_path = os.path.join(base_path,
                         f"ratio-{args.mask_ratio}",
                         f"mixedTraining-{args.mixed_training}",
                         f"contrast-{args.use_contrastive}",
-                        f"prompt-{args.use_prompt}"
+                        f"prompt-{args.use_prompt}",
+                        f"moco-{args.use_moco}"
                         )
 
 if args.wandb:
