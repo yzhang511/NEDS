@@ -20,6 +20,27 @@ def topk(similarities,labels,k=5):
         topsum += torch.sum(torch.argsort(similarities,axis=1)[:,-(i+1)] == labels)/len(labels)
     return topsum
 
+def top_k_accuracy(logits, targets, k=1):
+    """
+    Computes the top-k accuracy for the given logits and targets.
+    
+    :param logits: Tensor of logits from the model (shape [batch_size, num_classes])
+    :param targets: Ground truth labels (shape [batch_size])
+    :param k: Top k predictions to consider for accuracy
+    :return: Top-k accuracy as a Python float
+    """
+    # Get the top k predictions from logits; indices is [batch_size, k]
+    _, indices = torch.topk(logits, k, dim=1)
+
+    predicted_one_hot = torch.zeros_like(logits).scatter_(1, indices, 1)
+    # Calculate correct predictions by element-wise multiplication of predicted_one_hot and targets
+    correct = (predicted_one_hot * targets).sum(dim=1)
+    # Check if any of the top-k predictions was correct (sum > 0)
+    correct = correct > 0
+    # Calculate the mean accuracy over the batch
+    top_k_acc = correct.float().mean().item()
+    return top_k_acc
+
 def clip_contrastive_loss(similarity_matrix):
     """
     Compute CLIP's contrastive loss given a similarity matrix.

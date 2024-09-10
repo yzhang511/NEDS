@@ -37,6 +37,8 @@ ap.add_argument("--dummy_size", type=int, default=50000)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--use_contrastive", action='store_true')
 ap.add_argument("--use_prompt", action='store_true')
+ap.add_argument("--use_moco", action='store_true')
+ap.add_argument("--momentum", type=float, default=0.999)
 
 args = ap.parse_args()
 
@@ -47,14 +49,18 @@ eid = args.eid
 avail_beh = ['wheel-speed', 'whisker-motion-energy']
     
 print(f'Working on EID: {eid} ...')
-if args.use_contrastive and not args.use_prompt:
+if args.use_contrastive and not args.use_prompt and not args.use_moco:
     model_config = "src/configs/multi_modal/mm_contrastive.yaml"
-elif args.use_prompt and not args.use_contrastive:
+elif args.use_prompt and not args.use_contrastive and not args.use_moco:
     model_config = "src/configs/multi_modal/mm_prompt.yaml"
-elif args.use_prompt and args.use_contrastive:
+elif args.use_prompt and args.use_contrastive and not args.use_moco:
     model_config = "src/configs/multi_modal/mm_contrastive_prompt.yaml"
-elif not args.use_prompt and not args.use_contrastive:
+elif not args.use_prompt and not args.use_contrastive and args.use_moco:
     model_config = "src/configs/multi_modal/mm.yaml"
+elif args.use_prompt and args.use_contrastive and args.use_moco:
+    model_config = "src/configs/multi_modal/mm_contrastive_prompt_moco.yaml"
+elif not args.use_prompt and args.use_contrastive and args.use_moco:
+    model_config = "src/configs/multi_modal/mm_contrastive_moco.yaml"
 else:
     raise ValueError("Invalid configuration")
 kwargs = {
@@ -104,7 +110,8 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.di
 num_sessions = len(meta_data['eid_list'])
 mask_mode = '-'.join(config.training.mask_mode) if config.training.mask_type == 'input' else args.mask_mode
 eid_ = "multi" if num_sessions > 1 else eid[:5]
-
+meta_data['queue_size'] = len(train_dataset) - config.training.train_batch_size
+meta_data['momentum'] = args.momentum
 log_dir = os.path.join(base_path, 
                        "results",
                        f"sesNum-{num_sessions}",
@@ -118,6 +125,7 @@ log_dir = os.path.join(base_path,
                        f"mixedTraining-{args.mixed_training}",
                        f"contrast-{config.model.use_contrastive}",
                        f"prompt-{config.model.use_prompt}",
+                       f"moco-{config.model.use_moco}",
                        )
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, "last checkpoint exists and overwrite is False"
@@ -125,7 +133,7 @@ os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}_prompt-{}".format(
+        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}_prompt-{}_moco-{}".format(
             num_sessions,
             eid_, 
             '-'.join(modal_filter['input']),
@@ -135,7 +143,8 @@ if config.wandb.use:
             args.mask_ratio,
             args.mixed_training,
             config.model.use_contrastive,
-            args.use_prompt
+            args.use_prompt,
+            args.use_moco
         )
     )
 
@@ -143,7 +152,6 @@ print('Start model training.')
 print('=====================')
 
 n_behaviors = len(avail_beh)
-
 train_dataloader = make_loader(train_dataset, 
                             target=avail_beh,
                             load_meta=config.data.load_meta,

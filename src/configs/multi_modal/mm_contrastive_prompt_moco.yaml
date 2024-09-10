@@ -1,9 +1,9 @@
 model_class: MultiModal
 
 use_session: false
-use_contrastive: false
+use_contrastive: true
 use_prompt: true
-use_moco: false
+use_moco: true
 masker:
   force_active: true         
   mode: temporal              # masking mode

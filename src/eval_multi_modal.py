@@ -40,6 +40,7 @@ ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--use_contrastive", action='store_true')
 ap.add_argument("--use_prompt", action='store_true')
+ap.add_argument("--use_moco", action='store_true')
 
 args = ap.parse_args()
 
@@ -125,7 +126,7 @@ if args.wandb:
     wandb.init(
         project="4m-single",
         config=args,
-        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}_prompt-{}".format(
+        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}_prompt-{}_moco-{}".format(
             args.num_sessions,
             eid[:5], 
             '-'.join(modal_filter['input']),
@@ -135,7 +136,8 @@ if args.wandb:
             args.mask_ratio,
             args.mixed_training,
             args.use_contrastive,
-            args.use_prompt
+            args.use_prompt,
+            args.use_moco
         )
     )
 
@@ -154,6 +156,7 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
                             f"mixedTraining-{args.mixed_training}",
                             f"contrast-{args.use_contrastive}",
                             f"prompt-{args.use_prompt}",
+                            f"moco-{args.use_moco}",
                             best_ckpt_path
                             )
     
@@ -174,10 +177,10 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
     avg_state_dict.append(model_state_dict)
 
 for key in model_state_dict:
-    model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
+    model_state_dict[key] = sum([state_dict[key] for state_dict in avg_state_dict]) / len(avg_state_dict)
     
 model.load_state_dict(model_state_dict)
-
+model.use_moco = False
 # model_path = os.path.join(base_path, 
 #                         "results",
 #                         f"sesNum-{args.num_sessions}",

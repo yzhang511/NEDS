@@ -34,6 +34,7 @@ if [ $model_mode = "mm" ]; then
                                 --model_mode ${model_mode} \
                                 --use_contrastive \
                                 --use_prompt \
+                                --use_moco \
                                 --wandb  
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then

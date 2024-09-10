@@ -1,9 +1,9 @@
 model_class: MultiModal
 
 use_session: false
-use_contrastive: false
-use_prompt: true
-use_moco: false
+use_contrastive: true
+use_prompt: false
+use_moco: true
 masker:
   force_active: true         
   mode: temporal              # masking mode
@@ -27,7 +27,7 @@ encoder:
   from_pt: null
 
   embedder:
-    use_prompt: true
+    use_prompt: false
     n_modality: 2
     n_channels: 668       # number of neurons recorded 
     max_F: 100           # max feature len in timesteps

@@ -13,7 +13,7 @@ from transformers.activations import ACT2FN
 ACT2FN["softsign"] = nn.Softsign
 
 from utils.config_utils import DictConfig, update_config
-from utils.metric_utils import clip_contrastive_loss
+from utils.metric_utils import clip_contrastive_loss, top_k_accuracy
 from models.model_output import ModelOutput
 from multi_modal.encoder_embeddings import EncoderLayer
 from multi_modal.decoder_embeddings import DecoderLayer
@@ -78,7 +78,7 @@ class MultiModal(nn.Module):
         self.decoder = nn.ModuleList([DecoderLayer(idx, config.decoder.transformer) for idx in range(self.n_dec_layers)])
         self.decoder_norm = nn.LayerNorm(self.hidden_size) 
 
-        self.use_contrastive, self.use_prompt = config.use_contrastive, config.use_prompt
+        self.use_contrastive, self.use_prompt, self.use_moco = config.use_contrastive, config.use_prompt, config.use_moco
         if self.use_contrastive:
             self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
             self.spike_projection = nn.Linear(100 * self.hidden_size, 768)
@@ -88,10 +88,46 @@ class MultiModal(nn.Module):
             self.behavior_decoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
             self.spike_encoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
             self.behavior_encoder_prompt = nn.Linear(self.hidden_size, self.hidden_size)
+        if self.use_contrastive and self.use_moco:
+            # create momentum encoder
+            self.encoder_embeddings_m = nn.ModuleDict(encoder_embeddings)
+            self.encoder_m = nn.ModuleList([EncoderLayer(idx, config.encoder.transformer) for idx in range(self.n_enc_layers)])
+            self.encoder_norm_m = nn.LayerNorm(self.hidden_size)
+            self.model_pairs = [[self.encoder_embeddings, self.encoder_embeddings_m], [self.encoder, self.encoder_m], [self.encoder_norm, self.encoder_norm_m]]
+            self.spike_projection_m = nn.Linear(100 * self.hidden_size, 768)
+            self.behavior_projection_m = nn.Linear(100 * self.hidden_size, 768)
+            if self.use_prompt:
+                self.spike_encoder_prompt_m = nn.Linear(self.hidden_size, self.hidden_size)
+                self.behavior_encoder_prompt_m = nn.Linear(self.hidden_size, self.hidden_size)
+                self.model_pairs.append([self.spike_encoder_prompt, self.spike_encoder_prompt_m])
+                self.model_pairs.append([self.behavior_encoder_prompt, self.behavior_encoder_prompt_m])
+            # create the queue
+            self.queue_size = kwargs['queue_size']
+            self.register_buffer("spike_queue", torch.randn(768, self.queue_size))
+            self.register_buffer("behavior_queue", torch.randn(768, self.queue_size))
+            self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))  
+                                
+            self.spike_queue = nn.functional.normalize(self.spike_queue, dim=0)
+            self.behavior_queue = nn.functional.normalize(self.behavior_queue, dim=0)
+            self.copy_params()
+            self.momentum = kwargs['momentum']
         self.loss_mod = {
             'ap': nn.PoissonNLLLoss(reduction="none", log_input=True),
             'behavior': nn.MSELoss(reduction="none"),
         }
+
+    @torch.no_grad()    
+    def copy_params(self):
+        for model_pair in self.model_pairs:           
+            for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
+                param_m.data.copy_(param.data)  # initialize
+                param_m.requires_grad = False  # not update by gradient    
+            
+    @torch.no_grad()        
+    def _momentum_update(self):
+        for model_pair in self.model_pairs:           
+            for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
+                param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
         
     def share_modality_embeddings(self):
         shared_modalities = self.encoder_modalities & self.decoder_modalities
@@ -256,8 +292,42 @@ class MultiModal(nn.Module):
             contrastive_dict = None
 
         return loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict
+    
+    @torch.no_grad()
+    def forward_moco_logits(self, x: torch.Tensor, x_m: torch.Tensor, decoder_mod_mask: torch.Tensor, alpha=0.4) -> torch.Tensor:
+        B, _, _ = x.shape
+        assert 'ap' in self.mod_to_indx and 'behavior' in self.mod_to_indx, "AP and behavior modalities must be present in the model."
+        spike_features_m = x_m[decoder_mod_mask == self.mod_to_indx['ap']]
+        spike_features_m = spike_features_m.reshape(B, -1)
+        spike_features_m = self.spike_projection(spike_features_m)
+        spike_features_m = spike_features_m / spike_features_m.norm(dim=1, keepdim=True)
+        spike_features_all = torch.cat([spike_features_m.t(), self.spike_queue.clone().detach()], dim=1)
+        
+        behavior_features_m = x_m[decoder_mod_mask == self.mod_to_indx['behavior']]
+        behavior_features_m = behavior_features_m.reshape(B, -1)
+        behavior_features_m = self.behavior_projection(behavior_features_m)
+        behavior_features_m = behavior_features_m / behavior_features_m.norm(dim=1, keepdim=True)
+        behavior_features_all = torch.cat([behavior_features_m.t(), self.behavior_queue.clone().detach()], dim=1) 
+        # compute logits
+        logit_scale = self.logit_scale.exp()
+        sim_s2b_m = spike_features_m @ behavior_features_all / logit_scale
+        sim_b2s_m = behavior_features_m @ spike_features_all / logit_scale
 
-    def forward_logits(self, x: torch.Tensor, decoder_mod_mask: torch.Tensor) -> torch.Tensor:
+        sim_targets = torch.zeros(sim_s2b_m.size()).to(sim_s2b_m.device)
+        sim_targets.fill_diagonal_(1)
+
+        # sim_s2b_targets = alpha * sim_targets + (1 - alpha) * (torch.eye(sim_s2b_m.size(0)).to(sim_s2b_m.device) - 1)
+        # update queue
+        self._dequeue_and_enqueue(spike_features_m, behavior_features_m)
+        return {
+            "sim_s2b_m": sim_s2b_m,
+            "sim_b2s_m": sim_b2s_m,
+            "spike_feat_all": spike_features_all,
+            "behavior_feat_all": behavior_features_all,
+            "sim_targets": sim_targets
+        }
+
+    def forward_logits(self, x: torch.Tensor, decoder_mod_mask: torch.Tensor, use_moco=False) -> torch.Tensor:
         B, _, _ = x.shape
         assert 'ap' in self.mod_to_indx and 'behavior' in self.mod_to_indx, "AP and behavior modalities must be present in the model."
         spike_features = x[decoder_mod_mask == self.mod_to_indx['ap']]
@@ -271,7 +341,8 @@ class MultiModal(nn.Module):
         # normalize features
         spike_features = spike_features / spike_features.norm(dim=1, keepdim=True)
         behavior_features = behavior_features / behavior_features.norm(dim=1, keepdim=True)
-
+        if use_moco:
+            return spike_features, behavior_features
         # compute logits
         logit_scale = self.logit_scale.exp()
         logits_per_spike = logit_scale * spike_features @ behavior_features.T
@@ -293,6 +364,21 @@ class MultiModal(nn.Module):
             "loss": (loss_spike + loss_behavior) / 2,
             "s2b_acc": s2b_acc.item(),
             "b2s_acc": b2s_acc.item(),
+        }
+
+    def forward_moco_loss(self, sim_s2b, sim_b2s, sim_targets):
+        loss_s2b = -torch.sum(F.log_softmax(sim_s2b, dim=1) * sim_targets, dim=1).mean()
+        loss_b2s = -torch.sum(F.log_softmax(sim_b2s, dim=1) * sim_targets, dim=1).mean()
+        loss = (loss_s2b + loss_b2s) / 2
+
+        s2b_acc = top_k_accuracy(sim_s2b, sim_targets, k=1)
+        b2s_acc = top_k_accuracy(sim_b2s, sim_targets, k=1)
+        return {
+            "loss_spike": loss_s2b.item(),
+            "loss_behavior": loss_b2s.item(),
+            "loss": loss,
+            "s2b_acc": s2b_acc,
+            "b2s_acc": b2s_acc,
         }
 
     def forward_decoder_prompt(self, context):
@@ -318,6 +404,65 @@ class MultiModal(nn.Module):
         # concatenate adapted features and swap modalities
         adapt = torch.cat([behavior_adapt, spike_adapt], dim=1)
         return adapt
+    
+    @torch.no_grad()
+    def forward_encoder_prompt_m(self, context):
+        # assert mod has 2
+        assert len(self.avail_mod) == 2, "Only two modalities are supported for contrastive loss."
+        B, N, D = context.size()
+        spike_context = context[:, :N//2, :]
+        behavior_context = context[:, N//2:, :]
+        spike_adapt = self.spike_encoder_prompt_m(spike_context)
+        behavior_adapt = self.behavior_encoder_prompt_m(behavior_context)
+        # concatenate adapted features and swap modalities
+        adapt = torch.cat([behavior_adapt, spike_adapt], dim=1)
+        return adapt
+
+    @torch.no_grad()
+    def forward_encoder_m(self, x: torch.Tensor, encoder_attn_mask: torch.Tensor) -> torch.Tensor:
+        for layer in self.encoder_m:
+            x = layer(x, mask=encoder_attn_mask)
+
+        x = self.encoder_norm_m(x)
+
+        return x
+    
+    @torch.no_grad()
+    def _dequeue_and_enqueue(self, spike_feat, behavior_feat):
+        # gather keys before updating queue
+        spike_feats = spike_feat.detach()
+        behavior_feats = behavior_feat.detach()
+
+        batch_size = spike_feats.shape[0]
+
+        ptr = int(self.queue_ptr)
+        print(self.queue_size, batch_size)
+        
+        assert self.queue_size % batch_size == 0  # for simplicity
+
+        # replace the keys at ptr (dequeue and enqueue)
+        self.spike_queue[:, ptr:ptr + batch_size] = spike_feats.T
+        self.behavior_queue[:, ptr:ptr + batch_size] = behavior_feats.T
+        ptr = (ptr + batch_size) % self.queue_size  # move pointer
+
+        self.queue_ptr[0] = ptr
+
+    @torch.no_grad()
+    def forward_moco(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> torch.Tensor:
+        self._momentum_update()
+        # copy the mod_dict to avoid modifying the original one
+        mod_dict_m = {mod: d.copy() for mod, d in mod_dict.items()}
+        encoder_mod_dict_m = {mod: self.encoder_embeddings_m[mod](d)
+                            for mod, d in mod_dict_m.items()
+                            if mod in self.encoder_embeddings}
+
+        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, encoder_mod_mask = self.forward_mask_encoder(encoder_mod_dict_m)
+
+        encoder_tokens = encoder_tokens + self.forward_encoder_prompt_m(encoder_tokens) if self.use_prompt else encoder_tokens
+        x = encoder_tokens + encoder_emb
+        x = self.forward_encoder_m(x, encoder_attn_mask=encoder_attn_mask)
+
+        return x
 
     def forward(
             self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
@@ -357,7 +502,8 @@ class MultiModal(nn.Module):
         encoder_mod_dict = {mod: self.encoder_embeddings[mod](d)
                             for mod, d in mod_dict.items()
                             if mod in self.encoder_embeddings}
-
+        # moco
+        x_m = self.forward_moco(encoder_mod_dict) if self.use_moco else None
         encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, encoder_mod_mask = self.forward_mask_encoder(encoder_mod_dict)
 
         decoder_mod_dict = {mod: self.decoder_embeddings[mod].forward_embed(d)
@@ -374,9 +520,16 @@ class MultiModal(nn.Module):
 
         # Contrastive loss
         contrastive_loss_dict = None
-        if self.use_contrastive:
-            logits = self.forward_logits(x, decoder_mod_mask)
+        if self.use_contrastive and not self.use_moco:
+            logits = self.forward_logits(x, decoder_mod_mask, use_moco=False)
             contrastive_loss_dict = self.forward_contrastive_loss(logits)
+        elif self.use_contrastive and self.use_moco:
+            spike_features, behavior_features = self.forward_logits(x, decoder_mod_mask, use_moco=True)
+            moco_logits_dict = self.forward_moco_logits(x, x_m, decoder_mod_mask)
+            _, _, spike_features_all, behavior_features_all, sim_targets = moco_logits_dict.values()
+            sim_s2b = spike_features @ behavior_features_all / self.logit_scale.exp()
+            sim_b2s = behavior_features @ spike_features_all / self.logit_scale.exp()
+            contrastive_loss_dict = self.forward_moco_loss(sim_s2b, sim_b2s, sim_targets)
 
         # Decoder
         # prompt for decoder
@@ -402,3 +555,15 @@ class MultiModal(nn.Module):
         )
 
     
+@torch.no_grad()
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [torch.ones_like(tensor)
+        for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output

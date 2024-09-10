@@ -29,6 +29,7 @@ if [ $model_mode = "mm" ]; then
                                     --dummy_size $dummy_size \
                                     --use_contrastive \
                                     --use_prompt \
+                                    --use_moco \
                                     --model_mode $model_mode 
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
