@@ -435,9 +435,7 @@ class MultiModal(nn.Module):
 
         batch_size = spike_feats.shape[0]
 
-        ptr = int(self.queue_ptr)
-        print(self.queue_size, batch_size)
-        
+        ptr = int(self.queue_ptr)        
         assert self.queue_size % batch_size == 0  # for simplicity
 
         # replace the keys at ptr (dequeue and enqueue)
