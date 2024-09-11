@@ -30,6 +30,7 @@ if [ $model_mode = "mm" ]; then
                                     --use_contrastive \
                                     --use_prompt \
                                     --use_moco \
+                                    --dummy_load \
                                     --model_mode $model_mode 
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
