@@ -716,7 +716,10 @@ def get_npy_files(log_dir,
                   num_sessions=1,
                   use_contrastive=True,
                   mixed_training=True,
-                    ):
+                  use_prompt=False,
+                  use_moco=False,
+                  eval_sessions=None
+                ):
     """
     Get the npy files for each session
     """
@@ -742,7 +745,18 @@ def get_npy_files(log_dir,
         npy_files = [f for f in npy_files if 'mixedTraining-True' in f]
     else:
         npy_files = [f for f in npy_files if 'mixedTraining-False' in f]
-
+    if use_prompt:
+        npy_files = [f for f in npy_files if 'prompt-True' in f]
+    else:
+        npy_files = [f for f in npy_files if 'prompt-False' in f]
+    if use_moco:
+        npy_files = [f for f in npy_files if 'moco-True' in f]
+    else:
+        npy_files = [f for f in npy_files if 'moco-False' in f]
+    # filter the eval sessions
+    # make sure ses-{ses} is in onee of the eval_sessions list
+    if eval_sessions is not None:
+        npy_files = [f for f in npy_files if any([f'ses-{ses}' in f for ses in eval_sessions])]
     # get behav modal, decoding
     behav_modal = [f for f in npy_files if 'modal_behavior' in f]
     # remove bps in decoding
@@ -769,6 +783,7 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
         # only remain key with avail_beh
         decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
         r2_list.append(decoding_data)
+        print(f"session {npy_file.split('ses-')[1][:5]} : {decoding_data}")
     print("total {} sessions of behavior decoding".format(len(r2_list)))
     # return r2 for each session
     behav_result = {avail_beh[i]: [] for i in range(len(avail_beh))}
@@ -783,6 +798,7 @@ def return_spike_bps(npy_files):
         encoding_data = np.load(npy_file, allow_pickle=True)
         mean_bps = np.nanmean(encoding_data)
         bps_list.append(mean_bps)
+        print(f"session {npy_file.split('ses-')[1][:5]} : {mean_bps}")
     print("total {} sessions of spike encoding".format(len(bps_list)))
     return bps_list
     

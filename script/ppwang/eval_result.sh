@@ -8,9 +8,13 @@ conda activate ibl-mm
 
 python src/eval_result.py --log_dir results \
                           --model_mode $model_mode \
-                          --num_sessions $num_sessions \
                           --use_contrastive \
-                          --mixed_training 
+                          --mixed_training \
+                          --use_prompt \
+                          --use_moco \
+                          --num_sessions $num_sessions \
+                          --eval_session_path data/train_eids.txt
+                        #   --eval_session_path data/filtered_eids.txt
 
 
 conda deactivate
