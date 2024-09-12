@@ -242,7 +242,8 @@ print("(train) masking ratio: ", model.masker.ratio)
 print("(train) masking active: ", model.masker.force_active)
 
 model = accelerator.prepare(model)
-
+# increase lr for moco
+config.optimizer.lr = config.optimizer.lr * 1.5 if config.model.use_moco else config.optimizer.lr
 optimizer = torch.optim.AdamW(
     model.parameters(), 
     lr=config.optimizer.lr, 
