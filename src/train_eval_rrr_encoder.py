@@ -235,7 +235,8 @@ threshold = 1e-3
 pred_held_out = np.clip(pred_orig, threshold, None)
 gt_held_out = data_dict["test"]["spikes_data"]
 mean_fr = gt_held_out.sum(1).mean(0) / trial_len
-keep_idxs = np.argwhere(mean_fr >= 1/0.1).flatten()
+# keep_idxs = np.argwhere(mean_fr >= 1/0.1).flatten()
+keep_idxs = np.argwhere(mean_fr >= 1/1).flatten()
 # print(mean_fr)
 
 bps_result_list = []

@@ -148,6 +148,16 @@ class MultiModalTrainer():
                     best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
                     print(f"epoch: {epoch} best eval loss: {best_eval_loss} trial avg {self.metric}: {best_eval_trial_avg_metric}")
                     self.save_model(name="best", epoch=epoch)
+                    #####
+                    # https://discuss.pytorch.org/t/saving-model-and-optimiser-and-scheduler/52030/8
+                    if len(self.eid_list) > 1:
+                        ckpt = { 
+                            'epoch': epoch,
+                            'model': self.model,
+                            'optimizer': self.optimizer,
+                            'lr_sched': self.lr_scheduler}
+                        torch.save(ckpt, 'ckpt.pth')
+                    #####
 
                     for mod in self.modal_filter['output']:
                         gt_pred_fig = self.plot_epoch(
@@ -323,8 +333,10 @@ class MultiModalTrainer():
             self.optimizer.zero_grad()
             train_loss += loss.item()
             #####
-            train_spike_loss += outputs.mod_loss['ap'].item()
-            train_behave_loss += outputs.mod_loss['behavior'].item()
+            if 'ap' in self.modal_filter['output']:
+                train_spike_loss += outputs.mod_loss['ap'].item()
+            if 'behavior' in self.modal_filter['output']:
+                train_behave_loss += outputs.mod_loss['behavior'].item()
             #####
         return{
             "train_loss": train_loss/len(self.train_dataloader),
@@ -433,9 +445,9 @@ class MultiModalTrainer():
                 for mod in self.modal_filter['output']:
                     
                     if mod == 'ap':
-                        mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
-                        active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
-                        # active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                        # mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
+                        # active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
+                        active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
                         self.session_active_neurons[eid][mod] = active_neurons
                         
                     if mod == 'behavior':

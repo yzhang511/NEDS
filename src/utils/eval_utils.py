@@ -52,11 +52,26 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    dataset = r_dataset["test"]
+    # r_dataset = load_dataset(f'neurofm123/{eid}_aligned')
+    # dataset = r_dataset["test"]
 
-    n_neurons = len(dataset['cluster_regions'][0])
+    _, _, dataset, meta_data = load_ibl_dataset(
+            config.dirs.dataset_cache_dir, 
+            config.dirs.huggingface_org,
+            num_sessions=1,
+            eid = eid,
+            use_re=True,
+            split_method="predefined",
+            test_session_eid=[],
+            batch_size=config.training.train_batch_size,
+            seed=config.seed)
+
+    print(meta_data)
+    
+    n_neurons = meta_data['eid_list'][eid]
     n_behaviors = len(avail_beh)
+
+    print(f'Load test data with {n_neurons} neurons.')
 
     accelerator = Accelerator()
     try:
@@ -101,7 +116,8 @@ def co_smoothing_eval(
         save_plot=False,
         use_mtm=False,
         trial_len=2,
-        fr_threshold=0.1,
+        # fr_threshold=0.1,
+        fr_threshold=1,
         **kwargs
 ):
     
@@ -636,14 +652,13 @@ def co_smoothing_eval(
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
 
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
+                # mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
 
-                if mean_fr >= 1/fr_threshold: 
-                    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                    if np.isinf(bps):
-                        bps = np.nan
-                    bps_result_list[target_n_i[n_i]] = bps
-                # bps_result_list = [bits_per_spike(pred_held_out, gt_held_out)]
+                # if mean_fr >= 1/fr_threshold: 
+                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                if np.isinf(bps):
+                    bps = np.nan
+                bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         

@@ -22,11 +22,13 @@ from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 from multi_modal.decoder_embeddings import DecoderEmbedding
 
+from utils.eval_utils import load_model_data_local
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mask_mode", type=str, default="temporal")
+ap.add_argument("--mask_type", type=str, default="input")
 ap.add_argument("--use_MtM", action='store_true')
 ap.add_argument("--mixed_training", action='store_true')
 ap.add_argument("--overwrite", action='store_true')
@@ -82,26 +84,26 @@ modal_filter = {
     "input": input_modal,
     "output": output_modal
 }
-eid_ = args.eid if args.num_sessions == 1 else None
+
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(config.dirs.dataset_cache_dir, 
                                     config.dirs.huggingface_org,
-                                    num_sessions=args.num_sessions,
-                                    eid = eid_,
+                                    num_sessions=1,
+                                    eid = args.eid,
                                     use_re=True,
                                     split_method="predefined",
                                     test_session_eid=[],
                                     batch_size=config.training.train_batch_size,
                                     seed=config.seed)
 
-num_sessions = len(meta_data['eid_list'])
+num_sessions = args.num_sessions
 mask_mode = '-'.join(config.training.mask_mode) if config.training.mask_type == 'input' else args.mask_mode
-eid_ = "multi" if num_sessions > 1 else eid[:5]
+mask_name = f"mask_{args.mask_mode}"
 
 log_dir = os.path.join(base_path, 
                        "results",
                        f"sesNum-{num_sessions}",
-                       f"ses-{eid_}",
-                       "set-train",
+                       f"ses-{args.eid}",
+                       "set-finetune",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
                        f"mask-{config.training.mask_type}",
@@ -116,9 +118,9 @@ os.makedirs(log_dir, exist_ok=True)
 if config.wandb.use:
     wandb.init(
         project=config.wandb.project, entity=config.wandb.entity, config=config,
-        name="sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
+        name="sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
             num_sessions,
-            eid_, 
+            args.eid, 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
@@ -179,10 +181,92 @@ test_dataloader = make_loader(test_dataset,
                             seed=config.seed,
                             shuffle=False)
 
+accelerator = Accelerator()
+
+last_ckpt_path = 'model_last.pt'
+best_ckpt_path = 'model_best.pt'
+
+eid_ = "multi"
+
+if args.model_mode == 'mm':
+    avg_state_dict = []
+    for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
+        model_path = os.path.join(base_path, 
+                                "results",
+                                f"sesNum-{args.num_sessions}",
+                                f"ses-{eid_}",
+                                "set-train",
+                                f"inModal-{'-'.join(modal_filter['input'])}",
+                                f"outModal-{'-'.join(modal_filter['output'])}",
+                                f"mask-{args.mask_type}",
+                                f"mode-{mask_mode}",
+                                f"ratio-{args.mask_ratio}",
+                                f"mixedTraining-{args.mixed_training}",
+                                f"contrast-{args.use_contrastive}",
+                                best_ckpt_path
+                                )
+        
+        configs = {
+            'model_config': model_config,
+            'model_path': model_path,
+            'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+            'dataset_path': None, 
+            'seed': 42,
+            'mask_name': mask_name,
+            'eid': args.eid,
+            'avail_mod': avail_mod,
+            'avail_beh': avail_beh,
+        }  
+        
+        model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+        model_state_dict = model.state_dict()
+        avg_state_dict.append(model_state_dict)
+    
+    for key in model_state_dict:
+        model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
+        
+    model.load_state_dict(model_state_dict)
+
+elif args.model_mode in ['encoding', 'decoding']:
+    model_path = os.path.join(base_path, 
+                        "results",
+                        f"sesNum-{args.num_sessions}",
+                        f"ses-{eid_}",
+                        "set-train",
+                        f"inModal-{'-'.join(modal_filter['input'])}",
+                        f"outModal-{'-'.join(modal_filter['output'])}",
+                        f"mask-{args.mask_type}",
+                        f"mode-{mask_mode}",
+                        f"ratio-{args.mask_ratio}",
+                        f"mixedTraining-{args.mixed_training}",
+                        f"contrast-{args.use_contrastive}",
+                        best_ckpt_path
+                        )
+
+    configs = {
+        'model_config': model_config,
+        'model_path': model_path,
+        'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+        'dataset_path': None, 
+        'seed': 42,
+        'mask_name': mask_name,
+        'eid': args.eid,
+        'avail_mod': avail_mod,
+        'avail_beh': avail_beh,
+    }  
+    
+    model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+    
+print("(train) masking mode: ", model.masker.mode)
+print("(train) masking ratio: ", model.masker.ratio)
+print("(train) masking active: ", model.masker.force_active)
+
+
+# change stitcher
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
-    encoder_embeddings[mod] = EncoderEmbedding(
+    model.encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
         n_channel=256 if mod=='ap' else 256,
         stitching=True,
@@ -192,38 +276,18 @@ for mod in modal_filter["input"]:
     )
 
 for mod in modal_filter["output"]:
-    decoder_embeddings[mod] = DecoderEmbedding(
+    model.decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
         n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         #####
-        # n_channel=256 if mod=='ap' else 256,
-        # output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,
         config=config.model.decoder,
     )
-
-accelerator = Accelerator()
-
-NAME2MODEL = {"MultiModal": MultiModal}
-model_class = NAME2MODEL[config.model.model_class]
-model = model_class(
-    encoder_embeddings,
-    decoder_embeddings,
-    avail_mod=avail_mod,
-    config=config.model, 
-    share_modality_embeddings=True,
-    **config.method.model_kwargs, 
-    **meta_data
-)
-
-print("(train) masking mode: ", model.masker.mode)
-print("(train) masking ratio: ", model.masker.ratio)
-print("(train) masking active: ", model.masker.force_active)
-
+    
 model = accelerator.prepare(model)
 
 optimizer = torch.optim.AdamW(

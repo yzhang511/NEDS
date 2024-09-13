@@ -50,3 +50,4 @@ class StitchDecoder(nn.Module):
 
     def forward(self, x, block_idx):
         return self.stitch_decoder_dict[block_idx](x)
+
