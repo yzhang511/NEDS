@@ -55,7 +55,7 @@ def load_model_data_local(**kwargs):
     r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
     dataset = r_dataset["test"]
 
-    n_neurons = len(dataset['cluster_regions'][0])
+    n_neurons = dataset[0]['spikes_sparse_shape'][1]
     n_behaviors = len(avail_beh)
 
     accelerator = Accelerator()
