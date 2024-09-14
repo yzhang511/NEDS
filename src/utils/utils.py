@@ -727,8 +727,16 @@ def get_npy_files(log_dir,
         model_mode = 'ap-behavior'
     elif model_mode == 'decoding':
         model_mode = 'ap'
+        use_contrastive = False
+        mixed_training = False
+        use_prompt = False
+        use_moco = False
     elif model_mode == 'encoding':
         model_mode = 'behavior'
+        use_contrastive = False
+        mixed_training = False
+        use_prompt = False
+        use_moco = False
     else:
         raise ValueError("Unknown model_mode")
     model_mode = f"inModal-{model_mode}"

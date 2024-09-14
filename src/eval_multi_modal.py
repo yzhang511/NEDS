@@ -160,7 +160,9 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
                             f"moco-{args.use_moco}",
                             best_ckpt_path
                             )
-    
+    if not os.path.exists(model_path):
+        print(f"Model path {model_path} does not exist")
+        continue
     configs = {
         'model_config': model_config,
         'model_path': model_path,
