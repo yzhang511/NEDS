@@ -101,7 +101,8 @@ def co_smoothing_eval(
         save_plot=False,
         use_mtm=False,
         trial_len=2,
-        fr_threshold=0.1,
+        # fr_threshold=0.1,
+        fr_threshold=1,
         **kwargs
 ):
     
@@ -305,13 +306,13 @@ def co_smoothing_eval(
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
     
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
+                # mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
 
-                if mean_fr >= 1/fr_threshold:
-                    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                    if np.isinf(bps):
-                        bps = np.nan
-                    bps_result_list[target_n_i[n_i]] = bps
+                # if mean_fr >= 1/fr_threshold:
+                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                if np.isinf(bps):
+                    bps = np.nan
+                bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         
@@ -636,14 +637,13 @@ def co_smoothing_eval(
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
 
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
+                # mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
 
-                if mean_fr >= 1/fr_threshold: 
-                    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                    if np.isinf(bps):
-                        bps = np.nan
-                    bps_result_list[target_n_i[n_i]] = bps
-                # bps_result_list = [bits_per_spike(pred_held_out, gt_held_out)]
+                # if mean_fr >= 1/fr_threshold: 
+                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                if np.isinf(bps):
+                    bps = np.nan
+                bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         

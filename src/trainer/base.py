@@ -252,8 +252,10 @@ class MultiModalTrainer():
             self.optimizer.zero_grad()
             train_loss += loss.item()
             #####
-            train_spike_loss += outputs.mod_loss['ap'].item()
-            train_behave_loss += outputs.mod_loss['behavior'].item()
+            if 'ap' in self.modal_filter['output']:
+                train_spike_loss += outputs.mod_loss['ap'].item()
+            if 'behavior' in self.modal_filter['output']:
+                train_behave_loss += outputs.mod_loss['behavior'].item()
             #####
         return{
             "train_loss": train_loss/len(self.train_dataloader),
@@ -362,9 +364,10 @@ class MultiModalTrainer():
                 for mod in self.modal_filter['output']:
                     
                     if mod == 'ap':
-                        mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
-                        active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
+                        # mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
+                        # active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
                         # active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
+                        active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
                         self.session_active_neurons[eid][mod] = active_neurons
                         
                     if mod == 'behavior':

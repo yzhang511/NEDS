@@ -15,5 +15,5 @@ fi
 if [ $num_sessions -gt 1 ]
 then
     echo "Train on multi-session"
-    sbatch --gres=gpu:h100:1 -t 3-12:00:00  train.sh $num_sessions none $model_mode 120000 0.1
+    sbatch --gres=gpu:rtx8000:1 -t 4-12:00:00  train.sh $num_sessions none $model_mode 80000 0.1
 fi

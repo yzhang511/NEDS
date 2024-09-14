@@ -55,7 +55,7 @@ elif args.use_prompt and not args.use_contrastive and not args.use_moco:
     model_config = "src/configs/multi_modal/mm_prompt.yaml"
 elif args.use_prompt and args.use_contrastive and not args.use_moco:
     model_config = "src/configs/multi_modal/mm_contrastive_prompt.yaml"
-elif not args.use_prompt and not args.use_contrastive and args.use_moco:
+elif not args.use_prompt and not args.use_contrastive and not args.use_moco:
     model_config = "src/configs/multi_modal/mm.yaml"
 elif args.use_prompt and args.use_contrastive and args.use_moco:
     model_config = "src/configs/multi_modal/mm_contrastive_prompt_moco.yaml"
@@ -243,7 +243,7 @@ print("(train) masking active: ", model.masker.force_active)
 
 model = accelerator.prepare(model)
 # increase lr for moco
-config.optimizer.lr = config.optimizer.lr * 1.5 if config.model.use_moco else config.optimizer.lr
+config.optimizer.lr = config.optimizer.lr * 1 if config.model.use_moco else config.optimizer.lr
 optimizer = torch.optim.AdamW(
     model.parameters(), 
     lr=config.optimizer.lr, 
