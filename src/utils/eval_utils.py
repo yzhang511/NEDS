@@ -96,6 +96,7 @@ def load_model_data_local(**kwargs):
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
         use_nemo=False, shuffle=False,
+        seed=config.seed
     )
 
     return model, accelerator, dataset, dataloader

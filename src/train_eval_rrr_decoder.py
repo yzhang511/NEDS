@@ -106,7 +106,7 @@ _, _, _, meta_data = load_ibl_dataset(
 dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
 train_dataset, val_dataset, test_dataset = dataset["train"], dataset["val"], dataset["test"]
 
-n_behaviors, n_neurons = len(avail_beh), len(train_dataset['cluster_regions'][0])
+n_behaviors, n_neurons = len(avail_beh), meta_data['eid_list'][eid]
 meta_data['num_neurons'] = [n_neurons]
 print(meta_data)
 
