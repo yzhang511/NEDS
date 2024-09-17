@@ -95,8 +95,10 @@ def load_model_data_local(**kwargs):
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        use_nemo=False, shuffle=False,
-        seed=config.seed
+        use_nemo=False, 
+        shuffle=False,
+        seed=config.seed,
+        stitching=True,
     )
 
     return model, accelerator, dataset, dataloader

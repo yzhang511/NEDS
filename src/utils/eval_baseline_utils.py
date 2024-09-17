@@ -46,10 +46,18 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    dataset = r_dataset["test"]
+    _, _, dataset, meta_data = load_ibl_dataset(
+            config.dirs.dataset_cache_dir, 
+            config.dirs.huggingface_org,
+            num_sessions=1,
+            eid = eid,
+            use_re=True,
+            split_method="predefined",
+            test_session_eid=[],
+            batch_size=config.training.train_batch_size,
+            seed=config.seed)
 
-    n_neurons = len(dataset['cluster_regions'][0])
+    n_neurons = meta_data['eid_list'][eid]
     n_behaviors = len(avail_beh)
 
     accelerator = Accelerator()

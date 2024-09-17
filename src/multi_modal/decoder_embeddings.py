@@ -15,6 +15,11 @@ from multi_modal.mm_utils import ScaleNorm, MLP, FactorsProjection, Attention, C
 from models.stitcher import StitchDecoder, StitchEncoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
+
+with open('data/train_eids.txt') as file:
+    include_eids = [line.rstrip() for line in file]
+
+
 class DecoderEmbeddingLayer(nn.Module):
     def __init__(
         self, hidden_size, n_channels, config: DictConfig, stitching=False, eid_list=None, mod=None,
@@ -30,6 +35,12 @@ class DecoderEmbeddingLayer(nn.Module):
         self.pos = config.pos
         if self.pos:
             self.pos_embed = nn.Embedding(config.max_F, hidden_size)
+
+        ####
+        self.eid_lookup = include_eids
+        self.eid_to_indx = {r: i for i,r in enumerate(self.eid_lookup)}
+        self.session_emb = nn.Embedding(len(self.eid_lookup), hidden_size)
+        ####
 
         self.dropout = nn.Dropout(config.dropout)
 
@@ -61,6 +72,11 @@ class DecoderEmbeddingLayer(nn.Module):
 
         if self.pos:
             x_embed += self.pos_embed(targets_timestamp)
+
+        ####
+        session_idx = torch.tensor(self.eid_to_indx[eid], dtype=torch.int64, device=targets.device)
+        x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
+        ####
 
         return self.dropout(x), x_embed
 

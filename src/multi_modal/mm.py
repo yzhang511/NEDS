@@ -93,6 +93,16 @@ class MultiModal(nn.Module):
         for mod in shared_modalities:
             self.decoder_embeddings[mod].embedder.mod_emb = self.encoder_embeddings[mod].embedder.mod_emb
 
+        ####
+        if 'ap' in shared_modalities:
+            self.decoder_embeddings['ap'].embedder.session_emb = self.encoder_embeddings['ap'].embedder.session_emb
+        if 'behavior' in shared_modalities:
+            self.decoder_embeddings['behavior'].embedder.session_emb = self.encoder_embeddings['behavior'].embedder.session_emb
+        if ('ap' in shared_modalities) and ('behavior' in shared_modalities):
+            self.encoder_embeddings['ap'].embedder.session_emb = self.encoder_embeddings['behavior'].embedder.session_emb
+            self.decoder_embeddings['ap'].embedder.session_emb = self.decoder_embeddings['behavior'].embedder.session_emb
+        ####
+
     
     def cat_encoder_tensors(self, mod_dict: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor]:
         encoder_tokens = []
