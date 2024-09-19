@@ -5,3 +5,5 @@ checkpoints
 results
 *.out
 *.log
+*cache*
+*results_*
