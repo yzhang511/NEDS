@@ -9,7 +9,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH -t 2-12:00:00 
 #SBATCH --mem=64g
-
+#SBATCH --account=pr_136_general
 
 num_sessions=${1}
 eid=${2}
