@@ -67,9 +67,7 @@ class MultiModalTrainer():
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode
-            #####
             mod_dict[mod]['training_mode'] = training_mode
-            #####
             
             if mod == 'ap':
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
@@ -117,9 +115,10 @@ class MultiModalTrainer():
     def train(self):
         best_eval_loss = torch.tensor(float('inf'))
         best_eval_trial_avg_metric = -torch.tensor(float('inf'))
-        #####
         best_eval_avg_spike_r2 = -torch.tensor(float('inf'))
         best_eval_avg_behave_r2 = -torch.tensor(float('inf'))
+        #####
+        best_eval_avg_static_acc = -torch.tensor(float('inf'))
         #####
         
         for epoch in range(self.config.training.num_epochs):
@@ -129,7 +128,6 @@ class MultiModalTrainer():
 
             if eval_epoch_results:
 
-                #####
                 if eval_epoch_results[f'eval_avg_spike_r2'] > best_eval_avg_spike_r2:
                     best_eval_avg_spike_r2 = eval_epoch_results['eval_avg_spike_r2']
                     print(f"epoch: {epoch} best trial avg spike r2: {best_eval_avg_spike_r2}")
@@ -141,6 +139,13 @@ class MultiModalTrainer():
                     print(f"epoch: {epoch} best trial avg behavior r2: {best_eval_avg_behave_r2}")
                     self.save_model(name="best_behave", epoch=epoch)
                     wandb.log({"best_behave_epoch": epoch})
+
+                #####
+                if eval_epoch_results[f'eval_avg_static_acc'] > best_eval_avg_static_acc:
+                    best_eval_avg_static_acc = eval_epoch_results['eval_avg_static_acc']
+                    print(f"epoch: {epoch} best trial avg static acc: {best_eval_avg_static_acc}")
+                    self.save_model(name="best_static", epoch=epoch)
+                    wandb.log({"best_static_epoch": epoch})
                 #####
                 
                 if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
@@ -148,16 +153,14 @@ class MultiModalTrainer():
                     best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
                     print(f"epoch: {epoch} best eval loss: {best_eval_loss} trial avg {self.metric}: {best_eval_trial_avg_metric}")
                     self.save_model(name="best", epoch=epoch)
-                    #####
                     # https://discuss.pytorch.org/t/saving-model-and-optimiser-and-scheduler/52030/8
-                    if len(self.eid_list) > 1:
-                        ckpt = { 
-                            'epoch': epoch,
-                            'model': self.model,
-                            'optimizer': self.optimizer,
-                            'lr_sched': self.lr_scheduler}
-                        torch.save(ckpt, 'ckpt.pth')
-                    #####
+                    # if len(self.eid_list) > 1:
+                    #     ckpt = { 
+                    #         'epoch': epoch,
+                    #         'model': self.model,
+                    #         'optimizer': self.optimizer,
+                    #         'lr_sched': self.lr_scheduler}
+                    #     torch.save(ckpt, 'ckpt.pth')
 
                     for mod in self.modal_filter['output']:
                         gt_pred_fig = self.plot_epoch(
@@ -210,7 +213,6 @@ class MultiModalTrainer():
 
             if self.config.wandb.use:
                 wandb.log({
-                    #####
                     "train_loss": train_epoch_results['train_loss'],
                     "train_spike_loss": train_epoch_results['train_spike_loss'],
                     "train_behave_loss": train_epoch_results['train_behave_loss'],
@@ -218,9 +220,17 @@ class MultiModalTrainer():
                     "eval_spike_loss": eval_epoch_results['eval_spike_loss'],
                     "eval_behave_loss": eval_epoch_results['eval_behave_loss'],
                     #####
+                    "train_static_loss": train_epoch_results['train_static_loss'],
+                    "eval_static_loss": eval_epoch_results['eval_static_loss'],
+                    #####
                     f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
-                    f"eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
-                    f"eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
+                    "eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
+                    "eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
+                    #####
+                    "eval_avg_static_acc": eval_epoch_results[f'eval_avg_static_acc'],
+                    "eval_avg_choice_acc": eval_epoch_results[f'eval_avg_choice_acc'],
+                    "eval_avg_block_acc": eval_epoch_results[f'eval_avg_block_acc'],
+                    #####
                     f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
                     f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc'],
                 })
@@ -240,9 +250,10 @@ class MultiModalTrainer():
     
     def train_epoch(self, epoch):
         train_loss = 0.
-        #####
         train_spike_loss = 0.
         train_behave_loss = 0.
+        #####
+        train_static_loss = 0.
         #####
         train_examples = 0
         self.model.train()
@@ -256,93 +267,23 @@ class MultiModalTrainer():
             )
             loss = outputs.loss
             loss.backward()
-            #####
-            
-            # is_multi_modal = (len(self.modal_filter['output']) > 1)
-            
-            # # Gradient Modulation 
-            # if is_multi_modal:
-            #     score_s = outputs.mod_loss['ap'].clone()
-            #     score_b = outputs.mod_loss['behavior'].clone()
-            #     score_total = loss.clone()
-    
-            #     # ratio_s = score_s / score_b
-            #     # ratio_b = 1 / ratio_s
-
-            #     ratio_s = score_s / score_total
-            #     ratio_b = 1 - ratio_s
-    
-            #     """
-            #     Below is the Eq.(10) in CVPR paper:
-            #             1 - tanh(alpha * rho_t_u), if rho_t_u > 1
-            #     k_t_u =
-            #             1,                         else
-            #     coeff_u is k_t_u, where t means iteration steps and u is modality indicator, either a or v.
-            #     """
-            #     relu = torch.nn.ReLU(inplace=True)
-            #     tanh = torch.nn.Tanh()
-
-            #     # Tunable Parameters
-            #     alpha = 0.1
-            #     modulation_starts = 0
-            #     modulation_ends = 2000
-                
-            #     # if ratio_s > 1:
-            #     if ratio_s > 1/2:
-            #         coeff_s = 1 - tanh(alpha * relu(ratio_s))
-            #         coeff_b = 1
-            #     else:
-            #         coeff_s = 1 - tanh(alpha * relu(ratio_b))
-            #         coeff_b = 1
-
-            #     if modulation_starts <= epoch <= modulation_ends: 
-
-            #         for mod in self.modal_filter['output']:
-
-            #             for param in self.model.encoder_embeddings[mod].parameters():
-        
-            #                 if mod == 'ap':
-            #                     param.grad = param.grad * coeff_s + \
-            #                          torch.zeros_like(param.grad).normal_(
-            #                              0, param.grad.std().item() + 1e-8
-            #                          )
-        
-            #                 if mod == 'behavior':
-            #                     param.grad = param.grad * coeff_b + \
-            #                          torch.zeros_like(param.grad).normal_(
-            #                              0, param.grad.std().item() + 1e-8
-            #                          )
-
-            #             for param in self.model.decoder_embeddings[mod].parameters():
-        
-            #                 if mod == 'ap':
-            #                     param.grad = param.grad * coeff_s + \
-            #                          torch.zeros_like(param.grad).normal_(
-            #                              0, param.grad.std().item() + 1e-8
-            #                          )
-        
-            #                 if mod == 'behavior':
-            #                     param.grad = param.grad * coeff_b + \
-            #                          torch.zeros_like(param.grad).normal_(
-            #                              0, param.grad.std().item() + 1e-8
-            #                          )
-
-            #####
             self.optimizer.step()
             self.lr_scheduler.step()
             self.optimizer.zero_grad()
             train_loss += loss.item()
-            #####
             if 'ap' in self.modal_filter['output']:
-                train_spike_loss += outputs.mod_loss['ap'].item()
+                train_spike_loss += outputs.mod_loss['ap']
             if 'behavior' in self.modal_filter['output']:
-                train_behave_loss += outputs.mod_loss['behavior'].item()
-            #####
+                #####
+                train_behave_loss += outputs.mod_loss['dynamic']
+                train_static_loss += outputs.mod_loss['static']
+                #####
         return{
             "train_loss": train_loss/len(self.train_dataloader),
-            #####
             "train_spike_loss": train_spike_loss/len(self.train_dataloader),
             "train_behave_loss": train_behave_loss/len(self.train_dataloader),
+            #####
+            "train_static_loss": train_static_loss/len(self.train_dataloader),
             #####
         }
     
@@ -351,20 +292,30 @@ class MultiModalTrainer():
         
         self.model.eval()
         eval_loss = 0.
-        #####
         eval_spike_loss = 0.
         eval_behave_loss = 0.
+        #####
+        eval_static_loss = 0.
         #####
         session_results = {}
         for eid in self.eid_list:
             session_results[eid] = {}
             for mod in self.modal_filter['output']:
-                session_results[eid][mod] = {"gt": [], "preds": []}
+                #####
+                if mod == 'ap':
+                    session_results[eid][mod] = {"gt": [], "preds": []}
+                elif mod == 'behavior':
+                    session_results[eid][mod] = {
+                        "gt": [], "preds": [], 
+                        "gt_choice": [], "preds_choice": [], 
+                        "gt_block": [], "preds_block": [], 
+                    }
+                #####
             session_results[eid]['s2b_acc'] = []
             session_results[eid]['b2s_acc'] = []
 
         if self.eval_dataloader:
-            #####
+
             with torch.no_grad():  
 
                 if 'ap' in self.modal_filter['output']:
@@ -373,8 +324,6 @@ class MultiModalTrainer():
                         
                         if self.config.training.mask_type == "input":
                             self.masking_mode = random.sample(self.masking_schemes, 1)[0]
-                        # if self.mixed_training:
-                            # self.training_mode = random.sample(self.training_schemes, 1)[0]
                         
                         outputs = self._forward_model_outputs(
                             batch, masking_mode=self.masking_mode, training_mode="encoding"
@@ -402,60 +351,91 @@ class MultiModalTrainer():
                         
                         if self.config.training.mask_type == "input":
                             self.masking_mode = random.sample(self.masking_schemes, 1)[0]
-                        # if self.mixed_training:
-                            # self.training_mode = random.sample(self.training_schemes, 1)[0]
                         
                         outputs = self._forward_model_outputs(
                             batch, masking_mode=self.masking_mode, training_mode="decoding"
                         )
                         loss = outputs.loss
                         eval_loss += loss.item()
-                        eval_behave_loss += outputs.mod_loss['behavior'].item()
+                        #####
+                        eval_behave_loss += outputs.mod_loss['dynamic'].item()
+                        eval_static_loss += outputs.mod_loss['static'].item()
+                        #####
                         num_neuron = batch['spikes_data'].shape[2] 
                         eid = batch['eid'][0]
 
                         session_results[eid]['behavior']["gt"].append(
-                            outputs.mod_targets['behavior'].clone()[:,:,:num_neuron]
+                            outputs.mod_targets['behavior'].clone()
                         )
                         session_results[eid]['behavior']["preds"].append(
-                            outputs.mod_preds['behavior'].clone()[:,:,:num_neuron]
+                            outputs.mod_preds['behavior'].clone()
                         )
+                        #####
+                        session_results[eid]['behavior']["gt_choice"].append(
+                            outputs.targets_static['choice'].clone()
+                        )
+                        session_results[eid]['behavior']["preds_choice"].append(
+                            outputs.preds_static['choice'].clone()
+                        )
+                        session_results[eid]['behavior']["gt_block"].append(
+                            outputs.targets_static['block'].clone()
+                        )
+                        session_results[eid]['behavior']["preds_block"].append(
+                            outputs.preds_static['block'].clone()
+                        )
+                        #####
     
                         if outputs.contrastive_dict:
                             session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
                             session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
-            #####
+
             
             gt, preds, s2b_acc_list, b2s_acc_list = {}, {}, [], []
             spike_r2_results_list, behave_r2_results_list = [], []
+            #####
+            gt_static, preds_static = {}, {}
+            choice_acc_results_list, block_acc_results_list = [], []
+            #####
             for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
+                gt_static[idx], preds_static[idx] = {}, {}
                 for mod in self.modal_filter['output']:
-                    _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                    #####
+                    if mod == 'behavior':
+                        _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)[:,:,:2]
+                    else:
+                        _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                    #####
                     _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
                     if mod == 'ap' and 'ap' in self.modal_filter['output']:
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
-
-                #####
+                    #####
+                    if mod == 'behavior':
+                        _gt_choice = torch.cat(session_results[eid][mod]["gt_choice"], dim=0)
+                        _preds_choice = torch.cat(session_results[eid][mod]["preds_choice"], dim=0)
+                        _gt_block = torch.cat(session_results[eid][mod]["gt_block"], dim=0)
+                        _preds_block = torch.cat(session_results[eid][mod]["preds_block"], dim=0)
+                        gt_static[idx]['choice'] = _gt_choice
+                        preds_static[idx]['choice'] = _preds_choice
+                        gt_static[idx]['block'] = _gt_block
+                        preds_static[idx]['block'] = _preds_block
+                    #####
+                    
                 if eid not in self.session_active_neurons:
                     self.session_active_neurons[eid] = {}
 
                 for mod in self.modal_filter['output']:
                     
                     if mod == 'ap':
-                        # mean_fr = gt[idx][mod].cpu().numpy().sum(1).mean(0) / 2.
-                        # active_neurons = np.argwhere(mean_fr >= 1/0.1).flatten().tolist()
                         active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
                         self.session_active_neurons[eid][mod] = active_neurons
                         
                     if mod == 'behavior':
                         self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
-                #####
                     
                     if mod == 'ap':
-                        #####
                         results = metrics_list(
                             gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
                             pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
@@ -463,13 +443,23 @@ class MultiModalTrainer():
                             device=self.accelerator.device
                         )
                         spike_r2_results_list.append(results["bps"])
-                        #####
+                      
                     elif mod == 'behavior':
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
                                             metrics=["rsquared"],
                                             device=self.accelerator.device)
                         behave_r2_results_list.append(results["rsquared"])
+
+                        #####
+                        from sklearn.metrics import accuracy_score
+                        choice_acc_results_list.append(accuracy_score(
+                            gt_static[idx]['choice'].cpu().numpy(), preds_static[idx]['choice'].cpu().numpy()
+                        ))
+                        block_acc_results_list.append(accuracy_score(
+                            gt_static[idx]['block'].cpu().numpy(), preds_static[idx]['block'].cpu().numpy()
+                        ))
+                        #####
                     
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
@@ -482,16 +472,24 @@ class MultiModalTrainer():
 
         spike_r2 = np.nanmean(spike_r2_results_list)
         behave_r2 = np.nanmean(behave_r2_results_list)
+        choice_acc = np.nanmean(choice_acc_results_list)
+        block_acc = np.nanmean(block_acc_results_list)
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
-            #####
             "eval_spike_loss": eval_spike_loss/len(self.eval_dataloader),
             "eval_behave_loss": eval_behave_loss/len(self.eval_dataloader),
             #####
-            f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2]),
-            f"eval_avg_spike_r2": spike_r2,
-            f"eval_avg_behave_r2": behave_r2,
+            "eval_static_loss": eval_static_loss/len(self.eval_dataloader),
+            f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2, choice_acc, block_acc]),
+             #####
+            "eval_avg_spike_r2": spike_r2,
+            "eval_avg_behave_r2": behave_r2,
+            #####
+            "eval_avg_static_acc": np.nanmean([choice_acc, block_acc]),
+            "eval_avg_choice_acc": choice_acc,
+            "eval_avg_block_acc": block_acc,
+            #####
             "eval_gt": gt,
             "eval_preds": preds,
             "eval_s2b_acc": np.mean(s2b_acc_list),
@@ -502,7 +500,6 @@ class MultiModalTrainer():
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
         if modality == 'ap':
-            # gt shape, [batch_size, seq_len, n_neurons]
             gt_pred_fig = plot_gt_pred(
                 gt = gt.mean(0).T.cpu().numpy(),
                 pred = preds.mean(0).T.detach().cpu().numpy(),
@@ -510,7 +507,6 @@ class MultiModalTrainer():
                 modality = modality
                 )
         elif modality == 'behavior':
-            # gt shape, [batch_size, seq_len, n_behaviors]
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch,

@@ -36,11 +36,9 @@ class DecoderEmbeddingLayer(nn.Module):
         if self.pos:
             self.pos_embed = nn.Embedding(config.max_F, hidden_size)
 
-        ####
         self.eid_lookup = include_eids
         self.eid_to_indx = {r: i for i,r in enumerate(self.eid_lookup)}
         self.session_emb = nn.Embedding(len(self.eid_lookup), hidden_size)
-        ####
 
         self.dropout = nn.Dropout(config.dropout)
 
@@ -57,7 +55,6 @@ class DecoderEmbeddingLayer(nn.Module):
 
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
-        # TO DO: Change to different sampled target tokens later
         targets, targets_timestamp, targets_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
         
         B, N, D = targets.size()
@@ -73,10 +70,8 @@ class DecoderEmbeddingLayer(nn.Module):
         if self.pos:
             x_embed += self.pos_embed(targets_timestamp)
 
-        ####
         session_idx = torch.tensor(self.eid_to_indx[eid], dtype=torch.int64, device=targets.device)
         x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
-        ####
 
         return self.dropout(x), x_embed
 
@@ -106,10 +101,12 @@ class DecoderEmbedding(nn.Module):
         )
 
         if stitching:
-            #####
             self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.n_channel, mod=mod)
             #####
-            # self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.hidden_size, mod=mod)
+            if mod == 'behavior':
+                self.choice_decoder = StitchDecoder(eid_list, self.n_channel*self.max_F, mod='choice')
+                self.block_decoder = StitchDecoder(eid_list, self.n_channel*self.max_F, mod='block')
+            #####
         else:
             self.out = nn.Linear(self.hidden_size, self.output_channel)
     
@@ -136,22 +133,25 @@ class DecoderEmbedding(nn.Module):
         y_mod = y[decoder_mod_mask == mod_idx]
         eid = d['eid']
 
-        #####
         if len(torch.unique(decoder_mod_mask)) > 1:
             if mod_idx == 0:
                 y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
             elif mod_idx == 1:
                 y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
-        #####
         
-        # y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
         if hasattr(self, 'spike_stitch_proj_decoder'):
-            y_mod = self.spike_stitch_proj_decoder(y_mod, eid)
-            C, N = y_mod.size()
-            y_mod = y_mod.reshape((B, -1, N))
+            preds = self.spike_stitch_proj_decoder(y_mod, eid)
+            C, N = preds.size()
+            d['preds'] = preds.reshape((B, -1, N))
+            #####
+            if hasattr(self, 'choice_decoder'):
+                d['preds_choice'] = self.choice_decoder(y_mod.reshape(B, -1), eid)
+                d['preds_block'] = self.block_decoder(y_mod.reshape(B, -1), eid)
+            #####
         else:
             y_mod = self.out(y_mod).reshape((B, -1, self.output_channel))
-        d['preds'] = y_mod
+            d['preds'] = y_mod
+        
         return d
 
 

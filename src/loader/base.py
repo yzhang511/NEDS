@@ -351,6 +351,21 @@ class BaseDataset(torch.utils.data.Dataset):
         choice = np.array(data['choice']).astype(np.float32)
         block = np.array(data['block']).astype(np.float32)
         reward = np.array(data['reward']).astype(np.float32)
+
+        #####
+        T, _ = target_behavior.shape
+        choice_lookup = {'-1.0': 0, '1.0': 1}
+        block_lookup = {'0.2': 0, '0.5': 1, '0.8': 2}
+        _choice = np.array(
+            T * [choice_lookup[str(x)] for x in choice]
+        ).reshape(-1,1)
+        _block = np.array(
+            T * [block_lookup[str(x)] for x in block]
+        ).reshape(-1,1)
+        target_behavior = np.concatenate(
+            (target_behavior, _choice, _block), axis=1
+        ).astype(np.float32)
+        #####
             
         binned_spikes_data = binned_spikes_data[0]
 

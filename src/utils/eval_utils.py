@@ -621,23 +621,20 @@ def co_smoothing_eval(
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
-                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                            mod_dict[mod]['masking_mode'] = model.masker.mode 
                         else:
                             mod_dict[mod]['masking_mode'] = None
-                        #####
                         mod_dict[mod]['training_mode'] = 'encoding'
-                        #####
+
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                             else:
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
                             mod_dict[mod]['mask_mode'] = 'causal'
-                            #######
                         elif mod == 'behavior':
                             mod_dict[mod]['inputs'] = batch['target'].clone()
                             mod_dict[mod]['targets'] = batch['target'].clone()
@@ -655,9 +652,6 @@ def co_smoothing_eval(
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
 
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                # mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
-
-                # if mean_fr >= 1/fr_threshold: 
                 bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
                 if np.isinf(bps):
                     bps = np.nan
@@ -742,11 +736,9 @@ def co_smoothing_eval(
                             else:
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['mask_mode'] = 'causal'
                             mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-                            #######
                         elif mod == 'behavior':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['target'].clone()
@@ -757,8 +749,19 @@ def co_smoothing_eval(
                     
                     outputs = model(mod_dict)
                     
-            gt = outputs.mod_targets['behavior'][:,:,:N].detach().cpu().numpy()
-            preds = outputs.mod_preds['behavior'][:,:,:N].detach().cpu().numpy()
+            gt = outputs.mod_targets['behavior'][:,:,:2].detach().cpu().numpy()
+            preds = outputs.mod_preds['behavior'][:,:,:2].detach().cpu().numpy()
+
+            #####
+            gt_choice = outputs.targets_static['choice'].detach().cpu().numpy()
+            gt_block = outputs.targets_static['block'].detach().cpu().numpy()
+            preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
+            preds_block = outputs.preds_static['block'].detach().cpu().numpy()
+
+            from sklearn.metrics import accuracy_score
+            choice_acc = accuracy_score(gt_choice, preds_choice)
+            block_acc = accuracy_score(gt_block, preds_block)
+            #####
 
             target_n_i, target_t_i = np.arange(N), held_out_list[0]
 
@@ -795,9 +798,14 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = r2
             np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
             np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
+            ####
+            np.save(os.path.join(kwargs['save_path'], f'acc.npy'), np.array([choice_acc, block_acc]))
             return {
-                f"{mode}_behav_results": behav_results
+                f"{mode}_behav_results": behav_results,
+                'choice_acc': choice_acc,
+                'block_acc': block_acc,
             } 
+            ####
     
     else:
         raise NotImplementedError('mode not implemented')

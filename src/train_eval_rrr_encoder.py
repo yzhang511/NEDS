@@ -172,7 +172,7 @@ smooth_w = 2; T = config.data.max_time_length
 for k in ["train", "test"]:
     if args.encode_static_behavior:
         X = np.concatenate(
-            [_one_hot(data_dict[k][v], T) for v in ["block", "choice", "reward"]], axis=2
+            [_one_hot(data_dict[k][v], T) for v in ["block", "choice"]], axis=2
         )
         X = np.concatenate([X, data_dict[k]["dynamic_behavior"]], axis=2)
     else:
