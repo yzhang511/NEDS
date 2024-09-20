@@ -9,7 +9,7 @@ then
     do
         echo "Train on ses eid: $line"
         sbatch --gres=gpu:rtx8000:1 -t 18:00:00  train.sh 1 $line $model_mode 80000 0.1
-    done < "../../data/train_eids.txt"
+    done < "../../data/test_eids.txt"
 fi
 
 if [ $num_sessions -gt 1 ]

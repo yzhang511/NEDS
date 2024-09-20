@@ -18,6 +18,8 @@ DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
 with open('data/train_eids.txt') as file:
     include_eids = [line.rstrip() for line in file]
+with open('data/test_eids.txt') as file:
+    include_eids += [line.rstrip() for line in file]
 
 
 class DecoderEmbeddingLayer(nn.Module):

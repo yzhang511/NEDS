@@ -253,9 +253,9 @@ def load_ibl_dataset(cache_dir,
         if use_re:
             target_eids = get_train_eids()
             test_re_eids = get_test_eids()
-            train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] in target_eids]
+            # train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] in target_eids]
             # remove the test_re_eids from the train_session_eid_dir
-            train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] not in test_re_eids]
+            # train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] not in test_re_eids]
         for dataset_eid in tqdm(train_session_eid_dir[:num_sessions]):
             try:
                 # print("Loading dataset: ", dataset_eid)
