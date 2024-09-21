@@ -10,6 +10,8 @@ from sklearn.cluster import SpectralClustering
 from sklearn.metrics import accuracy_score
 import time
 import glob
+with open('data/test_eids.txt') as file:
+    test_eids = file.read().splitlines()
 
 def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
     # Start dummy load after 2 hours, adjust the sleep interval as needed
@@ -725,8 +727,13 @@ def get_npy_files(log_dir,
     model_mode = f"inModal-{model_mode}"
     # get the npy files under sesNum-{num_sessions}/set-eval
     pattern = f"{log_dir}/sesNum-{num_sessions}/**/*{model_mode}/**/*.npy"
-    npy_files = glob.glob(pattern, recursive=True)
-
+    npy_files_ = glob.glob(pattern, recursive=True)
+    npy_files = []
+    test_eids_ = [ses[:5] for ses in test_eids]
+    for npy_file in npy_files_:
+        ses = npy_file.split('ses-')[1].split('/')[0]
+        if ses in test_eids_:
+            npy_files.append(npy_file)
     # filter the npy files
     if use_contrastive:
         npy_files = [f for f in npy_files if 'contrast-True' in f]
@@ -755,20 +762,30 @@ def get_npy_files(log_dir,
 
 def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energy']):
     r2_list = []
+    choice_acc_list = []
+    block_acc_list = []
     for npy_file in npy_files['behavior']:
-        decoding_data = np.load(npy_file, allow_pickle=True)
-        decoding_data = decoding_data.item()
-        # only remain key with r2_trial
-        decoding_data = {k: decoding_data[k] for k in decoding_data if 'r2_trial' in k}
-        # only remain key with avail_beh
-        decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
-        r2_list.append(decoding_data)
+        if 'acc.npy' in npy_file:
+            decoding_data = np.load(npy_file, allow_pickle=True)
+            choice_acc_list.append(decoding_data[0])
+            block_acc_list.append(decoding_data[1])
+            continue
+        else:
+            decoding_data = np.load(npy_file, allow_pickle=True)
+            decoding_data = decoding_data.item()
+            # only remain key with r2_trial
+            decoding_data = {k: decoding_data[k] for k in decoding_data if 'r2_trial' in k}
+            # only remain key with avail_beh
+            decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
+            r2_list.append(decoding_data)
     print("total {} sessions of behavior decoding".format(len(r2_list)))
     # return r2 for each session
     behav_result = {avail_beh[i]: [] for i in range(len(avail_beh))}
     for r2 in r2_list:
         for beh in avail_beh:
             behav_result[beh].append(np.mean(r2[f'{beh}_r2_trial']))
+    behav_result['choice_acc'] = choice_acc_list
+    behav_result['block_acc'] = block_acc_list
     return behav_result
 
 def return_spike_bps(npy_files):

@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --job-name=eval
-#SBATCH --output=eid_%j.out
+#SBATCH --output=eval_%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH -t 1:00:00 
 #SBATCH --mem=128g
-#SBATCH --account=pr_136_general
+#SBATCH --account=pr_136_tandon_advanced
 
 num_sessions=${1}
 eid=${2}
@@ -25,7 +25,7 @@ if [ $model_mode = "mm" ]; then
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path /u/yzhang39/multi_modal_foundation_model \
+                                --base_path ./ \
                                 --save_plot \
                                 --mask_type embd \
                                 --mixed_training  \
@@ -38,7 +38,7 @@ then
                                 --mask_ratio ${mask_rartio} \
                                 --eid ${eid} \
                                 --seed 42 \
-                                --base_path /u/yzhang39/multi_modal_foundation_model \
+                                --base_path ./ \
                                 --save_plot \
                                 --mask_type embd \
                                 --num_sessions ${num_sessions} \

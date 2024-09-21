@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH -t 7-12:00:00 
 #SBATCH --mem=128g
-#SBATCH --account=pr_136_general
+#SBATCH --account=pr_136_tandon_advanced
 
 . ~/.bashrc
 num_sessions=${1}
