@@ -734,6 +734,7 @@ def get_npy_files(log_dir,
         ses = npy_file.split('ses-')[1].split('/')[0]
         if ses in test_eids_:
             npy_files.append(npy_file)
+    
     # filter the npy files
     if use_contrastive:
         npy_files = [f for f in npy_files if 'contrast-True' in f]
