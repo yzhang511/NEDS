@@ -223,8 +223,7 @@ if args.model_mode == 'mm':
         avg_state_dict.append(model_state_dict)
     
     for key in model_state_dict:
-        model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
-        
+        model_state_dict[key] = sum([state_dict[key] for state_dict in avg_state_dict]) / len(avg_state_dict)
     model.load_state_dict(model_state_dict)
 
 elif args.model_mode in ['encoding', 'decoding']:
