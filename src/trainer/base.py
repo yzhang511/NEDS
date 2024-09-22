@@ -452,7 +452,7 @@ class MultiModalTrainer():
                         behave_r2_results_list.append(results["rsquared"])
 
                         #####
-                        from sklearn.metrics import accuracy_score
+                        from sklearn.metrics import balanced_accuracy_score as accuracy_score
                         choice_acc_results_list.append(accuracy_score(
                             gt_static[idx]['choice'].cpu().numpy(), preds_static[idx]['choice'].cpu().numpy()
                         ))

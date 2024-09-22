@@ -758,7 +758,7 @@ def co_smoothing_eval(
             preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
             preds_block = outputs.preds_static['block'].detach().cpu().numpy()
 
-            from sklearn.metrics import accuracy_score
+            from sklearn.metrics import balanced_accuracy_score as accuracy_score
             choice_acc = accuracy_score(gt_choice, preds_choice)
             block_acc = accuracy_score(gt_block, preds_block)
             #####
