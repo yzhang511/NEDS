@@ -102,7 +102,7 @@ mask_name = f"mask_{args.mask_mode}"
 log_dir = os.path.join(base_path, 
                        "results",
                        f"sesNum-{num_sessions}",
-                       f"ses-{args.eid}",
+                       f"ses-{args.eid[:5]}",
                        "set-finetune",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
@@ -221,7 +221,7 @@ if args.model_mode == 'mm':
         model, accelerator, dataset, dataloader = load_model_data_local(**configs)
         model_state_dict = model.state_dict()
         avg_state_dict.append(model_state_dict)
-    
+
     for key in model_state_dict:
         model_state_dict[key] = sum([state_dict[key] for state_dict in avg_state_dict]) / len(avg_state_dict)
     model.load_state_dict(model_state_dict)
@@ -255,7 +255,7 @@ elif args.model_mode in ['encoding', 'decoding']:
     }  
     
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
-    
+model.masker.ratio = args.mask_ratio 
 print("(train) masking mode: ", model.masker.mode)
 print("(train) masking ratio: ", model.masker.ratio)
 print("(train) masking active: ", model.masker.force_active)

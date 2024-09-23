@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --job-name=train-mm
-#SBATCH --output=train-mm-%j.out
+#SBATCH --job-name=train
+#SBATCH --output=train-%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1

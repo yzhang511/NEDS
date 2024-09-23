@@ -13,11 +13,19 @@
 num_sessions=${1}
 eid=${2}
 model_mode=${3}
-mask_rartio=${4}
+train_mode=${4} # finetune or train
+mask_rartio=${5}
 
 . ~/.bashrc
 echo $TMPDIR
 conda activate ibl-mm
+
+finetune_arg=""
+if [ $train_mode = "finetune" ]; then
+    echo "finetune mode"
+    finetune_arg="--finetune"
+fi
+
 
 cd ../..
 if [ $model_mode = "mm" ]; then
@@ -31,6 +39,7 @@ if [ $model_mode = "mm" ]; then
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
+                                $finetune_arg \
                                 --wandb  
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
@@ -43,6 +52,7 @@ then
                                 --mask_type embd \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
+                                $finetune_arg \
                                 --wandb 
 else
     echo "model_mode: $model_mode not supported"
