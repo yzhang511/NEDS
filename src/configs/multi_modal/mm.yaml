@@ -33,7 +33,7 @@ encoder:
     act: softsign         # activation for the embedding layers
     scale: 1              # scale the embedding multiplying by this number
     bias: true            # use bias in the embedding layer
-    dropout: 0.4 #0.2          # dropout in embedding layer
+    dropout: 0.2          # dropout in embedding layer
 
   transformer:
     n_layers: 5           # number of transformer layers
@@ -44,7 +44,7 @@ encoder:
     act: gelu             # activiation function in mlp layers
     inter_size: 512      # intermediate dimension in the mlp layers
     mlp_bias: true        # learn bias in the mlp layers
-    dropout: 0.6 #0.4          # dropout in transformer layers
+    dropout: 0.4          # dropout in transformer layers
     fixup_init: true      # modify weight initialization
 
 
@@ -63,7 +63,7 @@ decoder:
     act: softsign         # activation for the embedding layers
     scale: 1              # scale the embedding multiplying by this number
     bias: true            # use bias in the embedding layer
-    dropout: 0.4 #0.2          # dropout in embedding layer
+    dropout: 0.2          # dropout in embedding layer
 
   transformer:
     n_layers: 5           # number of transformer layers
@@ -74,6 +74,6 @@ decoder:
     act: gelu             # activiation function in mlp layers
     inter_size: 512      # intermediate dimension in the mlp layers
     mlp_bias: true        # learn bias in the mlp layers
-    dropout: 0.6 #0.4          # dropout in transformer layers
+    dropout: 0.4          # dropout in transformer layers
     fixup_init: true      # modify weight initialization
     
