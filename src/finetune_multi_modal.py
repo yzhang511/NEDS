@@ -120,7 +120,7 @@ if config.wandb.use:
         project=config.wandb.project, entity=config.wandb.entity, config=config,
         name="sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
             num_sessions,
-            args.eid, 
+            args.eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
