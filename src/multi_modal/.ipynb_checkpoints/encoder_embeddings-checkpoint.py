@@ -17,6 +17,10 @@ from models.stitcher import StitchEncoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
+with open('data/train_eids.txt') as file:
+    include_eids = [line.rstrip() for line in file]
+with open('data/test_eids.txt') as file:
+    include_eids += [line.rstrip() for line in file]
 
 class EncoderEmbeddingLayer(nn.Module):
 
@@ -30,6 +34,12 @@ class EncoderEmbeddingLayer(nn.Module):
         self.input_dim = self.n_channels*config.mult
 
         self.mod_emb = nn.Embedding(config.n_modality, hidden_size)
+
+        ####
+        self.eid_lookup = include_eids
+        self.eid_to_indx = {r: i for i,r in enumerate(self.eid_lookup)}
+        self.session_emb = nn.Embedding(len(self.eid_lookup), hidden_size)
+        ####
 
         self.pos = config.pos
         if self.pos:
@@ -65,6 +75,11 @@ class EncoderEmbeddingLayer(nn.Module):
 
         if self.pos:
             x_embed += self.pos_embed(inputs_timestamp)
+
+        ####
+        session_idx = torch.tensor(self.eid_to_indx[eid], dtype=torch.int64, device=inputs.device)
+        x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
+        ####
 
         return self.dropout(x), x_embed
 
@@ -140,6 +155,4 @@ class EncoderLayer(nn.Module):
             if name not in temp_state_dic:
                 temp_state_dic[name] = self.state_dict()[name]
         self.load_state_dict(temp_state_dic)   
-
-
 

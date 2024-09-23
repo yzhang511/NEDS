@@ -64,19 +64,21 @@ set_seed(config.seed)
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
-avail_mod = ['ap', 'behavior']
+avail_mod = ['ap', 'behavior', 'static']
 
+#####
 if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
+    input_modal = ['ap', 'behavior', 'static']
+    output_modal = ['ap', 'behavior', 'static']
 elif args.model_mode == "decoding":
     input_modal = ['ap']
-    output_modal = ['behavior']
+    output_modal = ['behavior', 'static']
 elif args.model_mode == "encoding":
-    input_modal = ['behavior']
+    input_modal = ['behavior', 'static']
     output_modal = ['ap']
 else:
     raise ValueError(f"model_mode {args.model_mode} not supported")
+#####
 
 modal_filter = {
     "input": input_modal,
@@ -179,12 +181,15 @@ test_dataloader = make_loader(test_dataset,
                             seed=config.seed,
                             shuffle=False)
 
+n_hidden_chan = 256
+n_out_mod = len(modal_filter['output'])
+
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=256 if mod=='ap' else 256,
+        n_channel=n_hidden_chan,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,
@@ -195,11 +200,11 @@ for mod in modal_filter["output"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
-        n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
-        output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
+        # n_channel=(n_hidden_chan+n_out_mod*(n_hidden_chan//2)) if n_out_mod > 1 else n_hidden_chan,
+        # output_channel=(n_hidden_chan+n_out_mod*(n_hidden_chan//2)) if n_out_mod > 1 else n_hidden_chan,
+        n_channel=n_hidden_chan,
+        output_channel=n_hidden_chan,
         #####
-        # n_channel=256 if mod=='ap' else 256,
-        # output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,
@@ -249,6 +254,9 @@ trainer_kwargs = {
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
     "config": config,
+    #####
+    "is_unimodal": args.model_mode in ["encoding", "decoding"]
+    #####
 }
 
 # Shared variable to signal the dummy load to stop
@@ -276,4 +284,3 @@ if args.dummy_load:
         dummy_thread.join()
 else:
     trainer_.train()
-

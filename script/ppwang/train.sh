@@ -1,13 +1,17 @@
 #!/bin/bash
 
-#SBATCH --job-name=train-mm
-#SBATCH --output=train-mm-%j.out
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="train_eval"
+#SBATCH --output="train_eval.%j.out"
 #SBATCH -N 1
-#SBATCH -n 1
+#SBACTH --array=0
+#SBATCH -c 8
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH -t 2-12:00:00 
-#SBATCH --mem=64g
+#SBATCH --mem 150000
+#SBATCH --gpus=1
+#SBATCH -t 0-4
+#SBATCH --export=ALL
 
 . ~/.bashrc
 num_sessions=${1}
@@ -22,7 +26,7 @@ cd ../..
 
 if [ $model_mode = "mm" ]; then
     python src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
+                                    --base_path /projects/bcxj/yzhang39/ \
                                     --mask_ratio $mask_ratio \
                                     --mixed_training \
                                     --num_sessions $num_sessions \
@@ -31,7 +35,7 @@ if [ $model_mode = "mm" ]; then
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
+                                    --base_path /projects/bcxj/yzhang39/ \
                                     --mask_ratio $mask_ratio \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \

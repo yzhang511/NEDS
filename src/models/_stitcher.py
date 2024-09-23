@@ -16,7 +16,11 @@ class StitchEncoder(nn.Module):
         # iterate key, value pairs in the dictionary
         for key, val in eid_list.items():
             if mod == "behavior":
-                val = 4
+                val = 2
+            #####
+            elif mod == "static":
+                val = 1
+            #####
             # token embedding layer
             stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2)
             # projection layer
@@ -43,13 +47,15 @@ class StitchDecoder(nn.Module):
 
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
+            #####
             if mod in ["behavior", "choice"]:
                 val = 2
             elif mod == "block":
                 val = 3
+            #####
             stitch_decoder_dict[str(key)] = nn.Linear(n_channels, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
 
     def forward(self, x, block_idx):
         return self.stitch_decoder_dict[block_idx](x)
-        
+

@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.special import gammaln
 from sklearn.cluster import SpectralClustering
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, balanced_accuracy_score
 
 NAME2MODEL = {"MultiModal": MultiModal}
 
@@ -51,9 +51,6 @@ def load_model_data_local(**kwargs):
     config = config_from_kwargs({"model": f"include:{model_config}"})
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
-
-    # r_dataset = load_dataset(f'neurofm123/{eid}_aligned')
-    # dataset = r_dataset["test"]
 
     _, _, dataset, meta_data = load_ibl_dataset(
             config.dirs.dataset_cache_dir, 
@@ -612,10 +609,20 @@ def co_smoothing_eval(
                     
                     mod_dict = {}
                     for mod in model.mod_to_indx.keys():
+
+                        #####
+                        if mod == "static":
+                            T = model.encoder_embeddings[mod].embedder.n_static_vars
+                        else:
+                            T = model.encoder_embeddings[mod].max_F
+                        #####
+                        
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        #####
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:T]
+                        #####
                         mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
@@ -634,16 +641,27 @@ def co_smoothing_eval(
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
-                            mod_dict[mod]['mask_mode'] = 'causal'
                         elif mod == 'behavior':
                             mod_dict[mod]['inputs'] = batch['target'].clone()
                             mod_dict[mod]['targets'] = batch['target'].clone()
-                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                                batch['target']).to(batch['target'].device, torch.int64)
+                        #####
+                        elif mod == 'static':
+                            mod_dict[mod]['inputs'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
+                            mod_dict[mod]['targets'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                                batch['target']).to(batch['target'].device, torch.int64)[:,:T]
+                        #####
                     
                     outputs = model(mod_dict)
                     
-            gt = outputs.mod_targets['ap'][:,:,:N].detach().cpu().numpy()
-            preds = outputs.mod_preds['ap'][:,:,:N]
+            gt = outputs.mod_targets['ap'].detach().cpu().numpy()
+            preds = outputs.mod_preds['ap']
             preds = torch.exp(preds).detach().cpu().numpy()
 
             target_n_i, target_t_i = np.arange(N), held_out_list[0]
@@ -715,10 +733,20 @@ def co_smoothing_eval(
                     
                     mod_dict = {}
                     for mod in model.mod_to_indx.keys():
+
+                        #####
+                        if mod == "static":
+                            T = model.encoder_embeddings[mod].embedder.n_static_vars
+                        else:
+                            T = model.encoder_embeddings[mod].max_F
+                        #####
+                        
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        #####
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:T]
+                        #####
                         mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
@@ -727,9 +755,8 @@ def co_smoothing_eval(
                             mod_dict[mod]['masking_mode'] = model.masker.mode # change later
                         else:
                             mod_dict[mod]['masking_mode'] = None
-                        #####
                         mod_dict[mod]['training_mode'] = 'decoding'
-                        #####
+
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
@@ -737,8 +764,8 @@ def co_smoothing_eval(
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
-                            mod_dict[mod]['mask_mode'] = 'causal'
-                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                                batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
                         elif mod == 'behavior':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['target'].clone()
@@ -746,23 +773,36 @@ def co_smoothing_eval(
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['targets'] = batch['target'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
+                        #####
+                        elif mod == 'static':
+                            mod_dict[mod]['inputs'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
+                            mod_dict[mod]['targets'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
+                            mod_dict[mod]['eval_mask'] = torch.ones_like(
+                                batch['target']).to(batch['target'].device, torch.int64)[:,:T]
+                        #####
                     
                     outputs = model(mod_dict)
                     
-            gt = outputs.mod_targets['behavior'][:,:,:2].detach().cpu().numpy()
-            preds = outputs.mod_preds['behavior'][:,:,:2].detach().cpu().numpy()
+            gt = outputs.mod_targets['behavior'].detach().cpu().numpy()
+            preds = outputs.mod_preds['behavior'].detach().cpu().numpy()
 
             #####
-            gt_choice = outputs.targets_static['choice'].detach().cpu().numpy()
-            gt_block = outputs.targets_static['block'].detach().cpu().numpy()
-            preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
-            preds_block = outputs.preds_static['block'].detach().cpu().numpy()
-
-            from sklearn.metrics import balanced_accuracy_score, accuracy_score
-            balanced_choice_acc = balanced_accuracy_score(gt_choice, preds_choice)
-            balanced_block_acc = balanced_accuracy_score(gt_block, preds_block)
-            choice_acc = accuracy_score(gt_choice, preds_choice)
-            block_acc = accuracy_score(gt_block, preds_block)
+            gt_choice = outputs.mod_targets['static'].squeeze().T[0]
+            gt_block = outputs.mod_targets['static'].squeeze().T[1]
+            preds_choice, preds_block = outputs.mod_preds['static']
+            
+            choice_acc = balanced_accuracy_score(
+                gt_choice.detach().cpu().numpy(), 
+                preds_choice.detach().cpu().numpy()
+            )
+            block_acc = balanced_accuracy_score(
+                gt_block.detach().cpu().numpy(),
+                preds_block.detach().cpu().numpy()
+            )
             #####
 
             target_n_i, target_t_i = np.arange(N), held_out_list[0]
@@ -800,17 +840,11 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = r2
             np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
             np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
-            ####
             np.save(os.path.join(kwargs['save_path'], f'acc.npy'), np.array([choice_acc, block_acc]))
             return {
                 f"{mode}_behav_results": behav_results,
-                'choice_acc': choice_acc,
-                'block_acc': block_acc,
-                'balanced_choice_acc': balanced_choice_acc,
-                'balanced_block_acc': balanced_block_acc,
-            } 
-            ####
-    
+                'choice_acc': choice_acc, 'block_acc': block_acc,
+            }     
     else:
         raise NotImplementedError('mode not implemented')
 
@@ -1623,3 +1657,4 @@ def compute_R2_main(y, y_pred, clip=True):
     else:
         return r2s
         
+

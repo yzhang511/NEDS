@@ -5,6 +5,7 @@ import os
 from utils.utils import move_batch_to_device, metrics_list, plot_gt_pred, plot_neurons_r2
 from tqdm import tqdm
 import random
+from sklearn.metrics import balanced_accuracy_score
 
 class MultiModalTrainer():
     def __init__(
@@ -26,9 +27,12 @@ class MultiModalTrainer():
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
+        #####
+        self.is_unimodal = kwargs.get("is_unimodal", None)
+        #####
 
         self.model_class = self.config.model.model_class
-        self.metric = 'r2'        
+        self.metric = "r2"        
         self.session_active_neurons = {}    
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
@@ -36,7 +40,7 @@ class MultiModalTrainer():
 
         # Multi-task-Masing (MtM)
         if self.config.training.mask_type == "input":
-            # self.masking_schemes = ['inter-region', 'intra-region', 'neuron', 'temporal']
+            # self.masking_schemes = ["inter-region", "intra-region", "neuron", "temporal"]
             self.masking_schemes = self.config.training.mask_mode
         else:
             self.masking_mode = None
@@ -44,24 +48,32 @@ class MultiModalTrainer():
         self.mixed_training = kwargs.get("mixed_training", False)
         if self.mixed_training:
             self.training_schemes = [
-                'encoding', 'decoding', 'spike-spike', 'behavior-behavior', 'token_masking'
+                "encoding", "decoding", "spike-spike", "behavior-behavior", 
+                "token_masking"
             ]
         else:
             self.training_mode = None
 
-    
+
     def _forward_model_outputs(self, batch, masking_mode, training_mode):
-        
-        single_modal = True if len(self.modal_filter['output']) == 1 else False
-        
+                
         batch = move_batch_to_device(batch, self.accelerator.device)
         
         mod_dict = {}
         for mod in self.mod_to_indx.keys():
+            #####
+            if mod == "static":
+                T = self.model.encoder_embeddings[mod].embedder.n_static_vars
+            else:
+                T = self.model.encoder_embeddings[mod].max_F
+            #####
+            
             mod_dict[mod] = {}
             mod_dict[mod]['inputs_modality'] = torch.tensor(self.mod_to_indx[mod]).to(self.accelerator.device)
             mod_dict[mod]['targets_modality'] = torch.tensor(self.mod_to_indx[mod]).to(self.accelerator.device)
-            mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+            #####
+            mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:T]
+            #####
             mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
             mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
@@ -76,38 +88,90 @@ class MultiModalTrainer():
             elif mod == 'behavior':
                 mod_dict[mod]['inputs'] = batch['target'].clone()
                 mod_dict[mod]['targets'] = batch['target'].clone()
+            #####
+            elif mod == 'static':
+                mod_dict[mod]['inputs'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
+                mod_dict[mod]['targets'] = torch.cat(
+                                    (batch['choice'], batch['block']), axis=1
+                                ).unsqueeze(-1).to(batch['choice'].device)
             else:
-               raise Exception(f"Modality not implemented yet.")
+               raise Exception("Modality not implemented yet.")
 
-            if single_modal and mod in self.modal_filter['output']:
-                mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+            if self.is_unimodal and (mod in self.modal_filter['output']):
+                mod_dict[mod]['eval_mask'] = torch.ones_like(
+                    batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)[:,:T]
             else:
-                mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                    batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)[:,:T]
+            #####
 
-        if not single_modal:
+        if not self.is_unimodal:
             if training_mode == 'encoding':
                 for mod in self.mod_to_indx.keys():
-                    if mod == 'ap':
-                        mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                    #####
+                    if mod == 'static':
+                        T = self.model.encoder_embeddings[mod].embedder.n_static_vars
                     else:
-                        mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                        T = self.model.encoder_embeddings[mod].max_F
+                    #####
+                    if mod == 'ap':
+                        mod_dict[mod]['eval_mask'] = torch.ones_like(
+                            batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                    else:
+                        #####
+                        mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                            batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)[:,:T]
+                        #####
             elif training_mode == 'decoding':
                 for mod in self.mod_to_indx.keys():
-                    if mod == 'behavior':
-                        mod_dict[mod]['eval_mask'] = torch.ones_like(batch['target']).to(batch['target'].device, torch.int64)
+                    #####
+                    if mod == 'static':
+                        T = self.model.encoder_embeddings[mod].embedder.n_static_vars
                     else:
-                        mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+                        T = self.model.encoder_embeddings[mod].max_F
+                    if mod in ['static', 'behavior']:
+                        mod_dict[mod]['eval_mask'] = torch.ones_like(
+                            batch['target']).to(batch['target'].device, torch.int64)[:,:T]
+                    else:
+                        mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                            batch['target']).to(batch['target'].device, torch.int64)
+                    #####
             elif training_mode == 'token_masking':
                 for mod in self.mod_to_indx.keys():
-                    mod_dict[mod]['eval_mask'] = None
+                    #####
+                    if mod == 'static':
+                        T = self.model.encoder_embeddings[mod].embedder.n_static_vars
+                        mod_dict[mod]['eval_mask'] = torch.ones_like(
+                            batch['target']).to(batch['target'].device, torch.int64)[:,:T]
+                    else:
+                        mod_dict[mod]['eval_mask'] = None
+                    #####
             elif training_mode == 'spike-spike':
                 mod_dict['ap']['eval_mask'] = None
-                mod_dict['behavior']['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+                #####
+                for mod in ['static', 'behavior']:
+                    if mod == 'static':
+                        T = self.model.encoder_embeddings[mod].embedder.n_static_vars
+                    else:
+                        T = self.model.encoder_embeddings[mod].max_F
+                    mod_dict[mod]['eval_mask'] = torch.zeros_like(
+                        batch['target']).to(batch['target'].device, torch.int64)[:,:T]
+                #####
             elif training_mode == 'behavior-behavior':
                 mod_dict['behavior']['eval_mask'] = None
-                mod_dict['ap']['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
+                #####
+                for mod in ['static', 'ap']:
+                    if mod == 'static':
+                        T = self.model.encoder_embeddings[mod].embedder.n_static_vars
+                    else:
+                        T = self.model.encoder_embeddings[mod].max_F
+                    mod_dict[mod]['eval_mask'] = torch.ones_like(
+                        batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)[:,:T]
+                #####
             else:
-               raise Exception(f"Training objective not implemented yet.")
+               raise Exception("Training objective not implemented yet.")
 
         return self.model(mod_dict)
 
@@ -117,9 +181,7 @@ class MultiModalTrainer():
         best_eval_trial_avg_metric = -torch.tensor(float('inf'))
         best_eval_avg_spike_r2 = -torch.tensor(float('inf'))
         best_eval_avg_behave_r2 = -torch.tensor(float('inf'))
-        #####
         best_eval_avg_static_acc = -torch.tensor(float('inf'))
-        #####
         
         for epoch in range(self.config.training.num_epochs):
             train_epoch_results = self.train_epoch(epoch)
@@ -140,36 +202,27 @@ class MultiModalTrainer():
                     self.save_model(name="best_behave", epoch=epoch)
                     wandb.log({"best_behave_epoch": epoch})
 
-                #####
                 if eval_epoch_results[f'eval_avg_static_acc'] > best_eval_avg_static_acc:
                     best_eval_avg_static_acc = eval_epoch_results['eval_avg_static_acc']
                     print(f"epoch: {epoch} best trial avg static acc: {best_eval_avg_static_acc}")
                     self.save_model(name="best_static", epoch=epoch)
                     wandb.log({"best_static_epoch": epoch})
-                #####
                 
                 if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
                     best_eval_loss = eval_epoch_results[f'eval_loss']
                     best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
                     print(f"epoch: {epoch} best eval loss: {best_eval_loss} trial avg {self.metric}: {best_eval_trial_avg_metric}")
                     self.save_model(name="best", epoch=epoch)
-                    # https://discuss.pytorch.org/t/saving-model-and-optimiser-and-scheduler/52030/8
-                    # if len(self.eid_list) > 1:
-                    #     ckpt = { 
-                    #         'epoch': epoch,
-                    #         'model': self.model,
-                    #         'optimizer': self.optimizer,
-                    #         'lr_sched': self.lr_scheduler}
-                    #     torch.save(ckpt, 'ckpt.pth')
 
                     for mod in self.modal_filter['output']:
-                        gt_pred_fig = self.plot_epoch(
-                            gt=eval_epoch_results['eval_gt'][0][mod], 
-                            preds=eval_epoch_results['eval_preds'][0][mod], 
-                            epoch=epoch,
-                            active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
-                            modality=mod
-                        )
+                        if mod in ['ap', 'behavior']:
+                            gt_pred_fig = self.plot_epoch(
+                                gt=eval_epoch_results['eval_gt'][0][mod], 
+                                preds=eval_epoch_results['eval_preds'][0][mod], 
+                                epoch=epoch,
+                                active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
+                                modality=mod
+                            )
                         if self.config.wandb.use:
                             wandb.log(
                                 {"best_epoch": epoch,
@@ -191,13 +244,14 @@ class MultiModalTrainer():
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
                     # take the first session for plotting
-                    gt_pred_fig = self.plot_epoch(
-                        gt=eval_epoch_results['eval_gt'][0][mod], 
-                        preds=eval_epoch_results['eval_preds'][0][mod], 
-                        epoch=epoch, 
-                        modality=mod,
-                        active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5]
-                    )
+                    if mod in ['ap', 'behavior']:
+                        gt_pred_fig = self.plot_epoch(
+                            gt=eval_epoch_results['eval_gt'][0][mod], 
+                            preds=eval_epoch_results['eval_preds'][0][mod], 
+                            epoch=epoch, 
+                            modality=mod,
+                            active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5]
+                        )
                     if self.config.wandb.use:
                         wandb.log({
                             f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
@@ -216,21 +270,15 @@ class MultiModalTrainer():
                     "train_loss": train_epoch_results['train_loss'],
                     "train_spike_loss": train_epoch_results['train_spike_loss'],
                     "train_behave_loss": train_epoch_results['train_behave_loss'],
+                    "train_static_loss": train_epoch_results['train_static_loss'],
                     "eval_loss": eval_epoch_results['eval_loss'],
                     "eval_spike_loss": eval_epoch_results['eval_spike_loss'],
                     "eval_behave_loss": eval_epoch_results['eval_behave_loss'],
-                    #####
-                    "train_static_loss": train_epoch_results['train_static_loss'],
                     "eval_static_loss": eval_epoch_results['eval_static_loss'],
-                    #####
                     f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
                     "eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
                     "eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
-                    #####
                     "eval_avg_static_acc": eval_epoch_results[f'eval_avg_static_acc'],
-                    "eval_avg_choice_acc": eval_epoch_results[f'eval_avg_choice_acc'],
-                    "eval_avg_block_acc": eval_epoch_results[f'eval_avg_block_acc'],
-                    #####
                     f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
                     f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc'],
                 })
@@ -238,23 +286,19 @@ class MultiModalTrainer():
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
-            #####
             wandb.log({"best_eval_loss": best_eval_loss,
                        f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric,
                        "best_eval_avg_spike_r2": best_eval_avg_spike_r2,
                        "best_eval_avg_behave_r2": best_eval_avg_behave_r2,
+                       "best_eval_avg_static_acc": best_eval_avg_static_acc,
                       }
                      )
-            #####
-
     
     def train_epoch(self, epoch):
         train_loss = 0.
         train_spike_loss = 0.
         train_behave_loss = 0.
-        #####
         train_static_loss = 0.
-        #####
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
@@ -274,17 +318,16 @@ class MultiModalTrainer():
             if 'ap' in self.modal_filter['output']:
                 train_spike_loss += outputs.mod_loss['ap']
             if 'behavior' in self.modal_filter['output']:
-                #####
-                train_behave_loss += outputs.mod_loss['dynamic']
+                train_behave_loss += outputs.mod_loss['behavior']
+            #####
+            if 'static' in self.modal_filter['output']:
                 train_static_loss += outputs.mod_loss['static']
-                #####
+            #####
         return{
             "train_loss": train_loss/len(self.train_dataloader),
             "train_spike_loss": train_spike_loss/len(self.train_dataloader),
             "train_behave_loss": train_behave_loss/len(self.train_dataloader),
-            #####
             "train_static_loss": train_static_loss/len(self.train_dataloader),
-            #####
         }
     
     
@@ -294,23 +337,12 @@ class MultiModalTrainer():
         eval_loss = 0.
         eval_spike_loss = 0.
         eval_behave_loss = 0.
-        #####
         eval_static_loss = 0.
-        #####
         session_results = {}
         for eid in self.eid_list:
             session_results[eid] = {}
             for mod in self.modal_filter['output']:
-                #####
-                if mod == 'ap':
-                    session_results[eid][mod] = {"gt": [], "preds": []}
-                elif mod == 'behavior':
-                    session_results[eid][mod] = {
-                        "gt": [], "preds": [], 
-                        "gt_choice": [], "preds_choice": [], 
-                        "gt_block": [], "preds_block": [], 
-                    }
-                #####
+                session_results[eid][mod] = {"gt": [], "preds": []}
             session_results[eid]['s2b_acc'] = []
             session_results[eid]['b2s_acc'] = []
 
@@ -345,6 +377,7 @@ class MultiModalTrainer():
                             session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
                             session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
 
+                
                 if 'behavior' in self.modal_filter['output']:
                     
                     for batch in self.eval_dataloader:
@@ -357,10 +390,8 @@ class MultiModalTrainer():
                         )
                         loss = outputs.loss
                         eval_loss += loss.item()
-                        #####
-                        eval_behave_loss += outputs.mod_loss['dynamic'].item()
+                        eval_behave_loss += outputs.mod_loss['behavior'].item()
                         eval_static_loss += outputs.mod_loss['static'].item()
-                        #####
                         num_neuron = batch['spikes_data'].shape[2] 
                         eid = batch['eid'][0]
 
@@ -371,71 +402,49 @@ class MultiModalTrainer():
                             outputs.mod_preds['behavior'].clone()
                         )
                         #####
-                        session_results[eid]['behavior']["gt_choice"].append(
-                            outputs.targets_static['choice'].clone()
-                        )
-                        session_results[eid]['behavior']["preds_choice"].append(
-                            outputs.preds_static['choice'].clone()
-                        )
-                        session_results[eid]['behavior']["gt_block"].append(
-                            outputs.targets_static['block'].clone()
-                        )
-                        session_results[eid]['behavior']["preds_block"].append(
-                            outputs.preds_static['block'].clone()
-                        )
+                        gt_choice = outputs.mod_targets['static'].squeeze().T[0]
+                        gt_block = outputs.mod_targets['static'].squeeze().T[1]
+                        preds_choice, preds_block = outputs.mod_preds['static']
+                        
+                        session_results[eid]['static']["gt"].append((gt_choice, gt_block))
+                        session_results[eid]['static']["preds"].append((preds_choice, preds_block))
                         #####
     
                         if outputs.contrastive_dict:
                             session_results[eid]['b2s_acc'].append(outputs.contrastive_dict['b2s_acc'])
                             session_results[eid]['s2b_acc'].append(outputs.contrastive_dict['s2b_acc'])
-
             
             gt, preds, s2b_acc_list, b2s_acc_list = {}, {}, [], []
             spike_r2_results_list, behave_r2_results_list = [], []
-            #####
-            gt_static, preds_static = {}, {}
-            choice_acc_results_list, block_acc_results_list = [], []
-            #####
+            static_acc_results_list = []
             for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
-                gt_static[idx], preds_static[idx] = {}, {}
                 for mod in self.modal_filter['output']:
                     #####
-                    if mod == 'behavior':
-                        _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)[:,:,:2]
+                    if mod == 'static':
+                        _gt_choice = torch.cat(session_results[eid][mod]["gt"][0], dim=0)
+                        _gt_block = torch.cat(session_results[eid][mod]["gt"][1], dim=0)
+                        _preds_choice = torch.cat(session_results[eid][mod]["preds"][0], dim=0)
+                        _preds_block = torch.cat(session_results[eid][mod]["preds"][1], dim=0)
+                        _gt, _preds = (_gt_choice, _gt_block), (_preds_choice, _preds_block)
                     else:
                         _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
-                    #####
-                    _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                        _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
                     if mod == 'ap' and 'ap' in self.modal_filter['output']:
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
-                    #####
-                    if mod == 'behavior':
-                        _gt_choice = torch.cat(session_results[eid][mod]["gt_choice"], dim=0)
-                        _preds_choice = torch.cat(session_results[eid][mod]["preds_choice"], dim=0)
-                        _gt_block = torch.cat(session_results[eid][mod]["gt_block"], dim=0)
-                        _preds_block = torch.cat(session_results[eid][mod]["preds_block"], dim=0)
-                        gt_static[idx]['choice'] = _gt_choice
-                        preds_static[idx]['choice'] = _preds_choice
-                        gt_static[idx]['block'] = _gt_block
-                        preds_static[idx]['block'] = _preds_block
                     #####
                     
                 if eid not in self.session_active_neurons:
                     self.session_active_neurons[eid] = {}
 
                 for mod in self.modal_filter['output']:
-                    
+
+                    #####
                     if mod == 'ap':
                         active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
                         self.session_active_neurons[eid][mod] = active_neurons
-                        
-                    if mod == 'behavior':
-                        self.session_active_neurons[eid]['behavior'] = [i for i in range(gt[idx]['behavior'].size(2))]
-                    
-                    if mod == 'ap':
                         results = metrics_list(
                             gt = gt[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0),
                             pred = preds[idx][mod][:,:,self.session_active_neurons[eid][mod]].transpose(-1,0), 
@@ -443,23 +452,24 @@ class MultiModalTrainer():
                             device=self.accelerator.device
                         )
                         spike_r2_results_list.append(results["bps"])
-                      
-                    elif mod == 'behavior':
+
+                    if mod == 'behavior':
+                        self.session_active_neurons[eid][mod] = [i for i in range(gt[idx][mod].size(2))]
                         results = metrics_list(gt = gt[idx][mod],
                                             pred = preds[idx][mod],
                                             metrics=["rsquared"],
                                             device=self.accelerator.device)
                         behave_r2_results_list.append(results["rsquared"])
 
-                        #####
-                        from sklearn.metrics import balanced_accuracy_score
-                        choice_acc_results_list.append(balanced_accuracy_score(
-                            gt_static[idx]['choice'].cpu().numpy(), preds_static[idx]['choice'].cpu().numpy()
-                        ))
-                        block_acc_results_list.append(balanced_accuracy_score(
-                            gt_static[idx]['block'].cpu().numpy(), preds_static[idx]['block'].cpu().numpy()
-                        ))
-                        #####
+                    if mod == 'static':
+                        ch_acc = balanced_accuracy_score(
+                            gt[idx][mod][0].cpu().numpy(), preds[idx][mod][0].cpu().numpy()
+                        )
+                        blk_acc = balanced_accuracy_score(
+                            gt[idx][mod][1].cpu().numpy(), preds[idx][mod][1].cpu().numpy()
+                        )
+                        static_acc_results_list.append((ch_acc+blk_acc)/2)
+                    #####
                     
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
@@ -472,24 +482,17 @@ class MultiModalTrainer():
 
         spike_r2 = np.nanmean(spike_r2_results_list)
         behave_r2 = np.nanmean(behave_r2_results_list)
-        choice_acc = np.nanmean(choice_acc_results_list)
-        block_acc = np.nanmean(block_acc_results_list)
+        static_acc = np.nanmean(static_acc_results_list)
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
             "eval_spike_loss": eval_spike_loss/len(self.eval_dataloader),
             "eval_behave_loss": eval_behave_loss/len(self.eval_dataloader),
-            #####
             "eval_static_loss": eval_static_loss/len(self.eval_dataloader),
-            f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2, choice_acc, block_acc]),
-             #####
+            f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2, static_acc]),
             "eval_avg_spike_r2": spike_r2,
             "eval_avg_behave_r2": behave_r2,
-            #####
-            "eval_avg_static_acc": np.nanmean([choice_acc, block_acc]),
-            "eval_avg_choice_acc": choice_acc,
-            "eval_avg_block_acc": block_acc,
-            #####
+            "eval_avg_static_acc": static_acc,
             "eval_gt": gt,
             "eval_preds": preds,
             "eval_s2b_acc": np.mean(s2b_acc_list),
@@ -534,7 +537,6 @@ class MultiModalTrainer():
 
 
 
-
 class BaselineTrainer():
     def __init__(
         self,
@@ -554,18 +556,11 @@ class BaselineTrainer():
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
-  
+
+        self.metric = 'r2'        
         self.session_active_neurons = []      
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
-
-        #####
-        self.target_to_decode = kwargs["target_to_decode"]
-        if ('choice' in self.target_to_decode) or ('block' in self.target_to_decode):
-            self.metric = "acc"      
-        else:
-            self.metric = "r2"    
-        #####
 
     def _forward_model_outputs(self, batch):
         batch = move_batch_to_device(batch, self.accelerator.device)
@@ -575,15 +570,7 @@ class BaselineTrainer():
             data_dict['targets'] = batch['spikes_data']
         else:
             data_dict['inputs'] = batch['spikes_data']
-            #####
-            T = len(['wheel-speed', 'whisker-motion-energy'])
-            if self.target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
-                data_dict['targets'] = batch['target'][:,:,:T]
-            elif self.target_to_decode[0] == 'choice':
-                data_dict['targets'] = batch['target'][:,0,2]
-            elif self.target_to_decode[0] == 'block':
-                data_dict['targets'] = batch['target'][:,0,3]
-            #####
+            data_dict['targets'] = batch['target']
         data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
         data_dict['num_neuron'] = batch['spikes_data'].shape[2]
         return self.model(data_dict)
@@ -606,56 +593,50 @@ class BaselineTrainer():
                     self.save_model(name="best", epoch=epoch)
 
                     for mod in self.modal_filter['output']:
-                        #####
-                        if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                        #####
-                            gt_pred_fig = self.plot_epoch(
-                                gt=eval_epoch_results['eval_gt'][0][mod], 
-                                preds=eval_epoch_results['eval_preds'][0][mod], 
-                                epoch=epoch,
-                                active_neurons=self.session_active_neurons[0][:5], 
-                                modality=mod
+                        gt_pred_fig = self.plot_epoch(
+                            gt=eval_epoch_results['eval_gt'][0][mod], 
+                            preds=eval_epoch_results['eval_preds'][0][mod], 
+                            epoch=epoch,
+                            active_neurons=self.session_active_neurons[0][:5], 
+                            modality=mod
+                        )
+                        if self.config.wandb.use:
+                            wandb.log(
+                                {"best_epoch": epoch,
+                                 f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
+                                 f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])}
                             )
-                            if self.config.wandb.use:
-                                wandb.log(
-                                    {"best_epoch": epoch,
-                                     f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
-                                     f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])}
-                                )
-                            else:
-                                gt_pred_fig['plot_gt_pred'].savefig(
-                                    os.path.join(self.log_dir, f"best_gt_pred_fig_{mod}_{epoch}.png")
-                                )
-                                gt_pred_fig['plot_r2'].savefig(
-                                    os.path.join(self.log_dir, f"best_r2_fig_{mod}_{epoch}.png")
-                                )
+                        else:
+                            gt_pred_fig['plot_gt_pred'].savefig(
+                                os.path.join(self.log_dir, f"best_gt_pred_fig_{mod}_{epoch}.png")
+                            )
+                            gt_pred_fig['plot_r2'].savefig(
+                                os.path.join(self.log_dir, f"best_r2_fig_{mod}_{epoch}.png")
+                            )
 
                 print(f"epoch: {epoch} eval loss: {eval_epoch_results['eval_loss']} trial avg {self.metric}: {eval_epoch_results[f'eval_trial_avg_{self.metric}']}")
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
-                    #####
-                    if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                    #####
-                        gt_pred_fig = self.plot_epoch(
-                            gt=eval_epoch_results['eval_gt'][0][mod], 
-                            preds=eval_epoch_results['eval_preds'][0][mod], 
-                            epoch=epoch, 
-                            modality=mod,
-                            active_neurons=self.session_active_neurons[0][:5]
+                    gt_pred_fig = self.plot_epoch(
+                        gt=eval_epoch_results['eval_gt'][0][mod], 
+                        preds=eval_epoch_results['eval_preds'][0][mod], 
+                        epoch=epoch, 
+                        modality=mod,
+                        active_neurons=self.session_active_neurons[0][:5]
+                    )
+                    if self.config.wandb.use:
+                        wandb.log({
+                            f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
+                            f"r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])
+                        })
+                    else:
+                        gt_pred_fig['plot_gt_pred'].savefig(
+                            os.path.join(self.log_dir, f"gt_pred_fig_{mod}_{epoch}.png")
                         )
-                        if self.config.wandb.use:
-                            wandb.log({
-                                f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
-                                f"r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])
-                            })
-                        else:
-                            gt_pred_fig['plot_gt_pred'].savefig(
-                                os.path.join(self.log_dir, f"gt_pred_fig_{mod}_{epoch}.png")
-                            )
-                            gt_pred_fig['plot_r2'].savefig(
-                                os.path.join(self.log_dir, f"r2_fig_{mod}_{epoch}.png")
-                            )
+                        gt_pred_fig['plot_r2'].savefig(
+                            os.path.join(self.log_dir, f"r2_fig_{mod}_{epoch}.png")
+                        )
 
             if self.config.wandb.use:
                 wandb.log({
@@ -720,26 +701,15 @@ class BaselineTrainer():
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
-                    if mod == 'ap':
-                        active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
-                    else:
-                        active_neurons = np.arange(gt[idx][mod].size(-1)).tolist()
+                    active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
                     self.session_active_neurons.append(active_neurons)
 
                 for mod in self.modal_filter['output']:
-                    #####
-                    if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
-                                            metrics=["r2"], 
-                                            device=self.accelerator.device)
-                        results_list.append(results["r2"])
-                    else:
-                        from sklearn.metrics import balanced_accuracy_score
-                        results_list.append(balanced_accuracy_score(
-                            gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy().argmax(-1)
-                        ))
-                    #####
+                    results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
+                                        pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
+                                        metrics=["r2"], 
+                                        device=self.accelerator.device)
+                    results_list.append(results["r2"])
 
         return {
             "eval_loss": eval_loss,

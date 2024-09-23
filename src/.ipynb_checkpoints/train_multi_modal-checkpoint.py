@@ -146,6 +146,7 @@ train_dataloader = make_loader(train_dataset,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
                             stitching=True,
+                            seed=config.seed,
                             shuffle=True)
 
 val_dataloader = make_loader(val_dataset, 
@@ -160,6 +161,7 @@ val_dataloader = make_loader(val_dataset,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
                             stitching=True,
+                            seed=config.seed,
                             shuffle=False)
 
 test_dataloader = make_loader(test_dataset, 
@@ -174,6 +176,7 @@ test_dataloader = make_loader(test_dataset,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
                             stitching=True,
+                            seed=config.seed,
                             shuffle=False)
 
 encoder_embeddings, decoder_embeddings = {}, {}
@@ -191,8 +194,12 @@ for mod in modal_filter["input"]:
 for mod in modal_filter["output"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
-        n_channel=256 if mod=='ap' else 256,
-        output_channel=256 if mod=='ap' else 256,
+        #####
+        n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
+        output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
+        #####
+        # n_channel=256 if mod=='ap' else 256,
+        # output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,
@@ -269,3 +276,4 @@ if args.dummy_load:
         dummy_thread.join()
 else:
     trainer_.train()
+
