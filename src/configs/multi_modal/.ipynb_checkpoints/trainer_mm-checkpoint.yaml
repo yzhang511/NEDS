@@ -1,7 +1,7 @@
 seed: 42
 
 savestring: test
-wandb_project: 4m-single
+wandb_project: 4m-benchmark
 log_to_wandb: false
 
 verbosity: 0
@@ -10,7 +10,7 @@ verbosity: 0
 wandb:
   use: true
   entity: null
-  project: 4m-single
+  project: 4m-benchmark
   run_name: 671c7ea7
 
 # Logging directories
@@ -28,7 +28,7 @@ dirs:
 
 # Training configuration
 training:
-  num_epochs: 1000
+  num_epochs: 2000
   train_batch_size: 16
   test_batch_size: 16  
   shuffle_test_dataloader: false    # Shuffle test dataloader between epochs

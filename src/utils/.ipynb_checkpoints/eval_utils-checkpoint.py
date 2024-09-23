@@ -52,11 +52,26 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    dataset = r_dataset["test"]
+    # r_dataset = load_dataset(f'neurofm123/{eid}_aligned')
+    # dataset = r_dataset["test"]
 
-    n_neurons = len(dataset['cluster_regions'][0])
+    _, _, dataset, meta_data = load_ibl_dataset(
+            config.dirs.dataset_cache_dir, 
+            config.dirs.huggingface_org,
+            num_sessions=1,
+            eid = eid,
+            use_re=True,
+            split_method="predefined",
+            test_session_eid=[],
+            batch_size=config.training.train_batch_size,
+            seed=config.seed)
+
+    print(meta_data)
+    
+    n_neurons = meta_data['eid_list'][eid]
     n_behaviors = len(avail_beh)
+
+    print(f'Load test data with {n_neurons} neurons.')
 
     accelerator = Accelerator()
     try:
@@ -80,7 +95,10 @@ def load_model_data_local(**kwargs):
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        use_nemo=False, shuffle=False,
+        use_nemo=False, 
+        shuffle=False,
+        seed=config.seed,
+        stitching=True,
     )
 
     return model, accelerator, dataset, dataloader
@@ -101,7 +119,8 @@ def co_smoothing_eval(
         save_plot=False,
         use_mtm=False,
         trial_len=2,
-        fr_threshold=0.1,
+        # fr_threshold=0.1,
+        fr_threshold=1,
         **kwargs
 ):
     
@@ -602,20 +621,20 @@ def co_smoothing_eval(
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
-                            mod_dict[mod]['masking_mode'] = model.masker.mode # change later
+                            mod_dict[mod]['masking_mode'] = model.masker.mode 
                         else:
                             mod_dict[mod]['masking_mode'] = None
+                        mod_dict[mod]['training_mode'] = 'encoding'
+
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                             else:
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
                             mod_dict[mod]['mask_mode'] = 'causal'
-                            #######
                         elif mod == 'behavior':
                             mod_dict[mod]['inputs'] = batch['target'].clone()
                             mod_dict[mod]['targets'] = batch['target'].clone()
@@ -633,14 +652,10 @@ def co_smoothing_eval(
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
 
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
-
-                if mean_fr >= 1/fr_threshold: 
-                    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                    if np.isinf(bps):
-                        bps = np.nan
-                    bps_result_list[target_n_i[n_i]] = bps
-                # bps_result_list = [bits_per_spike(pred_held_out, gt_held_out)]
+                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                if np.isinf(bps):
+                    bps = np.nan
+                bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         
@@ -712,17 +727,18 @@ def co_smoothing_eval(
                             mod_dict[mod]['masking_mode'] = model.masker.mode # change later
                         else:
                             mod_dict[mod]['masking_mode'] = None
+                        #####
+                        mod_dict[mod]['training_mode'] = 'decoding'
+                        #####
                         if mod == 'ap':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                             else:
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
-                            #######
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['mask_mode'] = 'causal'
                             mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-                            #######
                         elif mod == 'behavior':
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['target'].clone()
@@ -733,8 +749,21 @@ def co_smoothing_eval(
                     
                     outputs = model(mod_dict)
                     
-            gt = outputs.mod_targets['behavior'][:,:,:N].detach().cpu().numpy()
-            preds = outputs.mod_preds['behavior'][:,:,:N].detach().cpu().numpy()
+            gt = outputs.mod_targets['behavior'][:,:,:2].detach().cpu().numpy()
+            preds = outputs.mod_preds['behavior'][:,:,:2].detach().cpu().numpy()
+
+            #####
+            gt_choice = outputs.targets_static['choice'].detach().cpu().numpy()
+            gt_block = outputs.targets_static['block'].detach().cpu().numpy()
+            preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
+            preds_block = outputs.preds_static['block'].detach().cpu().numpy()
+
+            from sklearn.metrics import balanced_accuracy_score, accuracy_score
+            balanced_choice_acc = balanced_accuracy_score(gt_choice, preds_choice)
+            balanced_block_acc = balanced_accuracy_score(gt_block, preds_block)
+            choice_acc = accuracy_score(gt_choice, preds_choice)
+            block_acc = accuracy_score(gt_block, preds_block)
+            #####
 
             target_n_i, target_t_i = np.arange(N), held_out_list[0]
 
@@ -771,9 +800,16 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = r2
             np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
             np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
+            ####
+            np.save(os.path.join(kwargs['save_path'], f'acc.npy'), np.array([choice_acc, block_acc]))
             return {
-                f"{mode}_behav_results": behav_results
+                f"{mode}_behav_results": behav_results,
+                'choice_acc': choice_acc,
+                'block_acc': block_acc,
+                'balanced_choice_acc': balanced_choice_acc,
+                'balanced_block_acc': balanced_block_acc,
             } 
+            ####
     
     else:
         raise NotImplementedError('mode not implemented')
@@ -1587,4 +1623,3 @@ def compute_R2_main(y, y_pred, clip=True):
     else:
         return r2s
         
-

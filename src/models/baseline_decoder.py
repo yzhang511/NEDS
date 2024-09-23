@@ -24,7 +24,13 @@ class BaselineDecoder(nn.Module):
         self.in_channel = in_channel[0]
         self.out_channel = out_channel
         self.layer = nn.Linear(self.in_channel, self.out_channel)
-        self.loss = nn.MSELoss(reduction="none")
+        #####
+        self.is_clf = kwargs["is_clf"]
+        if self.is_clf:
+            self.loss = nn.CrossEntropyLoss(reduction="none")
+        else:
+            self.loss = nn.MSELoss(reduction="none")
+        #####
 
     def forward_loss(
             self, preds: torch.Tensor, targets: torch.Tensor
@@ -60,6 +66,7 @@ class ReducedRankDecoder(nn.Module):
         self.out_channel = out_channel
         self.eid_list = list(kwargs["eids"])
         self.rank = kwargs["rank"]
+        
         self.Us = torch.nn.ParameterList(
             [torch.nn.Parameter(torch.randn(in_channel, self.rank)) for in_channel in self.in_channel]
         )
@@ -67,13 +74,24 @@ class ReducedRankDecoder(nn.Module):
         self.bs = torch.nn.ParameterList(
             [torch.nn.Parameter(torch.randn(self.out_channel,)) for _ in self.eid_list]
         )
-        self.loss = nn.MSELoss(reduction="none")
+    
+        #####
+        self.is_clf = kwargs["is_clf"]
+        if self.is_clf:
+            self.loss = nn.CrossEntropyLoss(reduction="none")
+        else:
+            self.loss = nn.MSELoss(reduction="none")
+        #####
 
     def forward_loss(
             self, preds: torch.Tensor, targets: torch.Tensor
         ) -> Tuple[torch.Tensor, torch.LongTensor]:
-        n_examples, _, _ = targets.size()
+        #####
+        n_examples = targets.size()[0]
+        if self.is_clf:
+            targets = targets.squeeze().to(torch.int64)
         loss = self.loss(preds, targets).sum() / n_examples
+        #####
         return loss, n_examples
 
     def forward(
@@ -82,7 +100,12 @@ class ReducedRankDecoder(nn.Module):
         eid_idx = self.eid_list.index(data_dict['eid'])
         inputs, targets = data_dict['inputs'], data_dict['targets']
         self.B = torch.einsum('nr,rtp->ntp', self.Us[eid_idx], self.V)
-        preds = torch.einsum('ntp,ktn->ktp', self.B, inputs)
+        #####
+        if self.is_clf:
+            preds = torch.einsum('ntp,ktn->kp', self.B, inputs)
+        else:
+            preds = torch.einsum('ntp,ktn->ktp', self.B, inputs)
+        #####
         preds += self.bs[eid_idx]
         loss, n_examples = self.forward_loss(preds, targets)
 

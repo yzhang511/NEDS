@@ -53,19 +53,21 @@ print(f'Working on EID: {eid} ...')
 model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
-avail_mod = ['ap','behavior']
+avail_mod = ['ap', 'behavior', 'static']
 
+#####
 if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
+    input_modal = ['ap', 'behavior', 'static']
+    output_modal = ['ap', 'behavior', 'static']
 elif args.model_mode == "decoding":
     input_modal = ['ap']
-    output_modal = ['behavior']
+    output_modal = ['behavior', 'static']
 elif args.model_mode == "encoding":
-    input_modal = ['behavior']
+    input_modal = ['behavior', 'static']
     output_modal = ['ap']
 else:
     raise ValueError(f"model_mode {args.model_mode} not supported")
+#####
 
 modal_filter = {
     "input": input_modal,
@@ -138,79 +140,79 @@ if args.wandb:
 )
 
 avg_state_dict = []
-for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
-# for best_ckpt_path in ['model_best.pt']:
-    model_path = os.path.join(base_path, 
-                            "results",
-                            f"sesNum-{args.num_sessions}",
-                            f"ses-{eid_}",
-                            "set-train",
-                            # f"ses-{eid}",   # fine-tune
-                            # "set-finetune", # fine-tune
-                            f"inModal-{'-'.join(modal_filter['input'])}",
-                            f"outModal-{'-'.join(modal_filter['output'])}",
-                            f"mask-{args.mask_type}",
-                            f"mode-{mask_mode}",
-                            f"ratio-{args.mask_ratio}",
-                            f"mixedTraining-{args.mixed_training}",
-                            f"contrast-{args.use_contrastive}",
-                            best_ckpt_path
-                            )
+for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt', 'model_best_static.pt']:
+   model_path = os.path.join(base_path, 
+                           "results",
+                           f"sesNum-{args.num_sessions}",
+                           f"ses-{eid_}",
+                           "set-train",
+                           # f"ses-{eid}",   # fine-tune
+                           # "set-finetune", # fine-tune
+                           f"inModal-{'-'.join(modal_filter['input'])}",
+                           f"outModal-{'-'.join(modal_filter['output'])}",
+                           f"mask-{args.mask_type}",
+                           f"mode-{mask_mode}",
+                           f"ratio-{args.mask_ratio}",
+                           f"mixedTraining-{args.mixed_training}",
+                           f"contrast-{args.use_contrastive}",
+                           best_ckpt_path
+                           )
     
-    configs = {
-        'model_config': model_config,
-        'model_path': model_path,
-        'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
-        'dataset_path': None, 
-        'seed': 42,
-        'mask_name': mask_name,
-        'eid': eid,
-        'avail_mod': avail_mod,
-        'avail_beh': avail_beh,
-    }  
+   configs = {
+       'model_config': model_config,
+       'model_path': model_path,
+       'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+       'dataset_path': None, 
+       'seed': 42,
+       'mask_name': mask_name,
+       'eid': eid,
+       'avail_mod': avail_mod,
+       'avail_beh': avail_beh,
+   }  
     
-    model, accelerator, dataset, dataloader = load_model_data_local(**configs)
-    model_state_dict = model.state_dict()
-    avg_state_dict.append(model_state_dict)
+   model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+   model_state_dict = model.state_dict()
+   avg_state_dict.append(model_state_dict)
 
 for key in model_state_dict:
-    model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
-    # model_state_dict[key] = avg_state_dict[0][key] / len(avg_state_dict)
+   model_state_dict[key] = (
+       avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]+avg_state_dict[3][key]
+   ) / len(avg_state_dict)
     
 model.load_state_dict(model_state_dict)
 
-#model_path = os.path.join(base_path, 
-#                        "results",
-#                        f"sesNum-{args.num_sessions}",
-#                        f"ses-{eid_}",
-#                        "set-train",
-#                        f"inModal-{'-'.join(modal_filter['input'])}",
-#                        f"outModal-{'-'.join(modal_filter['output'])}",
-#                        f"mask-{args.mask_type}",
-#                        f"mode-{mask_mode}",
-#                        f"ratio-{args.mask_ratio}",
-#                        f"mixedTraining-{args.mixed_training}",
-#                        f"contrast-{args.use_contrastive}",
-#                        best_ckpt_path
-#                        )
+# model_path = os.path.join(base_path, 
+#                         "results",
+#                         f"sesNum-{args.num_sessions}",
+#                         f"ses-{eid_}",
+#                         "set-train",
+#                         f"inModal-{'-'.join(modal_filter['input'])}",
+#                         f"outModal-{'-'.join(modal_filter['output'])}",
+#                         f"mask-{args.mask_type}",
+#                         f"mode-{mask_mode}",
+#                         f"ratio-{args.mask_ratio}",
+#                         f"mixedTraining-{args.mixed_training}",
+#                         f"contrast-{args.use_contrastive}",
+#                         best_ckpt_path
+#                         )
 
-#configs = {
-#    'model_config': model_config,
-#    'model_path': model_path,
-#    'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
-#    'dataset_path': None, 
-#    'seed': 42,
-#    'mask_name': mask_name,
-#   'eid': eid,
-#    'avail_mod': avail_mod,
-#    'avail_beh': avail_beh,
-#}  
+# configs = {
+#     'model_config': model_config,
+#     'model_path': model_path,
+#     'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
+#     'dataset_path': None, 
+#     'seed': 42,
+#     'mask_name': mask_name,
+#     'eid': eid,
+#     'avail_mod': avail_mod,
+#     'avail_beh': avail_beh,
+# }  
 
-#model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+# model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 
-print("(eval) masking ratio: ", model.masker.ratio)
-print("(eval) masking mask regions: ", model.masker.mask_regions)
-print("(eval) masking target regions: ", model.masker.target_regions)
+# print("(eval) masking ratio: ", model.masker.ratio)
+# print("(eval) masking mask regions: ", model.masker.mask_regions)
+# print("(eval) masking target regions: ", model.masker.target_regions)
 
 if spike_recon:
     spike_recon_bps_file = f'{save_path}/spike_recon/bps.npy'

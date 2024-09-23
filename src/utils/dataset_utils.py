@@ -225,7 +225,7 @@ def load_ibl_dataset(cache_dir,
     if mode == "eval":
         print("eval mode: only loading test datasets...")
         for dataset_eid in tqdm(test_session_eid_dir):
-            session_dataset = load_dataset(dataset_eid, cache_dir=cache_dir)["train"]
+            session_dataset = load_dataset(dataset_eid)["test"]
             all_sessions_datasets.append(session_dataset)
         all_sessions_datasets = concatenate_datasets(all_sessions_datasets)
         test_dataset = all_sessions_datasets.select_columns(DATA_COLUMNS)
@@ -234,7 +234,7 @@ def load_ibl_dataset(cache_dir,
     if split_method == 'random_split':
         print("Loading datasets...")
         for dataset_eid in tqdm(train_session_eid_dir[:num_sessions]):
-            session_dataset = load_dataset(dataset_eid, cache_dir=cache_dir)["train"]
+            session_dataset = load_dataset(dataset_eid)["train"]
             all_sessions_datasets.append(session_dataset)
         all_sessions_datasets = concatenate_datasets(all_sessions_datasets)
         # split the dataset to train and test
@@ -259,7 +259,7 @@ def load_ibl_dataset(cache_dir,
         for dataset_eid in tqdm(train_session_eid_dir[:num_sessions]):
             try:
                 # print("Loading dataset: ", dataset_eid)
-                session_dataset = load_dataset(dataset_eid, cache_dir=cache_dir)
+                session_dataset = load_dataset(dataset_eid)
                 train_trials = len(session_dataset["train"]["spikes_sparse_data"])
                 train_trials = train_trials - train_trials % batch_size
                 session_train_datasets.append(session_dataset["train"].select(list(range(train_trials))))
@@ -304,14 +304,14 @@ def load_ibl_dataset(cache_dir,
     elif split_method == 'session_based':
         print("Loading train dataset sessions...")
         for dataset_eid in tqdm(train_session_eid_dir):
-            session_dataset = load_dataset(dataset_eid, cache_dir=cache_dir)["train"]
+            session_dataset = load_dataset(dataset_eid)["train"]
             all_sessions_datasets.append(session_dataset)
         train_dataset = concatenate_datasets(all_sessions_datasets)
 
         print("Loading test dataset session...")
         all_sessions_datasets = []
         for dataset_eid in tqdm(test_session_eid_dir):
-            session_dataset = load_dataset(dataset_eid, cache_dir=cache_dir)["train"]
+            session_dataset = load_dataset(dataset_eid)["train"]
             all_sessions_datasets.append(session_dataset)
         test_dataset = concatenate_datasets(all_sessions_datasets)
         

@@ -5,6 +5,7 @@ from utils.dataset_utils import get_binned_spikes_from_sparse
 from torch.utils.data.sampler import Sampler
 from typing import List, Optional, Tuple, Dict
 from torch.utils.data import Dataset
+from numpy.random import default_rng
 
 def _pad_seq_right_to_n(
     seq: np.ndarray,
@@ -213,7 +214,32 @@ class LengthGroupedSampler(Sampler):
         indices = get_length_grouped_indices(self.lengths, self.batch_size, self.shuffle)
         return iter(indices)
 
+class SessionSampler(Sampler):
+    """Custom Sampler that batches data by session ID (eid)."""
+    def __init__(self, dataset, shuffle=True, seed=42):
+        self.data_source = dataset
+        self.shuffle = shuffle
+        self.random_state = default_rng(seed)
+        self.indices_by_eid = self._group_by_eid()
+        
+    def _group_by_eid(self):
+        from collections import defaultdict
+        indices_by_eid = defaultdict(list)
+        for idx, data in enumerate(self.data_source):
+            indices_by_eid[data['eid']].append(idx)
+        return indices_by_eid
 
+    def __iter__(self):
+        group_indices = list(self.indices_by_eid.values())
+        if self.shuffle:
+            np.random.shuffle(group_indices)
+        for indices in group_indices:
+            if self.shuffle:
+                np.random.shuffle(indices)
+            yield from indices
+
+    def __len__(self):
+        return len(self.data_source)
 
 class LengthStitchGroupedSampler(Sampler):
     r"""
@@ -325,6 +351,21 @@ class BaseDataset(torch.utils.data.Dataset):
         choice = np.array(data['choice']).astype(np.float32)
         block = np.array(data['block']).astype(np.float32)
         reward = np.array(data['reward']).astype(np.float32)
+
+        #####
+        T, _ = target_behavior.shape
+        choice_lookup = {'-1.0': 0, '1.0': 1}
+        block_lookup = {'0.2': 0, '0.5': 1, '0.8': 2}
+        _choice = np.array(
+            T * [choice_lookup[str(x)] for x in choice]
+        ).reshape(-1,1)
+        _block = np.array(
+            T * [block_lookup[str(x)] for x in block]
+        ).reshape(-1,1)
+        target_behavior = np.concatenate(
+            (target_behavior, _choice, _block), axis=1
+        ).astype(np.float32)
+        #####
             
         binned_spikes_data = binned_spikes_data[0]
 
@@ -432,7 +473,7 @@ class BaseDataset(torch.utils.data.Dataset):
         # add attention mask
         time_attn_mask = _attention_mask(self.max_time_length, pad_time_length).astype(np.int64)
         binned_spikes_data = binned_spikes_data.astype(np.float32)
-        
+
         return {
             "spikes_data": binned_spikes_data,
             "time_attn_mask": time_attn_mask,

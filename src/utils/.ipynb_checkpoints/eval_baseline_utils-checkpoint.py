@@ -46,20 +46,31 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    r_dataset = load_dataset(f'neurofm123/{eid}_aligned', cache_dir=config.dirs.dataset_cache_dir)
-    dataset = r_dataset["test"]
+    _, _, dataset, meta_data = load_ibl_dataset(
+            config.dirs.dataset_cache_dir, 
+            config.dirs.huggingface_org,
+            num_sessions=1,
+            eid = eid,
+            use_re=True,
+            split_method="predefined",
+            test_session_eid=[],
+            batch_size=config.training.train_batch_size,
+            seed=config.seed)
 
-    n_neurons = len(dataset['cluster_regions'][0])
+    n_neurons = meta_data['eid_list'][eid]
     n_behaviors = len(avail_beh)
 
     accelerator = Accelerator()
-    model = torch.load(model_path)['model']
+    try:
+        model = torch.load(model_path)['model']
+    except:
+        model = torch.load(model_path, map_location=torch.device('cpu'))['model']
     
     model = accelerator.prepare(model)
     
     dataloader = make_loader(
         dataset, 
-        target=avail_beh,
+        target=["wheel-speed", "whisker-motion-energy"],
         batch_size=len(dataset),
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
@@ -85,6 +96,8 @@ def co_smoothing_eval(
         test_dataloader,
         test_dataset,
         save_plot=False,
+        trial_len=2,
+        fr_threshold=0.1,
         **kwargs
 ):
     
@@ -97,6 +110,9 @@ def co_smoothing_eval(
     modal_filter = kwargs['modal_filter']
     mode = kwargs['mode']
     method_name = 'linear'
+    #####
+    target_to_decode = kwargs['target_to_decode']
+    #####
 
     if sum(batch['space_attn_mask'][0] == 0) == 0:
         N = batch['space_attn_mask'].size()[-1]
@@ -155,8 +171,18 @@ def co_smoothing_eval(
                         data_dict['targets'] = batch['spikes_data']
                     else:
                         data_dict['inputs'] = batch['spikes_data']
-                        data_dict['targets'] = batch['target']
-            
+                        #####
+                        T = len(['wheel-speed', 'whisker-motion-energy'])
+                        if target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
+                            data_dict['targets'] = batch['target'][:,:,:T]
+                        elif target_to_decode[0] == 'choice':
+                            data_dict['targets'] = batch['target'][:,0,T:][:,0]
+                        elif target_to_decode[0] == 'block':
+                            data_dict['targets'] = batch['target'][:,0,T:][:,1]
+                        #####
+                    data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
+                    data_dict['num_neuron'] = batch['spikes_data'].shape[2]
+
                     outputs = model(data_dict)
                     
             gt = outputs.targets[:,:,:N].detach().cpu().numpy()
@@ -168,37 +194,43 @@ def co_smoothing_eval(
             gt_held_out = gt[:,target_t_i][:,:,target_n_i]
             pred_held_out = preds[:,target_t_i][:,:,target_n_i]
 
-            pred_held_out = pred_held_out - pred_held_out.min()
-
             for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
-                if np.isinf(bps):
-                    bps = np.nan
-                bps_result_list[target_n_i[n_i]] = bps
+                mean_fr = gt_held_out[:,:,[n_i]].sum(1).mean(0) / trial_len
+
+                if mean_fr >= 1/fr_threshold: 
+                    bps = bits_per_spike(pred_held_out[:,:,[n_i]], gt_held_out[:,:,[n_i]])
+                    if np.isinf(bps):
+                        bps = np.nan
+                    bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
         
             for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
-                if is_aligned:
-                    X = behavior_set[:, target_t_i, :]  
-                    _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
-                                                          var_name2idx, var_tasklist, var_value2label, var_behlist,
-                                                          subtract_psth=kwargs['subtract'],
-                                                          aligned_tbins=[],
-                                                          neuron_idx=uuids_list[target_n_i[i]][:4],
-                                                          neuron_region=region_list[target_n_i[i]],
-                                                          method=method_name, save_path=kwargs['save_path'],
-                                                          save_plot=save_plot);
-                    r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
-                else:
-                    r2 = viz_single_cell_unaligned(
-                        ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
-                        neuron_idx=uuids_list[target_n_i[i]][:4],
-                        neuron_region=region_list[target_n_i[i]],
-                        method=method_name, save_path=kwargs['save_path'],
-                        save_plot=save_plot
-                    )
-                    r2_result_list[target_n_i[i]] = r2
+
+                mean_fr = ys[:,:,target_n_i[i]].sum(1).mean(0) / trial_len
+
+                if mean_fr >= 1/fr_threshold: 
+
+                    if is_aligned:
+                        X = behavior_set[:, target_t_i, :]  
+                        _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
+                                                              var_name2idx, var_tasklist, var_value2label, var_behlist,
+                                                              subtract_psth=kwargs['subtract'],
+                                                              aligned_tbins=[],
+                                                              neuron_idx=uuids_list[target_n_i[i]][:4],
+                                                              neuron_region=region_list[target_n_i[i]],
+                                                              method=method_name, save_path=kwargs['save_path'],
+                                                              save_plot=save_plot);
+                        r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
+                    else:
+                        r2 = viz_single_cell_unaligned(
+                            ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
+                            neuron_idx=uuids_list[target_n_i[i]][:4],
+                            neuron_region=region_list[target_n_i[i]],
+                            method=method_name, save_path=kwargs['save_path'],
+                            save_plot=save_plot
+                        )
+                        r2_result_list[target_n_i[i]] = r2
                 
     
     elif mode == 'modal_behavior':
@@ -227,45 +259,71 @@ def co_smoothing_eval(
                         data_dict['targets'] = batch['spikes_data']
                     else:
                         data_dict['inputs'] = batch['spikes_data']
-                        data_dict['targets'] = batch['target']
+                        #####
+                        T = len(['wheel-speed', 'whisker-motion-energy'])
+                        if target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
+                            data_dict['targets'] = batch['target'][:,:,:T]
+                        elif target_to_decode[0] == 'choice':
+                            data_dict['targets'] = batch['target'][:,0,T:][:,0]
+                        elif target_to_decode[0] == 'block':
+                            data_dict['targets'] = batch['target'][:,0,T:][:,1]
+                        #####
+                    data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
+                    data_dict['num_neuron'] = batch['spikes_data'].shape[2]
                     
                     outputs = model(data_dict)
                     
-            gt = outputs.targets[:,:,:N].detach().cpu().numpy()
-            preds = outputs.preds[:,:,:N].detach().cpu().numpy()
+            gt = outputs.targets.detach().cpu().numpy()
+            preds = outputs.preds.detach().cpu().numpy()
 
-            target_n_i, target_t_i = np.arange(N), held_out_list[0]
-
-            gt_held_out = gt[:,target_t_i][:,:,target_n_i]
-            pred_held_out = preds[:,target_t_i][:,:,target_n_i]
-
-            for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
-                bps_result_list[target_n_i[n_i]] = np.nan
-
-            ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
-        
-            for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
-                if is_aligned:
-                    X = behavior_set[:, target_t_i, :]  
-                    _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
-                                                          var_name2idx, var_tasklist, var_value2label, var_behlist,
-                                                          subtract_psth=kwargs['subtract'],
-                                                          aligned_tbins=[],
-                                                          neuron_idx=uuids_list[target_n_i[i]][:4],
-                                                          neuron_region=region_list[target_n_i[i]],
-                                                          method=method_name, save_path=kwargs['save_path'],
-                                                          save_plot=save_plot);
-                    r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
-                else:
-                    r2 = viz_single_cell_unaligned(
-                        ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
-                        neuron_idx=uuids_list[target_n_i[i]][:4],
-                        neuron_region=region_list[target_n_i[i]],
-                        method=method_name, save_path=kwargs['save_path'],
-                        save_plot=save_plot
-                    )
-                    r2_result_list[target_n_i[i]] = r2
+            behav_results = {}
+            
+            if ('choice' not in target_to_decode) and ('block' not in target_to_decode):
                 
+                target_n_i, target_t_i = np.arange(N), held_out_list[0]
+    
+                gt_held_out = gt[:,target_t_i][:,:,target_n_i]
+                pred_held_out = preds[:,target_t_i][:,:,target_n_i]
+    
+                for n_i in tqdm(range(len(target_n_i)), desc='co-bps'): 
+                    bps_result_list[target_n_i[n_i]] = np.nan
+    
+                ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
+                for i in tqdm(range(target_n_i.shape[0]), desc='R2'):
+                    if is_aligned:
+                        X = behavior_set[:, target_t_i, :]  
+                        _r2_psth, _r2_trial = viz_single_cell(X, ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]],
+                                                              var_name2idx, var_tasklist, var_value2label, var_behlist,
+                                                              subtract_psth=kwargs['subtract'],
+                                                              aligned_tbins=[],
+                                                              neuron_idx=uuids_list[target_n_i[i]][:4],
+                                                              neuron_region=region_list[target_n_i[i]],
+                                                              method=method_name, save_path=kwargs['save_path'],
+                                                              save_plot=save_plot);
+                        r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
+                        behav_results[f"{kwargs['avail_beh'][i]}_r2_psth"] = _r2_psth
+                        behav_results[f"{kwargs['avail_beh'][i]}_r2_trial"] = _r2_trial
+                    else:
+                        r2 = viz_single_cell_unaligned(
+                            ys[:,:,target_n_i[i]], y_preds[:,:,target_n_i[i]], 
+                            neuron_idx=uuids_list[target_n_i[i]][:4],
+                            neuron_region=region_list[target_n_i[i]],
+                            method=method_name, save_path=kwargs['save_path'],
+                            save_plot=save_plot
+                        )
+                        r2_result_list[target_n_i[i]] = r2
+                # np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
+                # np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
+                
+            else:
+                from sklearn.metrics import accuracy_score, balanced_accuracy_score
+                behav_results[f'{target_to_decode[0]}_acc'] = accuracy_score(gt, preds.argmax(-1))
+                behav_results[f'{target_to_decode[0]}_balanced_acc'] = balanced_accuracy_score(gt, preds.argmax(-1))
+                # np.save(os.path.join(kwargs['save_path'], f'acc.npy'), behav_results)
+            
+            return {
+                f"{mode}_behav_results": behav_results
+            } 
     
     else:
         raise NotImplementedError('mode not implemented')
@@ -273,7 +331,6 @@ def co_smoothing_eval(
     os.makedirs(kwargs['save_path'], exist_ok=True)
     bps_all = np.array(bps_result_list)
     bps_mean = np.nanmean(bps_all)
-    bps_std = np.nanstd(bps_all)
     r2_all = np.array(r2_result_list)
     np.save(os.path.join(kwargs['save_path'], f'bps.npy'), bps_all)
     np.save(os.path.join(kwargs['save_path'], f'r2.npy'), r2_all)

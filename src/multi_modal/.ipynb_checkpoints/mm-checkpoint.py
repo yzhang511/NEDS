@@ -30,6 +30,8 @@ class MultiModalOutput(ModelOutput):
     mod_preds: Optional[torch.FloatTensor] = None
     mod_targets: Optional[torch.FloatTensor] = None
     contrastive_dict: Optional[Dict[str, torch.Tensor]] = None
+    targets_static: Optional[torch.LongTensor] = None
+    preds_static: Optional[torch.LongTensor] = None
 
 
 class MultiModal(nn.Module):
@@ -70,12 +72,16 @@ class MultiModal(nn.Module):
             assert config.masker.mode in ['temporal'], "Only token-wise masking is allowed for multi-modal model for now."
             self.masker = Masker(config.masker)
 
-        self.encoder = nn.ModuleList([EncoderLayer(idx, config.encoder.transformer) for idx in range(self.n_enc_layers)])
+        self.encoder = nn.ModuleList(
+            [EncoderLayer(idx, config.encoder.transformer) for idx in range(self.n_enc_layers)]
+        )
         self.encoder_norm = nn.LayerNorm(self.hidden_size) 
 
         self.decoder_proj_context = nn.Linear(self.hidden_size, self.hidden_size)
         
-        self.decoder = nn.ModuleList([DecoderLayer(idx, config.decoder.transformer) for idx in range(self.n_dec_layers)])
+        self.decoder = nn.ModuleList(
+            [DecoderLayer(idx, config.decoder.transformer) for idx in range(self.n_dec_layers)]
+        )
         self.decoder_norm = nn.LayerNorm(self.hidden_size) 
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
@@ -86,12 +92,23 @@ class MultiModal(nn.Module):
         self.loss_mod = {
             'ap': nn.PoissonNLLLoss(reduction="none", log_input=True),
             'behavior': nn.MSELoss(reduction="none"),
+            ####
+            'static': nn.CrossEntropyLoss(reduction="none"),
+            ####
         }
         
     def share_modality_embeddings(self):
         shared_modalities = self.encoder_modalities & self.decoder_modalities
         for mod in shared_modalities:
             self.decoder_embeddings[mod].embedder.mod_emb = self.encoder_embeddings[mod].embedder.mod_emb
+
+        if 'ap' in shared_modalities:
+            self.decoder_embeddings['ap'].embedder.session_emb = self.encoder_embeddings['ap'].embedder.session_emb
+        if 'behavior' in shared_modalities:
+            self.decoder_embeddings['behavior'].embedder.session_emb = self.encoder_embeddings['behavior'].embedder.session_emb
+        if ('ap' in shared_modalities) and ('behavior' in shared_modalities):
+            self.encoder_embeddings['ap'].embedder.session_emb = self.encoder_embeddings['behavior'].embedder.session_emb
+            self.decoder_embeddings['ap'].embedder.session_emb = self.decoder_embeddings['behavior'].embedder.session_emb
 
     
     def cat_encoder_tensors(self, mod_dict: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor]:
@@ -181,8 +198,8 @@ class MultiModal(nn.Module):
         decoder_attn_mask = self.adapt_decoder_attention_mask(decoder_attn_mask, mod_mask)
 
         return decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask
-        
-    # TO DO
+
+    
     def adapt_decoder_attention_mask(self, decoder_attn_mask: torch.Tensor, mod_mask=Optional[torch.Tensor]) -> torch.Tensor:
 
         B, N = decoder_attn_mask.shape
@@ -227,22 +244,69 @@ class MultiModal(nn.Module):
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
 
         mod_loss, mod_n_examples, mod_preds, mod_targets = {}, {}, {}, {}
+        targets_static, preds_static = {}, {}
         for mod, d in decoder_mod_dict.items():
             targets = target_gts[mod]
             B, T, N = targets.size()
+            #####
             preds = decoder_mod_dict[mod]['preds']
+            if mod == 'behavior':
+                preds_choice = decoder_mod_dict[mod]['preds_choice']
+                preds_block = decoder_mod_dict[mod]['preds_block']
+            #####
             if "spike_mask" in decoder_mod_dict[mod]:
                 targets_mask = decoder_mod_dict[mod]['spike_mask']
             else:
                 targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
-            loss = (self.loss_mod[mod](preds, targets) * targets_mask).sum()
-            n_examples = targets_mask.sum()
+            #####
+            if mod == 'behavior':
+                if targets_mask[:,:,:2].sum() != 0:
+                    dyna_loss = (
+                        self.loss_mod[mod](preds, targets[:,:,:2]) * targets_mask[:,:,:2]
+                    ).sum() / targets_mask[:,:,:2].sum()
+                else:
+                    dyna_loss = 0.
+                if targets_mask[:,0,2].sum() != 0:
+                    choice_loss = (
+                        self.loss_mod['static'](
+                            preds_choice, targets[:,0,2].to(torch.int64)) * targets_mask[:,0,2]
+                    ).sum() / (targets_mask[:,0,2].sum() * T)
+                else:
+                    choice_loss = 0.
+                if targets_mask[:,0,3].sum() != 0:
+                    block_loss = (
+                        self.loss_mod['static'](
+                            preds_block, targets[:,0,3].to(torch.int64)) * targets_mask[:,0,3]
+                    ).sum() / (targets_mask[:,0,3].sum() * T)
+                else:
+                    block_loss = 0.
+                loss = dyna_loss + choice_loss + block_loss
+                mod_loss['dynamic'] = dyna_loss
+                mod_loss['static'] = choice_loss + block_loss
+                n_examples = targets_mask[:,:,:2].sum() + targets_mask[:,0,2].sum()*T + targets_mask[:,0,3].sum()*T
+            else:
+                if targets_mask.sum() != 0:
+                    loss = (
+                        self.loss_mod[mod](preds, targets) * targets_mask
+                    ).sum() / targets_mask.sum()
+                else:
+                    loss = 0.
+                n_examples = targets_mask.sum() 
+            
             mod_loss[mod] = loss
             mod_n_examples[mod] = n_examples
             mod_preds[mod] = preds
             mod_targets[mod] = targets
 
-        loss = sum(mod_loss.values()) / sum(mod_n_examples.values())
+            if mod == 'behavior':
+                targets_static['choice'] = targets[:,0,2]
+                targets_static['block'] = targets[:,0,3]
+                preds_static['choice'] = preds_choice.argmax(-1)
+                preds_static['block'] = preds_block.argmax(-1)
+            #####
+                
+        loss = sum(mod_loss.values())
+        
         if contrastive_loss_dict is not None:
             loss += contrastive_loss_dict["loss"]
             loss /= 2
@@ -250,7 +314,7 @@ class MultiModal(nn.Module):
         else:
             contrastive_dict = None
 
-        return loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict
+        return loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict, targets_static, preds_static
 
     def forward_logits(self, x: torch.Tensor, decoder_mod_mask: torch.Tensor) -> torch.Tensor:
         B, _, _ = x.shape
@@ -295,7 +359,6 @@ class MultiModal(nn.Module):
         ) -> MultiModalOutput:
         for mod, d in mod_dict.items():
 
-            # TO DO
             if mod == 'behavior' and len(mod_dict[mod]['inputs'].size()) == 2:
                 mod_dict[mod]['inputs'] = mod_dict[mod]['inputs'].unsqueeze(-1)
                 mod_dict[mod]['targets'] = mod_dict[mod]['targets'].unsqueeze(-1)
@@ -306,14 +369,11 @@ class MultiModal(nn.Module):
             
             if mod_dict[mod]['masking_mode']:
                 self.masker.mode = mod_dict[mod]['masking_mode']
-                # print(f"masking mode: {self.masker.mode}")
-                # print(f"unmask inputs: {mod_dict[mod]['inputs'].sum()}")
                 mod_dict[mod]['inputs'], spike_mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
-                # print(f"mask inputs: {mod_dict[mod]['inputs'].sum()}")
-                # print(f"spike mask: {spike_mask.sum()}")
                 mod_dict[mod]['spike_mask'] = spike_mask
             else:
-                # print(f"masking mode: {self.masker.mode}")
+                if mod_dict[mod]['training_mode'] in ['behavior-behavior', 'token_masking']:
+                    self.masker.mode == 'causal'
                 if mod_dict[mod]['eval_mask'] is None:
                     _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
                 else:
@@ -351,7 +411,10 @@ class MultiModal(nn.Module):
                             for mod, d in decoder_mod_dict.items()
                             if mod in self.decoder_embeddings}
 
-        loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict = self.forward_loss(decoder_mod_dict, target_gts, contrastive_loss_dict)
+        #####
+        loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict, targets_static, preds_static = \
+        self.forward_loss(decoder_mod_dict, target_gts, contrastive_loss_dict)
+        #####
 
         return MultiModalOutput(
             loss=loss,
@@ -359,7 +422,9 @@ class MultiModal(nn.Module):
             mod_n_examples=mod_n_examples,
             mod_preds=mod_preds,
             mod_targets=mod_targets,
-            contrastive_dict=contrastive_dict
+            contrastive_dict=contrastive_dict,
+            targets_static=targets_static,
+            preds_static=preds_static,
         )
 
     
