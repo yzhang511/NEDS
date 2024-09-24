@@ -1,5 +1,21 @@
+import numpy as np
 import torch
-from loader.base import BaseDataset, LengthStitchGroupedSampler, LengthGroupedSampler
+from loader.base import (
+    BaseDataset, 
+    LengthStitchGroupedSampler, 
+    LengthGroupedSampler, 
+    SessionSampler
+)
+from torch.utils.data.sampler import WeightedRandomSampler
+
+def calculate_weights(labels):
+    unique_classes = np.unique(labels)
+    class_counts = np.zeros(len(unique_classes))
+    for i, c in enumerate(unique_classes):
+        class_counts[i] = (np.array(labels) == c).sum()
+    class_weights = 1.0 / class_counts
+    weights = np.array([class_weights[int(l)] for l in labels])
+    return weights
 
 def make_loader(dataset, 
                  batch_size, 
@@ -16,6 +32,7 @@ def make_loader(dataset,
                  use_nemo=False,
                  dataset_name = "ibl",
                  stitching = False,
+                 seed=42,
                  shuffle = True):
     
     dataset = BaseDataset(dataset=dataset, 
@@ -37,17 +54,20 @@ def make_loader(dataset,
     print(f"len(dataset): {len(dataset)}")
 
     if stitching:
-        train_sampler = LengthStitchGroupedSampler(
-            dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
-        )
-        # batch by neuron lengths makes multi-session training easier and NDT2 training faster
+        #####
+        # session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
+        labels = [x["target"][0][-1] for x in dataset] # block variable
+        weights = torch.from_numpy(calculate_weights(labels)).double()
+        weighted_sampler = WeightedRandomSampler(weights, num_samples=len(weights))
+        
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            sampler=train_sampler, 
+            # sampler=session_sampler, 
+            sampler=weighted_sampler,
             batch_size=batch_size,
         )
+        #####
     else:
-        # the original data loader - each batch can contain different neuron lengths
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
     return dataloader

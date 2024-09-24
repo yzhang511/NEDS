@@ -214,6 +214,8 @@ class LengthGroupedSampler(Sampler):
         indices = get_length_grouped_indices(self.lengths, self.batch_size, self.shuffle)
         return iter(indices)
 
+
+
 class SessionSampler(Sampler):
     """Custom Sampler that batches data by session ID (eid)."""
     def __init__(self, dataset, shuffle=True, seed=42):
@@ -240,6 +242,68 @@ class SessionSampler(Sampler):
 
     def __len__(self):
         return len(self.data_source)
+
+
+#####
+def calculate_weights(labels):
+    unique_classes = np.unique(labels)
+    class_counts = np.zeros(len(unique_classes))
+    for i, c in enumerate(unique_classes):
+        class_counts[i] = (np.array(labels) == c).sum()
+    class_weights = 1.0 / class_counts
+    weights = np.array([class_weights[int(l)] for l in labels])
+    return weights
+    
+class WeightedSessionSampler(Sampler):
+    def __init__(self, dataset, shuffle=True, seed=42, replacement=True):
+        self.seed = seed
+        self.data_source = dataset
+        self.shuffle = shuffle
+        self.random_state = default_rng(seed)
+        self.indices_by_eid, self.labels_by_eid, self.weights_by_eid = self._group_by_eid()
+        self.replacement = replacement
+        
+    def _group_by_eid(self):
+        from collections import defaultdict
+        indices_by_eid = defaultdict(list)
+        labels_by_eid = defaultdict(list)
+        weights_by_eid = {}
+        for idx, data in enumerate(self.data_source):
+            indices_by_eid[data['eid']].append(int(idx))
+            labels_by_eid[data['eid']].append(data["target"][0][-1]) 
+        for k, v in labels_by_eid.items():
+            weights = calculate_weights(v)
+            weights_by_eid[k] = weights / weights.sum()
+            assert weights_by_eid[k].sum() == 1., "Probabilities do not sum to 1."
+        return indices_by_eid, labels_by_eid, weights_by_eid
+
+    def __iter__(self):
+        group_indices = list(self.indices_by_eid.values())
+        group_labels = list(self.labels_by_eid.values())
+        group_weights = list(self.weights_by_eid.values())
+        
+        if self.shuffle:
+            random_indices = range(len(group_indices))
+            np.random.shuffle(random_indices)
+            group_indices = [group_indices[i] for i in random_indices]
+            group_labels = [group_labels[i] for i in random_indices]
+            group_weights = [group_weights[i] for i in random_indices]
+            for group_idx, indices in enumerate(group_indices):
+                upsampled_indices = np.random.choice(
+                    indices,
+                    size=len(indices),
+                    p=group_weights[group_idx],
+                    replace=self.replacement
+                ).tolist()
+                yield from upsampled_indices
+        else:
+            for indices in group_indices:
+                yield from indices
+
+    def __len__(self):
+        return len(self.data_source)
+#####  
+
 
 class LengthStitchGroupedSampler(Sampler):
     r"""

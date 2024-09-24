@@ -48,8 +48,12 @@ class DecoderEmbeddingLayer(nn.Module):
             self.spike_stitch_decoder = StitchEncoder(
                 eid_list=eid_list, n_channels=hidden_size, mod=mod
             )
+            #####
+            self.projection = nn.Linear(hidden_size * 2, hidden_size)
+            self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
+            self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
+            #####
         else:
-            # non-stitching for behavior tensor
             self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
             self.projection = nn.Linear(self.input_dim, hidden_size)
             self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
@@ -62,6 +66,10 @@ class DecoderEmbeddingLayer(nn.Module):
         B, N, D = targets.size()
         if hasattr(self, 'spike_stitch_decoder'):
             x = self.spike_stitch_decoder(targets, eid)
+            #####
+            x = self.act(x) * self.scale
+            x = self.projection(x)
+            #####
         else:
             x = self.token_embed(targets)
             x = self.act(x) * self.scale
