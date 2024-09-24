@@ -1,5 +1,22 @@
+import numpy as np
 import torch
-from loader.base import BaseDataset, LengthStitchGroupedSampler, LengthGroupedSampler, SessionSampler
+from loader.base import (
+    BaseDataset, 
+    LengthStitchGroupedSampler, 
+    LengthGroupedSampler, 
+    SessionSampler,
+    WeightedSessionSampler
+)
+#from torch.utils.data.sampler import WeightedRandomSampler
+
+def calculate_weights(labels):
+    unique_classes = np.unique(labels)
+    class_counts = np.zeros(len(unique_classes))
+    for i, c in enumerate(unique_classes):
+        class_counts[i] = (np.array(labels) == c).sum()
+    class_weights = 1.0 / class_counts
+    weights = np.array([class_weights[int(l)] for l in labels])
+    return weights
 
 def make_loader(dataset, 
                  batch_size, 
@@ -38,17 +55,21 @@ def make_loader(dataset,
     print(f"len(dataset): {len(dataset)}")
 
     if stitching:
-        # session_sampler = LengthStitchGroupedSampler(
-        #     dataset=dataset, batch_size=batch_size, lengths=[sum(x["space_attn_mask"]) for x in dataset]
-        # )
-        
-        session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
+        #####
+        # session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
+        #labels = [x["target"][0][-1] for x in dataset] # block variable
+        #weights = torch.from_numpy(calculate_weights(labels)).double()
+        #weighted_sampler = WeightedRandomSampler(weights, num_samples=len(weights))
+
+        weighted_sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
         
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            sampler=session_sampler, 
+            # sampler=session_sampler, 
+            sampler=weighted_sampler,
             batch_size=batch_size,
         )
+        #####
     else:
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 

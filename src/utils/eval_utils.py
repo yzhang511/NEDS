@@ -52,9 +52,6 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    # r_dataset = load_dataset(f'neurofm123/{eid}_aligned')
-    # dataset = r_dataset["test"]
-
     _, _, dataset, meta_data = load_ibl_dataset(
             config.dirs.dataset_cache_dir, 
             config.dirs.huggingface_org,
@@ -98,7 +95,9 @@ def load_model_data_local(**kwargs):
         use_nemo=False, 
         shuffle=False,
         seed=config.seed,
-        stitching=True,
+        #####
+        stitching=False,
+        #####
     )
 
     return model, accelerator, dataset, dataloader

@@ -138,8 +138,8 @@ if args.wandb:
 )
 
 avg_state_dict = []
+# for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt', 'model_best_static.pt']:
 for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
-# for best_ckpt_path in ['model_best.pt']:
     model_path = os.path.join(base_path, 
                             "results",
                             f"sesNum-{args.num_sessions}",
@@ -174,8 +174,13 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
     avg_state_dict.append(model_state_dict)
 
 for key in model_state_dict:
-    model_state_dict[key] = (avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]) / len(avg_state_dict)
-    # model_state_dict[key] = avg_state_dict[0][key] / len(avg_state_dict)
+    # model_state_dict[key] = (
+    #     avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]+avg_state_dict[3][key]
+    # ) / len(avg_state_dict)
+    model_state_dict[key] = (
+        avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]
+    ) / len(avg_state_dict)
+    
     
 model.load_state_dict(model_state_dict)
 

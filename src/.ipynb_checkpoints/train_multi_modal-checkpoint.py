@@ -160,7 +160,9 @@ val_dataloader = make_loader(val_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=True,
+                            #####
+                            stitching=False,
+                            #####
                             seed=config.seed,
                             shuffle=False)
 
@@ -175,7 +177,7 @@ test_dataloader = make_loader(test_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=True,
+                            stitching=False,
                             seed=config.seed,
                             shuffle=False)
 
