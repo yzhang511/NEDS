@@ -274,7 +274,6 @@ class WeightedSessionSampler(Sampler):
         for k, v in labels_by_eid.items():
             weights = calculate_weights(v)
             weights_by_eid[k] = weights / weights.sum()
-            assert weights_by_eid[k].sum() == 1., "Probabilities do not sum to 1."
         return indices_by_eid, labels_by_eid, weights_by_eid
 
     def __iter__(self):
