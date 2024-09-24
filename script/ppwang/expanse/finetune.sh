@@ -25,7 +25,7 @@ mask_ratio=${5}
 echo $TMPDIR
 conda activate ibl-mm
 
-cd ../..
+cd ../../..
 
 if [ $model_mode = "mm" ]; then
     python src/finetune_multi_modal.py --eid $eid \
@@ -49,6 +49,6 @@ else
     echo "model_mode: $model_mode not supported"
 fi
 
-cd script/ppwang
+cd script/ppwang/expanse
 
 conda deactivate
