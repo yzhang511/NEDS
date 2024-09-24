@@ -2,18 +2,39 @@
 
 num_sessions=${1}
 model_mode=${2} # mm, decoding, encoding
+train_mode=${3} # train, finetune
+
+# Check if finetune mode requires more than 1 session
+if [ "$train_mode" == "finetune" ] && [ "$num_sessions" -le 1 ]; then
+    echo "Error: Finetuning requires more than one session."
+    exit 1
+fi
 
 if [ $num_sessions -eq 1 ]
 then
     while IFS= read -r line
     do
-        echo "Train on ses eid: $line"
-        sbatch --gres=gpu:h100:1 -t 18:00:00  train.sh 1 $line $model_mode 120000 0.1
-    done < "../../data/train_eids.txt"
+        if [ $train_mode == "train" ]
+        then
+            echo "Train on ses eid: $line"
+            sbatch --gres=gpu:rtx8000:1 -t 18:00:00  train.sh 1 $line $model_mode 0 0.1
+        fi
+    done < "../../data/test_eids.txt"
 fi
 
 if [ $num_sessions -gt 1 ]
 then
-    echo "Train on multi-session"
-    sbatch --gres=gpu:h100:1 -t 3-12:00:00  train.sh $num_sessions none $model_mode 120000 0.1
+    if [ $train_mode == "train" ]
+    then
+        echo "Pretrain on multi-session"
+        sbatch --gres=gpu:rtx8000:1 -t 7-00:00:00  train.sh $num_sessions none $model_mode 0 0.1
+    fi
+    while IFS= read -r line
+    do
+        if [ $train_mode == "finetune" ]
+            then
+                echo "Finetune on ses eid: $line, with pretrain model on $num_sessions sessions"
+                sbatch --gres=gpu:rtx8000:1 -t 18:00:00  finetune.sh $num_sessions $line $model_mode 0 0.1
+        fi
+    done < "../../data/test_eids.txt"
 fi
