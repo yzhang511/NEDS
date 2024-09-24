@@ -265,18 +265,8 @@ print("(train) masking active: ", model.masker.force_active)
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
-    if mod == 'behavior':
-        session_stitcher_state = []
-        session_proj_state = []
-        for key, value in model.encoder_embeddings[mod].embedder.spike_stitch_encoder.stitcher_dict.items():
-            stitcher = value
-            proj = model.encoder_embeddings[mod].embedder.spike_stitch_encoder.project_dict[key]
-            session_stitcher_state.append(stitcher.state_dict())
-            session_proj_state.append(proj.state_dict())
-        for key in stitcher.state_dict():
-            stitcher.state_dict()[key] = sum([state_dict[key] for state_dict in session_stitcher_state]) / len(session_stitcher_state)
-        for key in proj.state_dict():
-            proj.state_dict()[key] = sum([state_dict[key] for state_dict in session_proj_state]) / len(session_proj_state)
+    pos_embed = model.encoder_embeddings[mod].embedder.pos_embed
+    mod_emb = model.encoder_embeddings[mod].embedder.mod_emb
     model.encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
         n_channel=256 if mod=='ap' else 256,
@@ -285,39 +275,12 @@ for mod in modal_filter["input"]:
         mod=mod,
         config=config.model.encoder,
     )
-    if mod == 'behavior':
-        model.encoder_embeddings[mod].embedder.spike_stitch_encoder.stitcher_dict[args.eid].load_state_dict(stitcher.state_dict())
-        model.encoder_embeddings[mod].embedder.spike_stitch_encoder.project_dict[args.eid].load_state_dict(proj.state_dict())
+    model.encoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed.state_dict())
+    model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb.state_dict())
 
 for mod in modal_filter["output"]:
-    if mod == 'behavior':
-        session_stitcher_state = []
-        session_proj_state = []
-        session_spike_stitcher_state = []
-        session_choice_stitcher_state = []
-        session_block_stitcher_state = []
-        for key, value in model.decoder_embeddings[mod].embedder.spike_stitch_decoder.stitcher_dict.items():
-            stitcher = value
-            proj = model.decoder_embeddings[mod].embedder.spike_stitch_decoder.project_dict[key]
-            session_stitcher_state.append(stitcher.state_dict())
-            session_proj_state.append(proj.state_dict())
-
-            spike_stitcher = model.decoder_embeddings[mod].spike_stitch_proj_decoder.stitch_decoder_dict[key]
-            choice_stitcher = model.decoder_embeddings[mod].choice_decoder.stitch_decoder_dict[key]
-            block_stitcher = model.decoder_embeddings[mod].block_decoder.stitch_decoder_dict[key]
-            session_spike_stitcher_state.append(spike_stitcher.state_dict())
-            session_choice_stitcher_state.append(choice_stitcher.state_dict())
-            session_block_stitcher_state.append(block_stitcher.state_dict())
-        for key in stitcher.state_dict():
-            stitcher.state_dict()[key] = sum([state_dict[key] for state_dict in session_stitcher_state]) / len(session_stitcher_state)
-        for key in proj.state_dict():
-            proj.state_dict()[key] = sum([state_dict[key] for state_dict in session_proj_state]) / len(session_proj_state)
-        for key in spike_stitcher.state_dict():
-            spike_stitcher.state_dict()[key] = sum([state_dict[key] for state_dict in session_spike_stitcher_state]) / len(session_spike_stitcher_state)
-        for key in choice_stitcher.state_dict():
-            choice_stitcher.state_dict()[key] = sum([state_dict[key] for state_dict in session_choice_stitcher_state]) / len(session_choice_stitcher_state)
-        for key in block_stitcher.state_dict():
-            block_stitcher.state_dict()[key] = sum([state_dict[key] for state_dict in session_block_stitcher_state]) / len(session_block_stitcher_state)
+    pos_embed = model.decoder_embeddings[mod].embedder.pos_embed
+    mod_emb = model.decoder_embeddings[mod].embedder.mod_emb
     model.decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
@@ -329,12 +292,8 @@ for mod in modal_filter["output"]:
         mod=mod,
         config=config.model.decoder,
     )
-    if mod == 'behavior':
-        model.decoder_embeddings[mod].embedder.spike_stitch_decoder.stitcher_dict[args.eid].load_state_dict(stitcher.state_dict())
-        model.decoder_embeddings[mod].embedder.spike_stitch_decoder.project_dict[args.eid].load_state_dict(proj.state_dict())
-        model.decoder_embeddings[mod].spike_stitch_proj_decoder.stitch_decoder_dict[args.eid].load_state_dict(spike_stitcher.state_dict())
-        model.decoder_embeddings[mod].choice_decoder.stitch_decoder_dict[args.eid].load_state_dict(choice_stitcher.state_dict())
-        model.decoder_embeddings[mod].block_decoder.stitch_decoder_dict[args.eid].load_state_dict(block_stitcher.state_dict())
+    model.decoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed.state_dict())
+    model.decoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb.state_dict())
     
 model = accelerator.prepare(model)
 
