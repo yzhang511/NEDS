@@ -260,7 +260,8 @@ class WeightedSessionSampler(Sampler):
         self.data_source = dataset
         self.shuffle = shuffle
         self.random_state = default_rng(seed)
-        self.indices_by_eid, self.labels_by_eid, self.weights_by_eid = self._group_by_eid()
+        self.indices_by_eid, self.labels_by_eid, self.weights_by_eid, self.within_group_indices_by_eid = self._group_by_eid()
+        self.random_indices = list(range(len(self.indices_by_eid)))
         self.replacement = replacement
         
     def _group_by_eid(self):
@@ -268,13 +269,16 @@ class WeightedSessionSampler(Sampler):
         indices_by_eid = defaultdict(list)
         labels_by_eid = defaultdict(list)
         weights_by_eid = {}
+        within_group_indices_by_eid = []
         for idx, data in enumerate(self.data_source):
             indices_by_eid[data['eid']].append(int(idx))
             labels_by_eid[data['eid']].append(data["target"][0][-1]) 
         for k, v in labels_by_eid.items():
             weights = calculate_weights(v)
             weights_by_eid[k] = weights / weights.sum()
-        return indices_by_eid, labels_by_eid, weights_by_eid
+        for k, v in indices_by_eid.items():
+            within_group_indices_by_eid.append(list(range(len(v))))
+        return indices_by_eid, labels_by_eid, weights_by_eid, within_group_indices_by_eid
 
     def __iter__(self):
         group_indices = list(self.indices_by_eid.values())
@@ -282,12 +286,16 @@ class WeightedSessionSampler(Sampler):
         group_weights = list(self.weights_by_eid.values())
         
         if self.shuffle:
-            random_indices = list(range(len(group_indices)))
-            np.random.shuffle(random_indices)
-            group_indices = [group_indices[i] for i in random_indices]
-            group_labels = [group_labels[i] for i in random_indices]
-            group_weights = [group_weights[i] for i in random_indices]
+            np.random.shuffle(self.random_indices)
+            group_indices = [group_indices[i] for i in self.random_indices]
+            group_labels = [group_labels[i] for i in self.random_indices]
+            group_weights = [group_weights[i] for i in self.random_indices]
             for group_idx, indices in enumerate(group_indices):
+                np.random.shuffle(self.within_group_indices_by_eid[group_idx])
+                indices = [indices[i] for i in self.within_group_indices_by_eid[group_idx]]
+                group_weights[group_idx] = [
+                    group_weights[group_idx][i] for i in self.within_group_indices_by_eid[group_idx]
+                ]
                 upsampled_indices = np.random.choice(
                     indices,
                     size=len(indices),
