@@ -282,7 +282,7 @@ class WeightedSessionSampler(Sampler):
         group_weights = list(self.weights_by_eid.values())
         
         if self.shuffle:
-            random_indices = range(len(group_indices))
+            random_indices = list(range(len(group_indices)))
             np.random.shuffle(random_indices)
             group_indices = [group_indices[i] for i in random_indices]
             group_labels = [group_labels[i] for i in random_indices]
