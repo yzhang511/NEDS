@@ -109,7 +109,9 @@ save_path = os.path.join(base_path,
                         "results",
                         f"sesNum-{args.num_sessions}",
                         f"ses-{eid[:5]}",
-                        # f"ses-{eid}", # fine-tune
+                        # --- Finetune ---
+                        # f"ses-{eid}", 
+                        # ----------------
                         "set-eval",
                         f"inModal-{'-'.join(modal_filter['input'])}",
                         f"outModal-{'-'.join(modal_filter['output'])}",
@@ -145,8 +147,10 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
                             f"sesNum-{args.num_sessions}",
                             f"ses-{eid_}",
                             "set-train",
-                            # f"ses-{eid}",   # fine-tune
-                            # "set-finetune", # fine-tune
+                            # --- Finetune ---
+                            # f"ses-{eid}",   
+                            # "set-finetune", 
+                            # ----------------
                             f"inModal-{'-'.join(modal_filter['input'])}",
                             f"outModal-{'-'.join(modal_filter['output'])}",
                             f"mask-{args.mask_type}",
@@ -174,9 +178,9 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
     avg_state_dict.append(model_state_dict)
 
 for key in model_state_dict:
-    # model_state_dict[key] = (
-    #     avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]+avg_state_dict[3][key]
-    # ) / len(avg_state_dict)
+    #model_state_dict[key] = (
+    #    avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]+avg_state_dict[3][key]
+    #) / len(avg_state_dict)
     model_state_dict[key] = (
         avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]
     ) / len(avg_state_dict)

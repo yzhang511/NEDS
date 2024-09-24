@@ -160,9 +160,7 @@ val_dataloader = make_loader(val_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            #####
-                            stitching=False,
-                            #####
+                            stitching=True,
                             seed=config.seed,
                             shuffle=False)
 
@@ -177,7 +175,7 @@ test_dataloader = make_loader(test_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=False,
+                            stitching=True,
                             seed=config.seed,
                             shuffle=False)
 
@@ -200,8 +198,6 @@ for mod in modal_filter["output"]:
         n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         #####
-        # n_channel=256 if mod=='ap' else 256,
-        # output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,

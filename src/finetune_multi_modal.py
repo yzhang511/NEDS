@@ -4,6 +4,7 @@ import argparse
 from math import ceil
 import numpy as np
 import torch
+import torch.nn as nn
 import wandb
 import warnings
 import threading
@@ -218,7 +219,11 @@ if args.model_mode == 'mm':
             'avail_beh': avail_beh,
         }  
         
-        model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+        try:
+            model = torch.load(model_path)['model']
+        except:
+            model = torch.load(model_path, map_location=torch.device('cpu'))['model']
+            
         model_state_dict = model.state_dict()
         avg_state_dict.append(model_state_dict)
     
@@ -255,38 +260,52 @@ elif args.model_mode in ['encoding', 'decoding']:
         'avail_beh': avail_beh,
     }  
     
-    model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+    try:
+        model = torch.load(model_path)['model']
+    except:
+        model = torch.load(model_path, map_location=torch.device('cpu'))['model']
     
 print("(train) masking mode: ", model.masker.mode)
 print("(train) masking ratio: ", model.masker.ratio)
 print("(train) masking active: ", model.masker.force_active)
 
 
-# change stitcher
-encoder_embeddings, decoder_embeddings = {}, {}
+# ---------------
+# Change Stitcher
+# ---------------
+from models.stitcher import StitchEncoder, StitchDecoder
 
+n_enc_hidden_size = 256
 for mod in modal_filter["input"]:
-    model.encoder_embeddings[mod] = EncoderEmbedding(
-        hidden_size=config.model.encoder.transformer.hidden_size,
-        n_channel=256 if mod=='ap' else 256,
-        stitching=True,
-        eid_list=meta_data['eid_list'],
-        mod=mod,
-        config=config.model.encoder,
+    model.encoder_embeddings[mod].embedder.spike_stitch_encoder = StitchEncoder(
+        eid_list=meta_data['eid_list'], n_channels=n_enc_hidden_size, mod=mod,
     )
 
+n_dec_hidden_size = (256+(256//2)) if len(modal_filter['output']) > 1 else 256
 for mod in modal_filter["output"]:
-    model.decoder_embeddings[mod] = DecoderEmbedding(
-        hidden_size=config.model.decoder.transformer.hidden_size,
-        #####
-        n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
-        output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
-        #####
-        stitching=True,
-        eid_list=meta_data['eid_list'],
+    model.decoder_embeddings[mod].embedder.spike_stitch_decoder = StitchEncoder(
+        eid_list=meta_data['eid_list'], 
+        n_channels=n_dec_hidden_size, 
         mod=mod,
-        config=config.model.decoder,
     )
+    model.decoder_embeddings[mod].spike_stitch_proj_decoder = StitchDecoder(
+        eid_list=meta_data['eid_list'], 
+        n_channels=n_dec_hidden_size, 
+        mod=mod,
+    )
+    if mod == 'behavior':
+        choice_weights, block_weights = {}, {}
+        for key, val in meta_data['eid_list'].items():
+            choice_weights[str(key)] = nn.Parameter(torch.rand(config.encoder.embedder.max_F))
+            block_weights[str(key)] = nn.Parameter(torch.rand(config.encoder.embedder.max_F))
+        self.choice_weights = nn.ParameterDict(choice_weights)
+        self.block_weights = nn.ParameterDict(block_weights)
+        self.choice_decoder = StitchDecoder(
+            meta_data['eid_list'], n_dec_hidden_size, mod='choice'
+        )
+        self.block_decoder = StitchDecoder(
+            meta_data['eid_list'], n_dec_hidden_size, mod='block'
+        )
     
 model = accelerator.prepare(model)
 

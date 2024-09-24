@@ -198,8 +198,6 @@ for mod in modal_filter["output"]:
         n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         #####
-        # n_channel=256 if mod=='ap' else 256,
-        # output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,

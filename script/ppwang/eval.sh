@@ -1,31 +1,24 @@
 #!/bin/bash
 
-#SBATCH --job-name=eval
-#SBATCH --output=eval_%j.out
+#SBATCH --job-name=eval-mm
+#SBATCH --output=eval-mm-%j.out
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH -t 1:00:00 
-#SBATCH --mem=128g
-#SBATCH --account=pr_136_tandon_advanced
+#SBATCH --gres=gpu:1
+#SBATCH -t 2-12:00:00 
+#SBATCH --mem=64g
+
 
 num_sessions=${1}
 eid=${2}
 model_mode=${3}
-train_mode=${4} # finetune or train
-mask_rartio=${5}
+mask_rartio=${4}
 
 . ~/.bashrc
 echo $TMPDIR
 conda activate ibl-mm
-
-finetune_arg=""
-if [ $train_mode = "finetune" ]; then
-    echo "finetune mode"
-    finetune_arg="--finetune"
-fi
-
 
 cd ../..
 if [ $model_mode = "mm" ]; then
@@ -39,7 +32,6 @@ if [ $model_mode = "mm" ]; then
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
-                                $finetune_arg \
                                 --wandb  
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
@@ -52,7 +44,6 @@ then
                                 --mask_type embd \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
-                                $finetune_arg \
                                 --wandb 
 else
     echo "model_mode: $model_mode not supported"
