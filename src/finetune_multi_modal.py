@@ -256,7 +256,7 @@ elif args.model_mode in ['encoding', 'decoding']:
     }  
     
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
-    
+model.masker.ratio = args.mask_ratio
 print("(train) masking mode: ", model.masker.mode)
 print("(train) masking ratio: ", model.masker.ratio)
 print("(train) masking active: ", model.masker.force_active)
@@ -266,6 +266,9 @@ print("(train) masking active: ", model.masker.force_active)
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
+    pos_embed = model.encoder_embeddings[mod].embedder.pos_embed
+    mod_emb = model.encoder_embeddings[mod].embedder.mod_emb
+    session_emb = model.encoder_embeddings[mod].embedder.session_emb
     model.encoder_embeddings[mod] = EncoderEmbedding(
         hidden_size=config.model.encoder.transformer.hidden_size,
         n_channel=256 if mod=='ap' else 256,
@@ -274,8 +277,14 @@ for mod in modal_filter["input"]:
         mod=mod,
         config=config.model.encoder,
     )
+    model.encoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed.state_dict())
+    model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb.state_dict())
+    model.encoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb.state_dict())
 
 for mod in modal_filter["output"]:
+    pos_embed = model.decoder_embeddings[mod].embedder.pos_embed
+    mod_emb = model.decoder_embeddings[mod].embedder.mod_emb
+    session_emb = model.decoder_embeddings[mod].embedder.session_emb
     model.decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
@@ -287,6 +296,9 @@ for mod in modal_filter["output"]:
         mod=mod,
         config=config.model.decoder,
     )
+    model.decoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed.state_dict())
+    model.decoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb.state_dict())
+    model.decoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb.state_dict())
     
 model = accelerator.prepare(model)
 
