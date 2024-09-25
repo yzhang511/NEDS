@@ -276,16 +276,16 @@ print("(train) masking active: ", model.masker.force_active)
 from models.stitcher import StitchEncoder, StitchDecoder
 
 n_enc_hidden_size = 256
+n_dec_hidden_size = (256+(256//2)) if len(modal_filter['output']) > 1 else 256
 for mod in modal_filter["input"]:
     model.encoder_embeddings[mod].embedder.spike_stitch_encoder = StitchEncoder(
         eid_list=meta_data['eid_list'], n_channels=n_enc_hidden_size, mod=mod,
     )
 
-n_dec_hidden_size = (256+(256//2)) if len(modal_filter['output']) > 1 else 256
 for mod in modal_filter["output"]:
     model.decoder_embeddings[mod].embedder.spike_stitch_decoder = StitchEncoder(
         eid_list=meta_data['eid_list'], 
-        n_channels=n_dec_hidden_size, 
+        n_channels=n_enc_hidden_size, 
         mod=mod,
     )
     model.decoder_embeddings[mod].spike_stitch_proj_decoder = StitchDecoder(
@@ -296,14 +296,14 @@ for mod in modal_filter["output"]:
     if mod == 'behavior':
         choice_weights, block_weights = {}, {}
         for key, val in meta_data['eid_list'].items():
-            choice_weights[str(key)] = nn.Parameter(torch.rand(config.encoder.embedder.max_F))
-            block_weights[str(key)] = nn.Parameter(torch.rand(config.encoder.embedder.max_F))
-        self.choice_weights = nn.ParameterDict(choice_weights)
-        self.block_weights = nn.ParameterDict(block_weights)
-        self.choice_decoder = StitchDecoder(
+            choice_weights[str(key)] = nn.Parameter(torch.rand(config.model.encoder.embedder.max_F))
+            block_weights[str(key)] = nn.Parameter(torch.rand(config.model.encoder.embedder.max_F))
+        model.decoder_embeddings[mod].choice_weights = nn.ParameterDict(choice_weights)
+        model.decoder_embeddings[mod].block_weights = nn.ParameterDict(block_weights)
+        model.decoder_embeddings[mod].choice_decoder = StitchDecoder(
             meta_data['eid_list'], n_dec_hidden_size, mod='choice'
         )
-        self.block_decoder = StitchDecoder(
+        model.decoder_embeddings[mod].block_decoder = StitchDecoder(
             meta_data['eid_list'], n_dec_hidden_size, mod='block'
         )
     

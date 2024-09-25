@@ -30,7 +30,7 @@ dirs:
 training:
   num_epochs: 2000
   train_batch_size: 16
-  test_batch_size: 16  
+  test_batch_size: 16
   shuffle_test_dataloader: false    # Shuffle test dataloader between epochs
 
   save_plot_every_n_epochs: 20  # Plot the model output every n epochs
@@ -115,7 +115,7 @@ method:
 optimizer:
   gradient_accumulation_steps: 1
   lr: 2.e-4
-  wd: 0.05 #0.01
+  wd: 0.01
   eps: 1.e-8
   warmup_pct: 0.15 # cosine/linear
   gamma: 0.95     # step
