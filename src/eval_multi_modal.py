@@ -138,7 +138,7 @@ if args.wandb:
 )
 
 avg_state_dict = []
-for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt', 'model_best_static.pt'] if args.model_mode == "mm" else ['model_best.pt']:
+for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt'] if args.model_mode == "mm" else ['model_best.pt']:
 # for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
     model_path = os.path.join(base_path, 
                             "results",
