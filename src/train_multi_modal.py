@@ -21,7 +21,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 from multi_modal.decoder_embeddings import DecoderEmbedding
-
+from collections import defaultdict
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
@@ -226,12 +226,24 @@ print("(train) masking active: ", model.masker.force_active)
 
 model = accelerator.prepare(model)
 
-optimizer = torch.optim.AdamW(
-    model.parameters(), 
-    lr=config.optimizer.lr, 
-    weight_decay=config.optimizer.wd, 
-    eps=config.optimizer.eps
-)
+# Initialize optimizer with default parameters for the model
+param_groups = defaultdict(list)  # To hold parameter groups
+
+# Default group
+for name, param in model.named_parameters():
+    if 'decoder_embeddings.behavior.choice_decoder.stitch_decoder_dict' in name or \
+       'decoder_embeddings.behavior.block_decoder.stitch_decoder_dict' in name:
+        # Specific weight decay for these parameters
+        param_groups['custom_decay'].append(param)
+    else:
+        # General model parameters
+        param_groups['default'].append(param)
+
+# Setup optimizer with different parameter groups
+optimizer = torch.optim.AdamW([
+    {'params': param_groups['default'], 'weight_decay': config.optimizer.wd},
+    {'params': param_groups['custom_decay'], 'weight_decay': 1.0}
+], lr=config.optimizer.lr, eps=config.optimizer.eps)
 
 lr_scheduler = OneCycleLR(
     optimizer=optimizer,
