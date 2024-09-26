@@ -110,13 +110,14 @@ class MultiModal(nn.Module):
             self.encoder_embeddings['ap'].embedder.session_emb = self.encoder_embeddings['behavior'].embedder.session_emb
             self.decoder_embeddings['ap'].embedder.session_emb = self.decoder_embeddings['behavior'].embedder.session_emb
 
-    
+    #####
     def cat_encoder_tensors(self, mod_dict: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor]:
         encoder_tokens = []
         encoder_emb = []
         encoder_mask = []
         attention_mask = []
         mod_mask = []
+        input_timestamp = []
 
         for mod, d in mod_dict.items():
             encoder_tokens.append(d['x'])
@@ -124,16 +125,19 @@ class MultiModal(nn.Module):
             encoder_mask.append(d['inputs_mask'])
             attention_mask.append(d['encoder_attn_mask'])
             mod_mask.append(torch.full_like(d['inputs_mask'], self.mod_to_indx[mod], dtype=torch.int16))
+            input_timestamp.append(d['inputs_timestamp'])
     
         encoder_tokens = torch.cat(encoder_tokens, dim=1)
         encoder_emb = torch.cat(encoder_emb, dim=1)
         encoder_mask = torch.cat(encoder_mask, dim=1)
         attention_mask = torch.cat(attention_mask, dim=1)
         mod_mask = torch.cat(mod_mask, dim=1)
+        input_timestamp = torch.cat(input_timestamp, dim=1)
 
-        return encoder_tokens, encoder_emb, encoder_mask, attention_mask, mod_mask
-
+        return encoder_tokens, encoder_emb, encoder_mask, attention_mask, mod_mask, input_timestamp
+    #####
     
+    #####
     def cat_decoder_tensors(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[torch.Tensor]:
         decoder_tokens = []
         target_gts = {}
@@ -141,6 +145,7 @@ class MultiModal(nn.Module):
         decoder_mask = []
         attention_mask = []
         mod_mask = []
+        target_timestamp = []
 
         # shuffle order in which modalities are provided (useful for modality causal mask)
         # mod_dict = {mod: d for mod, d in random.sample(mod_dict.items(), len(mod_dict))}
@@ -152,26 +157,28 @@ class MultiModal(nn.Module):
             decoder_mask.append(d['targets_mask'])
             attention_mask.append(d['decoder_attn_mask'])
             mod_mask.append(torch.full_like(d['targets_mask'], self.mod_to_indx[mod], dtype=torch.int16))
+            target_timestamp.append(d['targets_timestamp'])
         
         decoder_tokens = torch.cat(decoder_tokens, dim=1)
         decoder_emb = torch.cat(decoder_emb, dim=1)
         decoder_mask = torch.cat(decoder_mask, dim=1)
         attention_mask = torch.cat(attention_mask, dim=1)
         mod_mask = torch.cat(mod_mask, dim=1)
+        target_timestamp = torch.cat(target_timestamp, dim=1)
 
-        return decoder_tokens, target_gts, decoder_emb, decoder_mask, attention_mask, mod_mask
+        return decoder_tokens, target_gts, decoder_emb, decoder_mask, attention_mask, mod_mask, target_timestamp
+    #####
 
-    
+    #####
     def forward_mask_encoder(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[torch.Tensor]:
         
-        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask = self.cat_encoder_tensors(mod_dict)
+        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask, input_timestamp = self.cat_encoder_tensors(mod_dict)
 
         B, N, _ = encoder_tokens.size()
 
         encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
         
         encoder_tokens[:,encoder_mask_ids,:] = 0.
-        # encoder_emb[:,encoder_mask_ids,:] = 0.
 
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
@@ -182,23 +189,23 @@ class MultiModal(nn.Module):
         ###
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
 
-        return encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask
+        return encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, mod_mask, input_timestamp
+    #####
 
-    
+    #####
     def forward_mask_decoder(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Tuple[torch.Tensor]:
         
-        decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask = self.cat_decoder_tensors(mod_dict)
+        decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask, target_timestamp = self.cat_decoder_tensors(mod_dict)
 
         B, N, _ = decoder_tokens.size()
 
         decoder_mask_ids = torch.argwhere(decoder_mask[0] == 1).squeeze()
 
         decoder_tokens[:,decoder_mask_ids,:] = 0.
-        # decoder_emb[:,decoder_mask_ids,:] = 0.
         decoder_attn_mask = self.adapt_decoder_attention_mask(decoder_attn_mask, mod_mask)
 
-        return decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask
-
+        return decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, mod_mask, target_timestamp
+    #####
     
     def adapt_decoder_attention_mask(self, decoder_attn_mask: torch.Tensor, mod_mask=Optional[torch.Tensor]) -> torch.Tensor:
 
@@ -218,27 +225,38 @@ class MultiModal(nn.Module):
 
         return adapted_attn_mask
 
-    
-    def forward_encoder(self, x: torch.Tensor, encoder_attn_mask: torch.Tensor) -> torch.Tensor:
+    #####
+    def forward_encoder(
+        self, x: torch.Tensor, 
+        encoder_attn_mask: torch.Tensor, 
+        input_timestamp: Optional[torch.LongTensor] = None,  # (bs, seq_len)
+    ) -> torch.Tensor:
         
         for layer in self.encoder:
-            x = layer(x, mask=encoder_attn_mask)
+            x = layer(x, mask=encoder_attn_mask, timestamp=input_timestamp)
 
         x = self.encoder_norm(x)
 
         return x
 
-    
-    def forward_decoder(self, y: torch.Tensor, context: torch.Tensor, encoder_attn_mask: torch.Tensor, decoder_attn_mask: torch.Tensor) -> torch.Tensor:
+    def forward_decoder(
+        self, y: torch.Tensor, 
+        context: torch.Tensor, 
+        encoder_attn_mask: torch.Tensor, 
+        decoder_attn_mask: torch.Tensor,
+        target_timestamp: Optional[torch.LongTensor] = None,  # (bs, seq_len)
+    ) -> torch.Tensor:
 
         for layer in self.decoder:
-            y = layer(y, context, sa_mask=decoder_attn_mask, xa_mask=encoder_attn_mask)
+            y = layer(
+                y, context, sa_mask=decoder_attn_mask, xa_mask=encoder_attn_mask, timestamp=target_timestamp
+            )
 
         y = self.decoder_norm(y)
 
         return y
+    #####
     
-
     def forward_loss(self, 
         decoder_mod_dict: Dict[str, Any], target_gts: torch.Tensor, contrastive_loss_dict=None
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -386,30 +404,41 @@ class MultiModal(nn.Module):
             mod_dict[mod]['decoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
 
         encoder_mod_dict = {mod: self.encoder_embeddings[mod](d)
-                            for mod, d in mod_dict.items()
-                            if mod in self.encoder_embeddings}
+                            for mod, d in mod_dict.items() if mod in self.encoder_embeddings}
 
-        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, encoder_mod_mask = self.forward_mask_encoder(encoder_mod_dict)
+        encoder_tokens, encoder_emb, encoder_mask, encoder_attn_mask, encoder_mod_mask, input_timestamp = self.forward_mask_encoder(encoder_mod_dict)
 
         decoder_mod_dict = {mod: self.decoder_embeddings[mod].forward_embed(d)
-                            for mod, d in mod_dict.items()
-                            if mod in self.decoder_embeddings}
+                            for mod, d in mod_dict.items() if mod in self.decoder_embeddings}
 
-        decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, decoder_mod_mask = self.forward_mask_decoder(decoder_mod_dict)
+        decoder_tokens, target_gts, decoder_emb, decoder_mask, decoder_attn_mask, decoder_mod_mask, target_timestamp = self.forward_mask_decoder(decoder_mod_dict)
 
         x = encoder_tokens + encoder_emb
-        x = self.forward_encoder(x, encoder_attn_mask=encoder_attn_mask)
+        #####
+        x = self.forward_encoder(
+            x, encoder_attn_mask=encoder_attn_mask, input_timestamp=input_timestamp,
+        )
+        #####
+        
         contrastive_loss_dict = None
         if self.use_contrastive:
             logits = self.forward_logits(x, decoder_mod_mask)
             contrastive_loss_dict = self.forward_contrastive_loss(logits)
+            
         context = self.decoder_proj_context(x) + encoder_emb
+        
         y = decoder_tokens + decoder_emb
-        y = self.forward_decoder(y, context, encoder_attn_mask=encoder_attn_mask, decoder_attn_mask=decoder_attn_mask)
+        #####
+        y = self.forward_decoder(
+            y, context, encoder_attn_mask=encoder_attn_mask, decoder_attn_mask=decoder_attn_mask,
+            target_timestamp=target_timestamp,
+        )
+        #####
     
-        decoder_mod_dict = {mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
-                            for mod, d in decoder_mod_dict.items()
-                            if mod in self.decoder_embeddings}
+        decoder_mod_dict = {
+            mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
+            for mod, d in decoder_mod_dict.items() if mod in self.decoder_embeddings
+        }
 
         #####
         loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict, targets_static, preds_static = \

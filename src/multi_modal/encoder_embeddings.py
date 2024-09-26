@@ -52,9 +52,9 @@ class EncoderEmbeddingLayer(nn.Module):
                 eid_list=eid_list, n_channels=hidden_size, mod=mod,
             )
             #####
-            self.projection = nn.Linear(hidden_size * 2, hidden_size)
-            self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
-            self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
+            # self.projection = nn.Linear(hidden_size * 2, hidden_size)
+            # self.act = ACT2FN[config.act] if config.act != "identity" else nn.Identity()
+            # self.scale = hidden_size ** 0.5 if config.scale == None else config.scale
             #####
         else:
             self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
@@ -71,8 +71,8 @@ class EncoderEmbeddingLayer(nn.Module):
         if hasattr(self, 'spike_stitch_encoder'):
             x = self.spike_stitch_encoder(inputs, eid)
             #####
-            x = self.act(x) * self.scale
-            x = self.projection(x)
+            # x = self.act(x) * self.scale
+            # x = self.projection(x)
             #####
         else:
             x = self.token_embed(inputs)
@@ -123,7 +123,7 @@ class EncoderEmbedding(nn.Module):
 
         return d
 
-
+#####
 class EncoderLayer(nn.Module):
     
     def __init__(self, idx, config: DictConfig):
@@ -132,7 +132,9 @@ class EncoderLayer(nn.Module):
         self.idx = idx
     
         self.ln1 = ScaleNorm(config.hidden_size ** 0.5) if config.use_scalenorm else nn.LayerNorm(config.hidden_size) 
-        self.attn = Attention(idx, config.hidden_size, config.n_heads, config.attention_bias, config.dropout)
+        self.attn = Attention(
+            idx, config.hidden_size, config.n_heads, config.attention_bias, config.dropout, config.use_rope, 
+        )
         self.ln2 = ScaleNorm(config.hidden_size ** 0.5) if config.use_scalenorm else nn.LayerNorm(config.hidden_size) 
         self.mlp = MLP(config.hidden_size, config.inter_size, config.act, config.mlp_bias, config.dropout)
 
@@ -142,10 +144,11 @@ class EncoderLayer(nn.Module):
     def forward(
         self, 
         x:     torch.FloatTensor,                  
-        mask:  torch.LongTensor,                  
+        mask:  torch.LongTensor,       
+        timestamp:  Optional[torch.LongTensor] = None,  # (bs, seq_len)
     ) -> torch.FloatTensor :                           
         
-        x = x + self.attn(self.ln1(x), mask)
+        x = x + self.attn(self.ln1(x), mask, timestamp)
 
         x = x + self.mlp(self.ln2(x))
 
@@ -163,4 +166,4 @@ class EncoderLayer(nn.Module):
             if name not in temp_state_dic:
                 temp_state_dic[name] = self.state_dict()[name]
         self.load_state_dict(temp_state_dic)   
-
+#####
