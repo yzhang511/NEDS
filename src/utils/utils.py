@@ -765,6 +765,8 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
     r2_list = []
     choice_acc_list = []
     block_acc_list = []
+    r2_dict = {}
+    acc_dict = {}
     for npy_file in npy_files['behavior']:
         ses = npy_file.split('ses-')[1].split('/')[0]
         if 'acc.npy' in npy_file:
@@ -772,6 +774,7 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
             choice_acc_list.append(decoding_data[0])
             block_acc_list.append(decoding_data[1])
             print(f"session {ses} choice acc: {decoding_data[0]}, block acc: {decoding_data[1]}")
+            acc_dict[ses] = {'choice_acc': decoding_data[0], 'block_acc': decoding_data[1]}
         else:
             decoding_data = np.load(npy_file, allow_pickle=True)
             decoding_data = decoding_data.item()
@@ -781,6 +784,7 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
             decoding_data = {k: decoding_data[k] for k in decoding_data if any([beh in k for beh in avail_beh])}
             r2_list.append(decoding_data)
             print(f"session {ses} behavior decoding r2: {decoding_data}")
+            r2_dict[ses] = decoding_data
     print("total {} sessions of behavior decoding".format(len(r2_list)))
     # return r2 for each session
     behav_result = {avail_beh[i]: [] for i in range(len(avail_beh))}
@@ -789,15 +793,27 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
             behav_result[beh].append(np.mean(r2[f'{beh}_r2_trial']))
     behav_result['choice_acc'] = choice_acc_list
     behav_result['block_acc'] = block_acc_list
-    return behav_result
+    # merge the r2 and acc dict based on the session
+    assert len(r2_dict) == len(acc_dict), "r2 and acc dict should have the same length"
+    all_ses = list(r2_dict.keys())
+    all_dict = {}
+    for ses in all_ses:
+        all_dict[ses] = {acc_dict[ses]['choice_acc'], acc_dict[ses]['block_acc'], r2_dict[ses]['wheel-speed_r2_trial'], r2_dict[ses]['whisker-motion-energy_r2_trial']}
+        # save 5 decimal
+        all_dict[ses] = {round(k, 5) for k in all_dict[ses]}
+    if len(all_dict) == 0:
+        print("No behavior decoding result found")
+    return behav_result, all_dict
 
 def return_spike_bps(npy_files):
     bps_list = []
+    all_dict = {}
     for npy_file in npy_files['spike']:
         ses = npy_file.split('ses-')[1].split('/')[0]
         encoding_data = np.load(npy_file, allow_pickle=True)
         mean_bps = np.nanmean(encoding_data)
         bps_list.append(mean_bps)
+        all_dict[ses] = mean_bps
         print(f"session {ses} spike encoding bps: {mean_bps}")
     print("total {} sessions of spike encoding".format(len(bps_list)))
-    return bps_list
+    return bps_list, all_dict
