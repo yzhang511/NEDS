@@ -18,13 +18,18 @@ npy_files = get_npy_files(log_dir=args.log_dir,
                           model_mode=args.model_mode, 
                           num_sessions=args.num_sessions,
                           use_contrastive=args.use_contrastive,
-                          mixed_training=args.mixed_training)
+                          mixed_training=True if args.model_mode == 'mm' else False)
 
 behav_result = return_behav_r2(npy_files, avail_behav)
 # calculate the mean r2 for each behavior
 for behav in avail_behav:
     res = np.array(behav_result[behav])
     print(f"{behav} r2: {np.nanmean(res)}")
+discrete_behav = ['choice_acc', 'block_acc']
+print(behav_result.keys())
+for behav in discrete_behav:
+    res = np.array(behav_result[behav])
+    print(f"{behav} accuracy: {np.nanmean(res)}")
 
 spike_result = return_spike_bps(npy_files)
 print(f"spike bps: {np.nanmean(spike_result)}")
