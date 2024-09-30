@@ -21,7 +21,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 from multi_modal.decoder_embeddings import DecoderEmbedding
-
+from collections import defaultdict
 from utils.eval_utils import load_model_data_local
 
 ap = argparse.ArgumentParser()
