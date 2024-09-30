@@ -102,7 +102,7 @@ mask_name = f"mask_{args.mask_mode}"
 log_dir = os.path.join(base_path, 
                        "results",
                        f"sesNum-{num_sessions}",
-                       f"ses-{args.eid}",
+                       f"ses-{args.eid[:5]}",
                        "set-finetune",
                        f"inModal-{'-'.join(modal_filter['input'])}",
                        f"outModal-{'-'.join(modal_filter['output'])}",
@@ -120,7 +120,7 @@ if config.wandb.use:
         project=config.wandb.project, entity=config.wandb.entity, config=config,
         name="sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrastive-{}".format(
             num_sessions,
-            args.eid, 
+            args.eid[:5], 
             '-'.join(modal_filter['input']),
             '-'.join(modal_filter['output']),
             config.training.mask_type, 
