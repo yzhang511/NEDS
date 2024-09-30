@@ -9,7 +9,6 @@ conda activate ibl-mm
 python src/eval_result.py --log_dir results \
                           --model_mode $model_mode \
                           --num_sessions $num_sessions \
-                          --use_contrastive \
                           --mixed_training 
 
 
