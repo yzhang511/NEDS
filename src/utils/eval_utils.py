@@ -800,7 +800,7 @@ def co_smoothing_eval(
             np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
             np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
             ####
-            np.save(os.path.join(kwargs['save_path'], f'acc.npy'), np.array([choice_acc, block_acc]))
+            np.save(os.path.join(kwargs['save_path'], f'acc.npy'), np.array([choice_acc, block_acc, balanced_choice_acc, balanced_block_acc]))
             return {
                 f"{mode}_behav_results": behav_results,
                 'choice_acc': choice_acc,

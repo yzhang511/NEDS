@@ -765,6 +765,8 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
     r2_list = []
     choice_acc_list = []
     block_acc_list = []
+    choice_balanced_acc_list = []
+    block_balanced_acc_list = []
     r2_dict = {}
     acc_dict = {}
     for npy_file in npy_files['behavior']:
@@ -773,8 +775,10 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
             decoding_data = np.load(npy_file, allow_pickle=True)
             choice_acc_list.append(decoding_data[0])
             block_acc_list.append(decoding_data[1])
-            print(f"session {ses} choice acc: {decoding_data[0]}, block acc: {decoding_data[1]}")
-            acc_dict[ses] = {'choice_acc': decoding_data[0], 'block_acc': decoding_data[1]}
+            choice_balanced_acc_list.append(decoding_data[2])
+            block_balanced_acc_list.append(decoding_data[3])
+            print(f"session {ses} choice acc: {decoding_data[0]}, block acc: {decoding_data[1]} balanced choice acc: {decoding_data[2]}, balanced block acc: {decoding_data[3]}")
+            acc_dict[ses] = {'choice_acc': decoding_data[0], 'block_acc': decoding_data[1], 'choice_balanced_acc': decoding_data[2], 'block_balanced_acc': decoding_data[3]}
         else:
             decoding_data = np.load(npy_file, allow_pickle=True)
             decoding_data = decoding_data.item()
@@ -793,12 +797,14 @@ def return_behav_r2(npy_files, avail_beh = ['wheel-speed', 'whisker-motion-energ
             behav_result[beh].append(np.mean(r2[f'{beh}_r2_trial']))
     behav_result['choice_acc'] = choice_acc_list
     behav_result['block_acc'] = block_acc_list
+    behav_result['choice_balanced_acc'] = choice_balanced_acc_list
+    behav_result['block_balanced_acc'] = block_balanced_acc_list
     # merge the r2 and acc dict based on the session
     assert len(r2_dict) == len(acc_dict), "r2 and acc dict should have the same length"
     all_ses = list(r2_dict.keys())
     all_dict = {}
     for ses in all_ses:
-        all_dict[ses] = {acc_dict[ses]['choice_acc'], acc_dict[ses]['block_acc'], r2_dict[ses]['wheel-speed_r2_trial'], r2_dict[ses]['whisker-motion-energy_r2_trial']}
+        all_dict[ses] = {acc_dict[ses]['choice_acc'], acc_dict[ses]['block_acc'], acc_dict[ses]['choice_balanced_acc'], acc_dict[ses]['block_balanced_acc'], r2_dict[ses]['wheel-speed_r2_trial'], r2_dict[ses]['whisker-motion-energy_r2_trial']}
         # save 5 decimal
         all_dict[ses] = {round(k, 5) for k in all_dict[ses]}
     if len(all_dict) == 0:
