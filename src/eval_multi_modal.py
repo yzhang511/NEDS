@@ -39,6 +39,7 @@ ap.add_argument('--wandb', action='store_true')
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--use_contrastive", action='store_true')
+ap.add_argument("--finetune", action='store_true')
 
 args = ap.parse_args()
 
@@ -143,8 +144,8 @@ for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behav
     model_path = os.path.join(base_path, 
                             "results",
                             f"sesNum-{args.num_sessions}",
-                            f"ses-{eid_}",
-                            "set-train",
+                            f"ses-{eid_}" if not args.finetune else f"ses-{eid[:5]}",
+                            "set-train" if not args.finetune else "set-finetune",
                             # f"ses-{eid}",   # fine-tune
                             # "set-finetune", # fine-tune
                             f"inModal-{'-'.join(modal_filter['input'])}",
