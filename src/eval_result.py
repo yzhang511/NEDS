@@ -44,7 +44,7 @@ for test_eid in test_eids:
         print(f"{eid}: {result_str[:-2]}")
 
 behav_res_str = ""
-discrete_behav = ['choice_acc', 'block_acc']
+discrete_behav = ['choice_acc', 'block_acc', 'choice_balanced_acc', 'block_balanced_acc']
 for behav in discrete_behav:
     res = np.array(behav_result[behav])
     # print(f"Mean {behav} accuracy: {round(np.nanmean(res), 5)}")
