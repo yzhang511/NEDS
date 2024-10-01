@@ -242,7 +242,7 @@ for name, param in model.named_parameters():
 # Setup optimizer with different parameter groups
 optimizer = torch.optim.AdamW([
     {'params': param_groups['default'], 'weight_decay': config.optimizer.wd},
-    {'params': param_groups['custom_decay'], 'weight_decay': 1.0}
+    {'params': param_groups['custom_decay'], 'weight_decay': config.optimizer.wd}
 ], lr=config.optimizer.lr, eps=config.optimizer.eps)
 
 lr_scheduler = OneCycleLR(

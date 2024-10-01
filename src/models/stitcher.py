@@ -38,6 +38,7 @@ class StitchDecoder(nn.Module):
                  eid_list:list,
                  n_channels:int,
                  mod:str = 'ap',
+                 p:float = 0.6,
         ):
         super().__init__()
 
@@ -49,7 +50,9 @@ class StitchDecoder(nn.Module):
                 val = 3
             stitch_decoder_dict[str(key)] = nn.Linear(n_channels, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
+        self.dropout = nn.Dropout(p) if mod in ["behavior", "choice", "block"] else nn.Identity()
 
     def forward(self, x, block_idx):
+        x = self.dropout(x)
         return self.stitch_decoder_dict[block_idx](x)
 
