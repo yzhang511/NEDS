@@ -268,7 +268,7 @@ class MultiModal(nn.Module):
             B, T, N = targets.size()
             #####
             preds = decoder_mod_dict[mod]['preds']
-            if mod == 'behavior':
+            if mod == 'behavior' and 'preds_choice' in decoder_mod_dict[mod] and 'preds_block' in decoder_mod_dict[mod]:
                 preds_choice = decoder_mod_dict[mod]['preds_choice']
                 preds_block = decoder_mod_dict[mod]['preds_block']
             #####
@@ -284,24 +284,30 @@ class MultiModal(nn.Module):
                     ).sum() / targets_mask[:,:,:2].sum()
                 else:
                     dyna_loss = 0.
-                if targets_mask[:,0,2].sum() != 0:
-                    choice_loss = (
-                        self.loss_mod['static'](
-                            preds_choice, targets[:,0,2].to(torch.int64)) * targets_mask[:,0,2]
-                    ).sum() / (targets_mask[:,0,2].sum() * T)
+                if targets_mask.shape[2] > 2:
+                    if targets_mask[:,0,2].sum() != 0:
+                        choice_loss = (
+                            self.loss_mod['static'](
+                                preds_choice, targets[:,0,2].to(torch.int64)) * targets_mask[:,0,2]
+                        ).sum() / (targets_mask[:,0,2].sum() * T)
+                    else:
+                        choice_loss = 0.
+                    if targets_mask[:,0,3].sum() != 0:
+                        block_loss = (
+                            self.loss_mod['static'](
+                                preds_block, targets[:,0,3].to(torch.int64)) * targets_mask[:,0,3]
+                        ).sum() / (targets_mask[:,0,3].sum() * T)
+                    else:
+                        block_loss = 0.
                 else:
-                    choice_loss = 0.
-                if targets_mask[:,0,3].sum() != 0:
-                    block_loss = (
-                        self.loss_mod['static'](
-                            preds_block, targets[:,0,3].to(torch.int64)) * targets_mask[:,0,3]
-                    ).sum() / (targets_mask[:,0,3].sum() * T)
-                else:
-                    block_loss = 0.
+                    choice_loss, block_loss = 0., 0.
                 loss = dyna_loss + choice_loss + block_loss
                 mod_loss['dynamic'] = dyna_loss
                 mod_loss['static'] = choice_loss + block_loss
-                n_examples = targets_mask[:,:,:2].sum() + targets_mask[:,0,2].sum()*T + targets_mask[:,0,3].sum()*T
+                if targets_mask.shape[2] > 2:
+                    n_examples = targets_mask[:,:,:2].sum() + targets_mask[:,0,2].sum()*T + targets_mask[:,0,3].sum()*T
+                else:
+                    n_examples = targets_mask[:,:,:2].sum()
             else:
                 if targets_mask.sum() != 0:
                     loss = (
@@ -316,7 +322,7 @@ class MultiModal(nn.Module):
             mod_preds[mod] = preds
             mod_targets[mod] = targets
 
-            if mod == 'behavior':
+            if mod == 'behavior' and targets_mask.shape[2] > 2:
                 targets_static['choice'] = targets[:,0,2]
                 targets_static['block'] = targets[:,0,3]
                 preds_static['choice'] = preds_choice.argmax(-1)

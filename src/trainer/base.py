@@ -26,7 +26,7 @@ class MultiModalTrainer():
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
-
+        self.num_sessions = len(self.eid_list)
         self.model_class = self.config.model.model_class
         self.metric = 'r2'        
         self.session_active_neurons = {}    
@@ -74,8 +74,10 @@ class MultiModalTrainer():
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                 mod_dict[mod]['inputs_regions'] = np.asarray(batch['neuron_regions']).T
             elif mod == 'behavior':
-                mod_dict[mod]['inputs'] = batch['target'].clone()
-                mod_dict[mod]['targets'] = batch['target'].clone()
+                # remove the last two columns which are the choice and block
+                # multi-session pretrained model excludes the last two columns
+                mod_dict[mod]['inputs'] = batch['target'].clone() if self.num_sessions == 1 else batch['target'][:,:,:-2].clone()
+                mod_dict[mod]['targets'] = batch['target'].clone() if self.num_sessions == 1 else batch['target'][:,:,:-2].clone()
             else:
                raise Exception(f"Modality not implemented yet.")
 
@@ -359,30 +361,31 @@ class MultiModalTrainer():
                         eval_loss += loss.item()
                         #####
                         eval_behave_loss += outputs.mod_loss['dynamic'].item()
-                        eval_static_loss += outputs.mod_loss['static'].item()
+                        eval_static_loss += outputs.mod_loss['static'].item() if self.num_sessions == 1 else 0
                         #####
                         num_neuron = batch['spikes_data'].shape[2] 
                         eid = batch['eid'][0]
-
+                        
                         session_results[eid]['behavior']["gt"].append(
                             outputs.mod_targets['behavior'].clone()
                         )
                         session_results[eid]['behavior']["preds"].append(
                             outputs.mod_preds['behavior'].clone()
                         )
-                        #####
-                        session_results[eid]['behavior']["gt_choice"].append(
-                            outputs.targets_static['choice'].clone()
-                        )
-                        session_results[eid]['behavior']["preds_choice"].append(
-                            outputs.preds_static['choice'].clone()
-                        )
-                        session_results[eid]['behavior']["gt_block"].append(
-                            outputs.targets_static['block'].clone()
-                        )
-                        session_results[eid]['behavior']["preds_block"].append(
-                            outputs.preds_static['block'].clone()
-                        )
+                        if self.num_sessions == 1:
+                            #####
+                            session_results[eid]['behavior']["gt_choice"].append(
+                                outputs.targets_static['choice'].clone()
+                            )
+                            session_results[eid]['behavior']["preds_choice"].append(
+                                outputs.preds_static['choice'].clone()
+                            )
+                            session_results[eid]['behavior']["gt_block"].append(
+                                outputs.targets_static['block'].clone()
+                            )
+                            session_results[eid]['behavior']["preds_block"].append(
+                                outputs.preds_static['block'].clone()
+                            )
                         #####
     
                         if outputs.contrastive_dict:
@@ -412,7 +415,7 @@ class MultiModalTrainer():
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
                     #####
-                    if mod == 'behavior':
+                    if mod == 'behavior' and self.num_sessions == 1:
                         _gt_choice = torch.cat(session_results[eid][mod]["gt_choice"], dim=0)
                         _preds_choice = torch.cat(session_results[eid][mod]["preds_choice"], dim=0)
                         _gt_block = torch.cat(session_results[eid][mod]["gt_block"], dim=0)
@@ -452,13 +455,14 @@ class MultiModalTrainer():
                         behave_r2_results_list.append(results["rsquared"])
 
                         #####
-                        from sklearn.metrics import balanced_accuracy_score
-                        choice_acc_results_list.append(balanced_accuracy_score(
-                            gt_static[idx]['choice'].cpu().numpy(), preds_static[idx]['choice'].cpu().numpy()
-                        ))
-                        block_acc_results_list.append(balanced_accuracy_score(
-                            gt_static[idx]['block'].cpu().numpy(), preds_static[idx]['block'].cpu().numpy()
-                        ))
+                        if self.num_sessions == 1:
+                            from sklearn.metrics import balanced_accuracy_score
+                            choice_acc_results_list.append(balanced_accuracy_score(
+                                gt_static[idx]['choice'].cpu().numpy(), preds_static[idx]['choice'].cpu().numpy()
+                            ))
+                            block_acc_results_list.append(balanced_accuracy_score(
+                                gt_static[idx]['block'].cpu().numpy(), preds_static[idx]['block'].cpu().numpy()
+                            ))
                         #####
                     
                 if self.config.model.use_contrastive:

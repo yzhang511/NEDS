@@ -113,7 +113,7 @@ class DecoderEmbedding(nn.Module):
         if stitching:
             self.spike_stitch_proj_decoder = StitchDecoder(eid_list, self.n_channel, mod=mod)
             #####
-            if mod == 'behavior':
+            if mod == 'behavior' and len(eid_list) == 1:
                 choice_weights, block_weights = {}, {}
                 for key, val in eid_list.items():
                     choice_weights[str(key)] = nn.Parameter(torch.rand(self.max_F))
