@@ -31,6 +31,7 @@ class MultiModalTrainer():
         self.metric = 'r2'        
         self.session_active_neurons = {}    
         self.avail_mod = kwargs.get("avail_mod", None)
+        self.avail_beh = kwargs.get("avail_beh", None)
         self.modal_filter = kwargs.get("modal_filter", None)
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
 
@@ -52,10 +53,10 @@ class MultiModalTrainer():
     
     def _forward_model_outputs(self, batch, masking_mode, training_mode):
         
-        single_modal = True if len(self.modal_filter['output']) == 1 else False
-        
+        # single_modal = True if len(self.modal_filter['output']) == 1 else False
+        single_modal = True if len(self.modal_filter['output']) ==1 or len(self.modal_filter['output']) == len(self.avail_beh) else False
         batch = move_batch_to_device(batch, self.accelerator.device)
-        
+        print(batch.keys())
         mod_dict = {}
         for mod in self.mod_to_indx.keys():
             mod_dict[mod] = {}
@@ -73,12 +74,12 @@ class MultiModalTrainer():
                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                 mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                 mod_dict[mod]['inputs_regions'] = np.asarray(batch['neuron_regions']).T
-            elif mod == 'behavior':
-                mod_dict[mod]['inputs'] = batch['target'].clone()
-                mod_dict[mod]['targets'] = batch['target'].clone()
+            elif mod in self.avail_beh:
+                mod_dict[mod]['inputs'] = batch[mod].clone()
+                mod_dict[mod]['targets'] = batch[mod].clone()
             else:
                raise Exception(f"Modality not implemented yet.")
-
+            
             if single_modal and mod in self.modal_filter['output']:
                 mod_dict[mod]['eval_mask'] = torch.ones_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
             else:
@@ -93,7 +94,7 @@ class MultiModalTrainer():
                         mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
             elif training_mode == 'decoding':
                 for mod in self.mod_to_indx.keys():
-                    if mod == 'behavior':
+                    if mod in self.avail_beh:
                         mod_dict[mod]['eval_mask'] = torch.ones_like(batch['target']).to(batch['target'].device, torch.int64)
                     else:
                         mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
@@ -102,9 +103,13 @@ class MultiModalTrainer():
                     mod_dict[mod]['eval_mask'] = None
             elif training_mode == 'spike-spike':
                 mod_dict['ap']['eval_mask'] = None
-                mod_dict['behavior']['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+                for mod in self.mod_to_indx.keys():
+                    if mod in self.avail_beh:
+                        mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
             elif training_mode == 'behavior-behavior':
-                mod_dict['behavior']['eval_mask'] = None
+                for mod in self.mod_to_indx.keys():
+                    if mod in self.avail_beh:
+                        mod_dict[mod]['eval_mask'] = None
                 mod_dict['ap']['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
             else:
                raise Exception(f"Training objective not implemented yet.")

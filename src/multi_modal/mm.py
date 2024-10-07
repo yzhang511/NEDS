@@ -40,6 +40,7 @@ class MultiModal(nn.Module):
         encoder_embeddings: Dict[str, nn.Module],
         decoder_embeddings: Dict[str, nn.Module],
         avail_mod:          List,
+        avail_beh:          List,
         config: DictConfig,
         share_modality_embeddings: bool = True,
         **kwargs
@@ -47,6 +48,7 @@ class MultiModal(nn.Module):
         super().__init__()
 
         self.avail_mod = avail_mod
+        self.avail_beh = avail_beh
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
         self.decoder_sep_mask = config.decoder.decoder_sep_mask
         self.decoder_causal_mask = config.decoder.decoder_causal_mask
@@ -377,7 +379,7 @@ class MultiModal(nn.Module):
         ) -> MultiModalOutput:
         for mod, d in mod_dict.items():
 
-            if mod == 'behavior' and len(mod_dict[mod]['inputs'].size()) == 2:
+            if mod in self.avail_beh and len(mod_dict[mod]['inputs'].size()) == 2:
                 mod_dict[mod]['inputs'] = mod_dict[mod]['inputs'].unsqueeze(-1)
                 mod_dict[mod]['targets'] = mod_dict[mod]['targets'].unsqueeze(-1)
                 

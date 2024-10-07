@@ -25,7 +25,7 @@ encoder:
   from_pt: null
 
   embedder:
-    n_modality: 2         # 2
+    n_modality: 5         # 2
     n_channels: 668       # number of neurons recorded 
     max_F: 100            # max feature len in timesteps
     mult: 2               # embedding multiplier. hiddden_sizd = n_channels * mult
