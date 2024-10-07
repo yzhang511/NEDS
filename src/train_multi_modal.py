@@ -64,16 +64,16 @@ set_seed(config.seed)
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
-avail_mod = ['ap', 'behavior']
+avail_mod = ['ap', 'wheel','whisker','choice','block']
 
 if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
+    input_modal = ['ap', 'wheel','whisker','choice','block']
+    output_modal = ['ap', 'wheel','whisker','choice','block']
 elif args.model_mode == "decoding":
     input_modal = ['ap']
-    output_modal = ['behavior']
+    output_modal = ['wheel','whisker','choice','block']
 elif args.model_mode == "encoding":
-    input_modal = ['behavior']
+    input_modal = ['wheel','whisker','choice','block']
     output_modal = ['ap']
 else:
     raise ValueError(f"model_mode {args.model_mode} not supported")
@@ -178,7 +178,7 @@ test_dataloader = make_loader(test_dataset,
                             stitching=True,
                             seed=config.seed,
                             shuffle=False)
-
+avail_beh = ['wheel', 'whisker', 'choice', 'block']
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
@@ -214,6 +214,7 @@ model = model_class(
     encoder_embeddings,
     decoder_embeddings,
     avail_mod=avail_mod,
+    avail_beh=avail_beh,
     config=config.model, 
     share_modality_embeddings=True,
     **config.method.model_kwargs, 
@@ -258,6 +259,7 @@ trainer_kwargs = {
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
     "avail_mod": avail_mod,
+    "avail_beh": avail_beh,
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
     "config": config,

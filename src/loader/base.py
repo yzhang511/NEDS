@@ -411,12 +411,13 @@ class BaseDataset(torch.utils.data.Dataset):
                                                            spikes_sparse_indices_list, 
                                                            spikes_sparse_indptr_list, 
                                                            spikes_sparse_shape_list)
-
         if self.target is not None:
             target_behavior = []
+            target_behavior_dict = {}
             for beh_name in self.target:
                 beh = np.array(data[beh_name]).astype(np.float32)
                 target_behavior.append(beh)
+                target_behavior_dict[beh_name.split('-')[0]] = beh
             target_behavior = np.array(target_behavior).T
         else:
             target_behavior = np.array([np.nan])
@@ -426,15 +427,19 @@ class BaseDataset(torch.utils.data.Dataset):
         reward = np.array(data['reward']).astype(np.float32)
 
         #####
-        T, _ = target_behavior.shape
+        # select the first idx value of the target_behavior
         choice_lookup = {'-1.0': 0, '1.0': 1}
         block_lookup = {'0.2': 0, '0.5': 1, '0.8': 2}
+        T,_ = target_behavior.shape
         _choice = np.array(
-            T * [choice_lookup[str(x)] for x in choice]
+           T * [choice_lookup[str(x)] for x in choice]
         ).reshape(-1,1)
         _block = np.array(
-            T * [block_lookup[str(x)] for x in block]
+           T * [block_lookup[str(x)] for x in block]
         ).reshape(-1,1)
+        choice = np.array([choice_lookup[str(x)] for x in choice]).astype(np.float32)
+        block = np.array([block_lookup[str(x)] for x in block]).astype(np.float32)
+        
         target_behavior = np.concatenate(
             (target_behavior, _choice, _block), axis=1
         ).astype(np.float32)
@@ -561,6 +566,7 @@ class BaseDataset(torch.utils.data.Dataset):
             "choice": choice,
             "block": block,
             "reward": reward,
+            **target_behavior_dict
         }
     
     def __len__(self):

@@ -65,7 +65,6 @@ class EncoderEmbeddingLayer(nn.Module):
     def forward(self, d : Dict[str, torch.Tensor]) -> Tuple[torch.FloatTensor, torch.FloatTensor]:  
 
         inputs, inputs_timestamp, inputs_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
-
         B, N, D = inputs.size()
 
         if hasattr(self, 'spike_stitch_encoder'):
@@ -82,9 +81,9 @@ class EncoderEmbeddingLayer(nn.Module):
         x_embed = self.mod_emb(inputs_modality)[None,None,:].expand(B,N,-1).clone()
 
         if self.pos:
-            x_embed += self.pos_embed(inputs_timestamp)
-
+            x_embed += self.pos_embed(inputs_timestamp).sum(1).unsqueeze(1) if N == 1 else self.pos_embed(inputs_timestamp)
         ####
+        
         session_idx = torch.tensor(self.eid_to_indx[eid], dtype=torch.int64, device=inputs.device)
         x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
         ####
