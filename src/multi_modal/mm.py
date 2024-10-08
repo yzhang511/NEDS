@@ -181,7 +181,6 @@ class MultiModal(nn.Module):
         encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
         
         encoder_tokens[:,encoder_mask_ids,:] = 0.
-
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
         ###
@@ -269,15 +268,29 @@ class MultiModal(nn.Module):
             targets = target_gts[mod]
             B, T, N = targets.size()
             #####
-            preds = decoder_mod_dict[mod]['preds']
-            if mod == 'behavior':
-                preds_choice = decoder_mod_dict[mod]['preds_choice']
-                preds_block = decoder_mod_dict[mod]['preds_block']
-            #####
             if "spike_mask" in decoder_mod_dict[mod]:
                 targets_mask = decoder_mod_dict[mod]['spike_mask']
             else:
                 targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
+            #####
+            preds = decoder_mod_dict[mod]['preds']
+            if mod in ['choice', 'block']:
+                print(decoder_mod_dict[mod].keys())
+                # print(f"{mod}, preds: {decoder_mod_dict[mod]['preds'].shape}, targets: {targets.shape}, gt: {decoder_mod_dict[mod]['gt'].shape}")
+                # preds = decoder_mod_dict[mod]['preds']
+                preds, targets = preds.squeeze(1), targets.squeeze(1)
+                # change targets to one-hot
+                if mod == 'choice':
+                    targets = nn.functional.one_hot(targets.to(torch.int64), num_classes=2).squeeze(1)
+                    targets_mask = targets_mask[:,0,3].sum() * T
+                elif mod == 'block':
+                    targets = nn.functional.one_hot(targets.to(torch.int64), num_classes=3).squeeze(1)
+                    targets_mask = targets_mask[:,0,2].sum() * T
+                # preds_block = decoder_mod_dict[mod]['preds']
+                print(f"targets_mask: {targets_mask}")
+                loss = self.loss_mod['static'](preds, targets.float()).sum() / (targets_mask)
+                print(f"loss: {loss}")
+                exit()
             #####
             if mod == 'behavior':
                 if targets_mask[:,:,:2].sum() != 0:
@@ -398,8 +411,9 @@ class MultiModal(nn.Module):
                     _, mask = self.masker(mod_dict[mod]['inputs'].clone(), inputs_regions)
                 else:
                     mask = mod_dict[mod]['eval_mask']
-                mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] 
-
+                    # print(f"eval_mask: {mask.shape}")
+                mask = mask[:,:1,0] & mod_dict[mod]['inputs_attn_mask']  if mod in ['choice', 'block'] else mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] 
+            # print(f"mod: {mod}, mask: {mask.shape}")
             mod_dict[mod]['inputs_mask'] = mask
             mod_dict[mod]['targets_mask'] = mask
             mod_dict[mod]['encoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
@@ -436,12 +450,10 @@ class MultiModal(nn.Module):
             target_timestamp=target_timestamp,
         )
         #####
-    
         decoder_mod_dict = {
             mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
             for mod, d in decoder_mod_dict.items() if mod in self.decoder_embeddings
         }
-
         #####
         loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict, targets_static, preds_static = \
         self.forward_loss(decoder_mod_dict, target_gts, contrastive_loss_dict)

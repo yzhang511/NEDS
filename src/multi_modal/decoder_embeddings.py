@@ -78,7 +78,7 @@ class DecoderEmbeddingLayer(nn.Module):
         x_embed = self.mod_emb(targets_modality)[None,None,:].expand(B,N,-1).clone()
 
         if self.pos:
-            x_embed += self.pos_embed(targets_timestamp)
+            x_embed += self.pos_embed(targets_timestamp).sum(1).unsqueeze(1) if N == 1 else self.pos_embed(targets_timestamp)
 
         session_idx = torch.tensor(self.eid_to_indx[eid], dtype=torch.int64, device=targets.device)
         x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
@@ -145,15 +145,15 @@ class DecoderEmbedding(nn.Module):
     ) -> Dict[str, torch.Tensor]:   
         
         B, N, P = y.size()
-        
+
         y_mod = y[decoder_mod_mask == mod_idx]
         eid = d['eid']
 
-        if len(torch.unique(decoder_mod_mask)) > 1:
-            if mod_idx == 0:
-                y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
-            elif mod_idx == 1:
-                y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
+        # if len(torch.unique(decoder_mod_mask)) > 1:
+        #     if mod_idx == 0:
+        #         y_mod = torch.cat((y_mod, y[decoder_mod_mask==1][:,:P//2]), 1)
+        #     elif mod_idx == 1:
+        #         y_mod = torch.cat((y_mod, y[decoder_mod_mask==0][:,:P//2]), 1)
         
         if hasattr(self, 'spike_stitch_proj_decoder'):
             preds = self.spike_stitch_proj_decoder(y_mod, eid)
