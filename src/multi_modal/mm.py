@@ -19,6 +19,7 @@ from multi_modal.encoder_embeddings import EncoderLayer
 from multi_modal.decoder_embeddings import DecoderLayer
 from models.masker import Masker
 from multi_modal.mm_utils import create_context_mask
+from models.stitcher import StitchDecoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
@@ -41,6 +42,7 @@ class MultiModal(nn.Module):
         decoder_embeddings: Dict[str, nn.Module],
         avail_mod:          List,
         avail_beh:          List,
+        model_mode:         List,
         config: DictConfig,
         share_modality_embeddings: bool = True,
         **kwargs
@@ -49,6 +51,8 @@ class MultiModal(nn.Module):
 
         self.avail_mod = avail_mod
         self.avail_beh = avail_beh
+        self.model_mode = model_mode
+        self.eid_list = kwargs['eid_list']
         self.mod_to_indx = {r: i for i,r in enumerate(self.avail_mod)}
         self.decoder_sep_mask = config.decoder.decoder_sep_mask
         self.decoder_causal_mask = config.decoder.decoder_causal_mask
@@ -98,7 +102,25 @@ class MultiModal(nn.Module):
             'static': nn.CrossEntropyLoss(reduction="none"),
             ####
         }
-        
+
+        if self.model_mode == 'decoding':
+            self.mod_sticher_proj_dict = {}
+            for mod in self.avail_beh:
+                self.mod_sticher_proj_dict[mod] = StitchDecoder(
+                    eid_list=self.eid_list,
+                    n_channels=self.hidden_size * 100 if mod in ['choice', 'block'] else self.hidden_size,
+                    mod=mod,
+                ).cuda()
+        elif self.model_mode == 'encoding':
+            self.mod_sticher_proj_dict = {}
+            for mod in ['ap']:
+                _eid_list = {k: v * 100 for k, v in self.eid_list.items()}
+                self.mod_sticher_proj_dict[mod] = StitchDecoder(
+                    eid_list=_eid_list,
+                    n_channels=self.hidden_size * 202,
+                    mod=mod,
+                ).cuda()
+
     def share_modality_embeddings(self):
         shared_modalities = self.encoder_modalities & self.decoder_modalities
         for mod in shared_modalities:
@@ -265,7 +287,8 @@ class MultiModal(nn.Module):
         mod_loss, mod_n_examples, mod_preds, mod_targets = {}, {}, {}, {}
         targets_static, preds_static = {}, {}
         for mod, d in decoder_mod_dict.items():
-            targets = target_gts[mod]
+            targets = decoder_mod_dict[mod]['gt']
+
             B, T, N = targets.size()
             #####
             if "spike_mask" in decoder_mod_dict[mod]:
@@ -275,50 +298,44 @@ class MultiModal(nn.Module):
             #####
             preds = decoder_mod_dict[mod]['preds']
             if mod in ['choice', 'block']:
-                print(decoder_mod_dict[mod].keys())
+                # print(decoder_mod_dict[mod].keys())
                 # print(f"{mod}, preds: {decoder_mod_dict[mod]['preds'].shape}, targets: {targets.shape}, gt: {decoder_mod_dict[mod]['gt'].shape}")
                 # preds = decoder_mod_dict[mod]['preds']
-                preds, targets = preds.squeeze(1), targets.squeeze(1)
+                preds, targets, targets_mask = preds.squeeze(1), targets.squeeze(1), targets_mask.squeeze(1)
+                if targets_mask.sum() == 0:
+                    loss = 0.
+                    n_examples = 0
+                    mod_loss[mod] = loss
+                    mod_n_examples[mod] = n_examples
+                    mod_preds[mod] = preds
+                    mod_targets[mod] = targets
+                    continue
                 # change targets to one-hot
                 if mod == 'choice':
+                    targets_static['choice'] = targets.squeeze(1)
                     targets = nn.functional.one_hot(targets.to(torch.int64), num_classes=2).squeeze(1)
-                    targets_mask = targets_mask[:,0,3].sum() * T
+                    preds_static['choice'] = preds.argmax(-1)
+                    targets_mask = targets_mask.sum()
                 elif mod == 'block':
+                    targets_static['block'] = targets.squeeze(1)
                     targets = nn.functional.one_hot(targets.to(torch.int64), num_classes=3).squeeze(1)
-                    targets_mask = targets_mask[:,0,2].sum() * T
-                # preds_block = decoder_mod_dict[mod]['preds']
-                print(f"targets_mask: {targets_mask}")
+                    preds_static['block'] = preds.argmax(-1)
+                    targets_mask = targets_mask.sum()
                 loss = self.loss_mod['static'](preds, targets.float()).sum() / (targets_mask)
-                print(f"loss: {loss}")
-                exit()
-            #####
-            if mod == 'behavior':
-                if targets_mask[:,:,:2].sum() != 0:
-                    dyna_loss = (
-                        self.loss_mod[mod](preds, targets[:,:,:2]) * targets_mask[:,:,:2]
-                    ).sum() / targets_mask[:,:,:2].sum()
+                n_examples = targets_mask
+            elif mod in ['wheel', 'whisker']:
+                n_examples = targets_mask.sum()
+                if n_examples != 0:
+                    # behavior loss
+                    loss = (
+                        self.loss_mod['behavior'](preds, targets) * targets_mask
+                    ).sum() / n_examples
                 else:
-                    dyna_loss = 0.
-                if targets_mask[:,0,2].sum() != 0:
-                    choice_loss = (
-                        self.loss_mod['static'](
-                            preds_choice, targets[:,0,2].to(torch.int64)) * targets_mask[:,0,2]
-                    ).sum() / (targets_mask[:,0,2].sum() * T)
-                else:
-                    choice_loss = 0.
-                if targets_mask[:,0,3].sum() != 0:
-                    block_loss = (
-                        self.loss_mod['static'](
-                            preds_block, targets[:,0,3].to(torch.int64)) * targets_mask[:,0,3]
-                    ).sum() / (targets_mask[:,0,3].sum() * T)
-                else:
-                    block_loss = 0.
-                loss = dyna_loss + choice_loss + block_loss
-                mod_loss['dynamic'] = dyna_loss
-                mod_loss['static'] = choice_loss + block_loss
-                n_examples = targets_mask[:,:,:2].sum() + targets_mask[:,0,2].sum()*T + targets_mask[:,0,3].sum()*T
-            else:
+                    loss = 0.
+            elif mod in ['ap']:
+                # ap loss
                 if targets_mask.sum() != 0:
+                    assert preds.shape == targets.shape == targets_mask.shape, f"AP Loss ERROR, preds: {preds.shape}, targets: {targets.shape}"
                     loss = (
                         self.loss_mod[mod](preds, targets) * targets_mask
                     ).sum() / targets_mask.sum()
@@ -328,18 +345,10 @@ class MultiModal(nn.Module):
             
             mod_loss[mod] = loss
             mod_n_examples[mod] = n_examples
-            mod_preds[mod] = preds
-            mod_targets[mod] = targets
-
-            if mod == 'behavior':
-                targets_static['choice'] = targets[:,0,2]
-                targets_static['block'] = targets[:,0,3]
-                preds_static['choice'] = preds_choice.argmax(-1)
-                preds_static['block'] = preds_block.argmax(-1)
-            #####
+            mod_preds[mod] = preds.argmax(-1) if mod in ['choice', 'block'] else preds
+            mod_targets[mod] = targets.argmax(-1) if mod in ['choice', 'block'] else targets
                 
         loss = sum(mod_loss.values())
-        
         if contrastive_loss_dict is not None:
             loss += contrastive_loss_dict["loss"]
             loss /= 2
@@ -386,7 +395,35 @@ class MultiModal(nn.Module):
             "s2b_acc": s2b_acc.item(),
             "b2s_acc": b2s_acc.item(),
         }
+    def get_targets(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+        targets = {}
+        for mod, d in mod_dict.items():
+            targets[mod] = d['gt']
+        return targets
 
+    def forward_output(self, mod_dict: Dict[str, Dict[str, torch.Tensor]], y) -> MultiModalOutput:
+        decoder_mod_dict = {}
+        eid = mod_dict['ap']['eid']
+        if self.model_mode == 'decoding':
+            for mod in self.avail_beh:
+                decoder_mod_dict[mod] = {}
+                if mod in ['choice', 'block']:
+                    y = y.reshape(-1, 100 *self.hidden_size)
+                decoder_mod_dict[mod]['preds'] = self.mod_sticher_proj_dict[mod](y, eid)
+                decoder_mod_dict[mod]['targets_mask'] = mod_dict[mod]['targets_mask']
+                decoder_mod_dict[mod]['gt'] = mod_dict[mod]['targets']
+        elif self.model_mode == 'encoding':
+            for mod in ['ap']:
+                y = y.reshape(-1, 202 * self.hidden_size)
+                decoder_mod_dict[mod] = {}
+
+                preds = self.mod_sticher_proj_dict[mod](y, eid)
+                B, C = preds.size()
+                decoder_mod_dict[mod]['preds'] = preds.reshape(B, 100, C // 100)
+                decoder_mod_dict[mod]['targets_mask'] = mod_dict[mod]['targets_mask']
+                decoder_mod_dict[mod]['gt'] = mod_dict[mod]['targets']
+        
+        return decoder_mod_dict
     def forward(
             self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
         ) -> MultiModalOutput:
@@ -413,7 +450,6 @@ class MultiModal(nn.Module):
                     mask = mod_dict[mod]['eval_mask']
                     # print(f"eval_mask: {mask.shape}")
                 mask = mask[:,:1,0] & mod_dict[mod]['inputs_attn_mask']  if mod in ['choice', 'block'] else mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] 
-            # print(f"mod: {mod}, mask: {mask.shape}")
             mod_dict[mod]['inputs_mask'] = mask
             mod_dict[mod]['targets_mask'] = mask
             mod_dict[mod]['encoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
@@ -450,10 +486,14 @@ class MultiModal(nn.Module):
             target_timestamp=target_timestamp,
         )
         #####
-        decoder_mod_dict = {
-            mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
-            for mod, d in decoder_mod_dict.items() if mod in self.decoder_embeddings
-        }
+        if self.model_mode == 'mm':
+            decoder_mod_dict = {
+                mod: self.decoder_embeddings[mod].out_proj(self.mod_to_indx[mod], d, y, decoder_mod_mask, len(self.avail_mod))
+                for mod, d in decoder_mod_dict.items() if mod in self.decoder_embeddings
+            }
+        else:
+            decoder_mod_dict = self.forward_output(mod_dict, y)
+        # target_gts = self.get_targets(mod_dict)
         #####
         loss, mod_loss, mod_n_examples, mod_preds, mod_targets, contrastive_dict, targets_static, preds_static = \
         self.forward_loss(decoder_mod_dict, target_gts, contrastive_loss_dict)

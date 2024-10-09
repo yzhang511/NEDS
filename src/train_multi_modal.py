@@ -191,7 +191,7 @@ for mod in modal_filter["input"]:
         config=config.model.encoder,
     )
 
-for mod in modal_filter["output"]:
+for mod in modal_filter["input"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
@@ -215,6 +215,7 @@ model = model_class(
     decoder_embeddings,
     avail_mod=avail_mod,
     avail_beh=avail_beh,
+    model_mode=args.model_mode,
     config=config.model, 
     share_modality_embeddings=True,
     **config.method.model_kwargs, 

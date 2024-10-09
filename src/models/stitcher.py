@@ -43,10 +43,12 @@ class StitchDecoder(nn.Module):
 
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
-            if mod in ["behavior", "choice"]:
+            if mod in ["choice"]:
                 val = 2
             elif mod == "block":
                 val = 3
+            elif mod == "wheel" or mod == "whisker":
+                val = 1
             stitch_decoder_dict[str(key)] = nn.Linear(n_channels, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
 
