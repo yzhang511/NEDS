@@ -138,20 +138,20 @@ class MultiModalTrainer():
                     best_eval_avg_spike_r2 = eval_epoch_results['eval_avg_spike_r2']
                     print(f"epoch: {epoch} best trial avg spike r2: {best_eval_avg_spike_r2}")
                     self.save_model(name="best_spike", epoch=epoch)
-                    wandb.log({"best_spike_epoch": epoch})
+                    wandb.log({"best_spike_epoch": epoch}) if self.config.wandb.use else None
 
                 if eval_epoch_results[f'eval_avg_behave_r2'] > best_eval_avg_behave_r2:
                     best_eval_avg_behave_r2 = eval_epoch_results['eval_avg_behave_r2']
                     print(f"epoch: {epoch} best trial avg behavior r2: {best_eval_avg_behave_r2}")
                     self.save_model(name="best_behave", epoch=epoch)
-                    wandb.log({"best_behave_epoch": epoch})
+                    wandb.log({"best_behave_epoch": epoch}) if self.config.wandb.use else None
 
                 #####
                 if eval_epoch_results[f'eval_avg_static_acc'] > best_eval_avg_static_acc:
                     best_eval_avg_static_acc = eval_epoch_results['eval_avg_static_acc']
                     print(f"epoch: {epoch} best trial avg static acc: {best_eval_avg_static_acc}")
                     self.save_model(name="best_static", epoch=epoch)
-                    wandb.log({"best_static_epoch": epoch})
+                    wandb.log({"best_static_epoch": epoch}) if self.config.wandb.use else None
                 #####
                 
                 if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
@@ -169,6 +169,8 @@ class MultiModalTrainer():
                     #     torch.save(ckpt, 'ckpt.pth')
 
                     for mod in self.modal_filter['output']:
+                        if mod in ['choice', 'block']:
+                            continue
                         gt_pred_fig = self.plot_epoch(
                             gt=eval_epoch_results['eval_gt'][0][mod], 
                             preds=eval_epoch_results['eval_preds'][0][mod], 
@@ -196,6 +198,8 @@ class MultiModalTrainer():
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 for mod in self.modal_filter['output']:
+                    if mod in ['choice', 'block']:
+                        continue
                     # take the first session for plotting
                     gt_pred_fig = self.plot_epoch(
                         gt=eval_epoch_results['eval_gt'][0][mod], 
@@ -476,7 +480,7 @@ class MultiModalTrainer():
                 epoch = epoch,
                 modality = modality
                 )
-        elif modality == 'behavior':
+        elif modality in ['wheel', 'whisker']:
             gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
                         pred = preds.mean(0).T.detach().cpu().numpy(),
                         epoch = epoch,
