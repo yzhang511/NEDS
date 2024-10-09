@@ -25,6 +25,7 @@ import matplotlib.colors as colors
 from scipy.special import gammaln
 from sklearn.cluster import SpectralClustering
 from sklearn.metrics import r2_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 
 NAME2MODEL = {"MultiModal": MultiModal}
 
@@ -614,9 +615,9 @@ def co_smoothing_eval(
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
@@ -634,10 +635,10 @@ def co_smoothing_eval(
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
                             mod_dict[mod]['mask_mode'] = 'causal'
-                        elif mod == 'behavior':
-                            mod_dict[mod]['inputs'] = batch['target'].clone()
-                            mod_dict[mod]['targets'] = batch['target'].clone()
-                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['target']).to(batch['target'].device, torch.int64)
+                        elif mod in ['wheel', 'whisker', 'choice', 'block']:
+                            mod_dict[mod]['inputs'] = batch[mod].clone()
+                            mod_dict[mod]['targets'] = batch[mod].clone()
+                            mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
                     
                     outputs = model(mod_dict)
                     
@@ -704,22 +705,23 @@ def co_smoothing_eval(
             with torch.no_grad():
                 for batch in test_dataloader:
                     batch = move_batch_to_device(batch, accelerator.device)
-                    mask_result = heldout_mask(
-                        batch['target'].clone(),
-                        mode=mode,
-                        heldout_idxs=hd,
-                        target_regions=target_regions,
-                        neuron_regions=region_list
-                    )  
+                    mask_result_dict = {}
+                    for mod in ['wheel', 'whisker', 'choice', 'block']:
+                        mask_result = heldout_mask(
+                            batch[mod].clone(),
+                            mode=mod,
+                            heldout_idxs=hd
+                        )
+                        mask_result_dict[mod] = mask_result
                     
                     mod_dict = {}
                     for mod in model.mod_to_indx.keys():
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
@@ -733,31 +735,47 @@ def co_smoothing_eval(
                             if not use_mtm:
                                 mod_dict[mod]['inputs'] = batch['spikes_data'].clone()
                             else:
+                                # ignore this mtm for now
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
                             mod_dict[mod]['inputs_regions'] = batch['neuron_regions']
                             mod_dict[mod]['targets'] = batch['spikes_data'].clone()
                             mod_dict[mod]['mask_mode'] = 'causal'
                             mod_dict[mod]['eval_mask'] = torch.zeros_like(batch['spikes_data']).to(batch['spikes_data'].device, torch.int64)
-                        elif mod == 'behavior':
+                        elif mod in ['wheel', 'whisker', 'choice', 'block']:
                             if not use_mtm:
-                                mod_dict[mod]['inputs'] = batch['target'].clone()
+                                mod_dict[mod]['inputs'] = batch[mod].clone()
                             else:
                                 mod_dict[mod]['inputs'] = mask_result['spikes'].clone()
-                            mod_dict[mod]['targets'] = batch['target'].clone()
-                            mod_dict[mod]['eval_mask'] = mask_result['eval_mask']
-                    
+                            mod_dict[mod]['targets'] = batch[mod].clone()
+                            mod_dict[mod]['eval_mask'] = torch.ones_like(batch['target']).to(batch['target'].device, torch.int64)
                     outputs = model(mod_dict)
-                    
-            gt = outputs.mod_targets['behavior'][:,:,:2].detach().cpu().numpy()
-            preds = outputs.mod_preds['behavior'][:,:,:2].detach().cpu().numpy()
+            print(outputs.mod_targets.keys())     
+            gt, preds = [], []
+            gt_choice, gt_block = None, None
+            preds_choice, preds_block = None, None
+            for mod in outputs.mod_targets.keys():
+                if mod in ['wheel', 'whisker']:
+                    gt.append(outputs.mod_targets[mod].detach().cpu().numpy())
+                    preds.append(outputs.mod_preds[mod].detach().cpu().numpy())
+                elif mod == 'choice':
+                    gt_choice = outputs.mod_targets[mod].detach().cpu().numpy()
+                    preds_choice = outputs.mod_preds[mod].detach().cpu().numpy()
+                elif mod == 'block':
+                    gt_block = outputs.mod_targets[mod].detach().cpu().numpy()
+                    preds_block = outputs.mod_preds[mod].detach().cpu().numpy()
 
-            #####
-            gt_choice = outputs.targets_static['choice'].detach().cpu().numpy()
-            gt_block = outputs.targets_static['block'].detach().cpu().numpy()
-            preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
-            preds_block = outputs.preds_static['block'].detach().cpu().numpy()
+            gt = np.stack(gt, axis=-1).squeeze(2)
+            preds = np.stack(preds, axis=-1).squeeze(2)
+            # gt = outputs.mod_targets['behavior'][:,:,:2].detach().cpu().numpy()
+            # preds = outputs.mod_preds['behavior'][:,:,:2].detach().cpu().numpy()
 
-            from sklearn.metrics import balanced_accuracy_score, accuracy_score
+            # #####
+            # gt_choice = outputs.targets_static['choice'].detach().cpu().numpy()
+            # gt_block = outputs.targets_static['block'].detach().cpu().numpy()
+            # preds_choice = outputs.preds_static['choice'].detach().cpu().numpy()
+            # preds_block = outputs.preds_static['block'].detach().cpu().numpy()
+
+            
             balanced_choice_acc = balanced_accuracy_score(gt_choice, preds_choice)
             balanced_block_acc = balanced_accuracy_score(gt_block, preds_block)
             choice_acc = accuracy_score(gt_choice, preds_choice)
@@ -1106,6 +1124,12 @@ def heldout_mask(
     elif mode == 'modal_behavior':
         hd = heldout_idxs
         mask[:, hd] = 0
+    elif mode in ['wheel', 'whisker']:
+        hd = heldout_idxs
+        mask[:, hd] = 0
+    elif mode in ['choice', 'block']:
+        mask[:] = 0
+        hd = 0
 
     else:
         raise NotImplementedError('mode not implemented')

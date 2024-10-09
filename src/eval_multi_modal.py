@@ -54,16 +54,16 @@ print(f'Working on EID: {eid} ...')
 model_config = f"src/configs/multi_modal/mm.yaml"
 mask_name = f"mask_{args.mask_mode}"
 n_time_steps = 100
-avail_mod = ['ap','behavior']
+avail_mod = ['ap', 'wheel','whisker','choice','block']
 
 if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
+    input_modal = ['ap', 'wheel','whisker','choice','block']
+    output_modal = ['ap', 'wheel','whisker','choice','block']
 elif args.model_mode == "decoding":
     input_modal = ['ap']
-    output_modal = ['behavior']
+    output_modal = ['wheel','whisker','choice','block']
 elif args.model_mode == "encoding":
-    input_modal = ['behavior']
+    input_modal = ['wheel','whisker','choice','block']
     output_modal = ['ap']
 else:
     raise ValueError(f"model_mode {args.model_mode} not supported")
@@ -95,7 +95,7 @@ inter_region = False
 intra_region = False
 
 modal_spike = True if 'ap' in modal_filter['output'] else False
-modal_behavior = True if 'behavior' in modal_filter['output'] else False
+modal_behavior = True if 'wheel' in modal_filter['output'] else False
 
 if args.num_sessions > 1:
     warnings.warn("num_sessions > 1, make sure the model is trained with multiple sessions")
@@ -120,7 +120,7 @@ save_path = os.path.join(base_path,
                         f"mixedTraining-{args.mixed_training}",
                         f"contrast-{args.use_contrastive}",
                         )
-
+args.wandb = False 
 if args.wandb:
     wandb.init(
         project="4m-benchmark",
@@ -410,7 +410,7 @@ if modal_spike:
             **co_smoothing_configs
         )
         print(results)
-        wandb.log(results)
+        wandb.log(results) if args.wandb else None
     else:
         print("skipping modal_spike since files exist or overwrite is False")
 
@@ -442,7 +442,7 @@ if modal_behavior:
             **co_smoothing_configs
         )
         print(results)
-        wandb.log(results)
+        wandb.log(results) if args.wandb else None
     else:
         print("skipping modal_behavior since files exist or overwrite is False")
 
