@@ -717,16 +717,16 @@ def get_npy_files(log_dir,
     Get the npy files for each session
     """
     if model_mode == 'mm':
-        model_mode = 'ap-behavior'
+        model_mode = 'ap-wheel'
     elif model_mode == 'decoding':
         model_mode = 'ap'
     elif model_mode == 'encoding':
-        model_mode = 'behavior'
+        model_mode = 'wheel'
     else:
         raise ValueError("Unknown model_mode")
     model_mode = f"inModal-{model_mode}"
     # get the npy files under sesNum-{num_sessions}/set-eval
-    pattern = f"{log_dir}/sesNum-{num_sessions}/**/*{model_mode}/**/*.npy"
+    pattern = f"{log_dir}/sesNum-{num_sessions}/**/*{model_mode}*/**/*.npy"
     npy_files_ = glob.glob(pattern, recursive=True)
     npy_files = []
     test_eids_ = [ses[:5] for ses in test_eids]
