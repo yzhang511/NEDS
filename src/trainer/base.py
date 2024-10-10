@@ -220,30 +220,13 @@ class MultiModalTrainer():
                         gt_pred_fig['plot_r2'].savefig(
                             os.path.join(self.log_dir, f"r2_fig_{mod}_{epoch}.png")
                         )
-
+            logs_results = {**eval_epoch_results, **train_epoch_results, "epoch": epoch}
+            logs_results.pop("eval_gt", None)
+            logs_results.pop("eval_preds", None)
             if self.config.wandb.use:
-                wandb.log({
-                    "train_loss": train_epoch_results['train_loss'],
-                    "train_spike_loss": train_epoch_results['train_spike_loss'],
-                    "train_behave_loss": train_epoch_results['train_behave_loss'],
-                    "eval_loss": eval_epoch_results['eval_loss'],
-                    "eval_spike_loss": eval_epoch_results['eval_spike_loss'],
-                    "eval_behave_loss": eval_epoch_results['eval_behave_loss'],
-                    #####
-                    "train_static_loss": train_epoch_results['train_static_loss'],
-                    "eval_static_loss": eval_epoch_results['eval_static_loss'],
-                    #####
-                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}'],
-                    "eval_avg_spike_r2": eval_epoch_results[f'eval_avg_spike_r2'],
-                    "eval_avg_behave_r2": eval_epoch_results[f'eval_avg_behave_r2'],
-                    #####
-                    "eval_avg_static_acc": eval_epoch_results[f'eval_avg_static_acc'],
-                    "eval_avg_choice_acc": eval_epoch_results[f'eval_avg_choice_acc'],
-                    "eval_avg_block_acc": eval_epoch_results[f'eval_avg_block_acc'],
-                    #####
-                    f"eval_s2b_acc": eval_epoch_results['eval_s2b_acc'],
-                    f"eval_b2s_acc": eval_epoch_results['eval_b2s_acc'],
-                })
+                wandb.log(logs_results)
+            else:
+                print(logs_results)
                 
         self.save_model(name="last", epoch=epoch)
         
@@ -260,12 +243,7 @@ class MultiModalTrainer():
     
     def train_epoch(self, epoch):
         train_loss = 0.
-        train_spike_loss = 0.
-        train_behave_loss = 0.
-        #####
-        train_static_loss = 0.
-        #####
-        train_examples = 0
+        mod_loss_dict = {f"train_{mod}_loss": 0. for mod in self.modal_filter['output']}
         self.model.train()
         for batch in tqdm(self.train_dataloader):
             if self.config.training.mask_type == "input":
@@ -281,20 +259,14 @@ class MultiModalTrainer():
             self.lr_scheduler.step()
             self.optimizer.zero_grad()
             train_loss += loss.item()
-            if 'ap' in self.modal_filter['output']:
-                train_spike_loss += outputs.mod_loss['ap']
-            if 'behavior' in self.modal_filter['output']:
-                #####
-                train_behave_loss += outputs.mod_loss['dynamic']
-                train_static_loss += outputs.mod_loss['static']
-                #####
+
+            for mod in self.modal_filter['output']:
+                mod_loss_dict[f"train_{mod}_loss"] += outputs.mod_loss[mod]
+        for key in mod_loss_dict.keys():
+            mod_loss_dict[key] /= len(self.train_dataloader)
         return{
             "train_loss": train_loss/len(self.train_dataloader),
-            "train_spike_loss": train_spike_loss/len(self.train_dataloader),
-            "train_behave_loss": train_behave_loss/len(self.train_dataloader),
-            #####
-            "train_static_loss": train_static_loss/len(self.train_dataloader),
-            #####
+            **mod_loss_dict
         }
     
     
@@ -302,11 +274,6 @@ class MultiModalTrainer():
         
         self.model.eval()
         eval_loss = 0.
-        eval_spike_loss = 0.
-        eval_behave_loss = 0.
-        #####
-        eval_static_loss = 0.
-        #####
         session_results = {}
         for eid in self.eid_list:
             session_results[eid] = {}
@@ -315,7 +282,7 @@ class MultiModalTrainer():
                 #####
             session_results[eid]['s2b_acc'] = []
             session_results[eid]['b2s_acc'] = []
-
+        mod_loss_dict = {f"eval_{mod}_loss": 0. for mod in self.modal_filter['output']}
         if self.eval_dataloader:
 
             with torch.no_grad():  
@@ -332,7 +299,8 @@ class MultiModalTrainer():
                         )
                         loss = outputs.loss
                         eval_loss += loss.item()
-                        eval_spike_loss += outputs.mod_loss['ap'].item()
+                        # eval_spike_loss += outputs.mod_loss['ap'].item()
+                        mod_loss_dict[f"eval_ap_loss"] += outputs.mod_loss['ap']
                         num_neuron = batch['spikes_data'].shape[2] 
                         eid = batch['eid'][0]
 
@@ -363,6 +331,8 @@ class MultiModalTrainer():
                         # eval_behave_loss += outputs.mod_loss['dynamic'].item()
                         # eval_static_loss += outputs.mod_loss['static'].item()
                         #####
+                        for mod in self.avail_beh:
+                            mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]
                         num_neuron = batch['spikes_data'].shape[2] 
                         eid = batch['eid'][0]
                         for mod in self.avail_beh:
@@ -398,7 +368,7 @@ class MultiModalTrainer():
                     
                 if eid not in self.session_active_neurons:
                     self.session_active_neurons[eid] = {}
-
+                continuous_behav_dict = {'preds': [], 'gt': []}
                 for mod in self.modal_filter['output']:
                     
                     if mod == 'ap':
@@ -418,21 +388,26 @@ class MultiModalTrainer():
                         spike_r2_results_list.append(results["bps"])
                       
                     elif mod in ['wheel', 'whisker']:
-                        results = metrics_list(gt = gt[idx][mod],
-                                            pred = preds[idx][mod],
-                                            metrics=["rsquared"],
-                                            device=self.accelerator.device)
-                        behave_r2_results_list.append(results["rsquared"])
+                        continuous_behav_dict['gt'].append(gt[idx][mod])
+                        continuous_behav_dict['preds'].append(preds[idx][mod])
 
                         #####
                     elif mod in ['choice', 'block']:
                         acc_results_list.append(balanced_accuracy_score(
                             gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
                         ))
-                        # block_acc_results_list.append(balanced_accuracy_score(
-                        #     gt[idx]['block'].cpu().numpy(), preds_static[idx]['block'].cpu().numpy()
-                        # ))
-                        #####
+                        if mod == 'choice':
+                            choice_acc_results_list.append(acc_results_list[-1])
+                        elif mod == 'block':
+                            block_acc_results_list.append(acc_results_list[-1])
+                continuous_behav_dict['gt'] = torch.cat(continuous_behav_dict['gt'], dim=-1)
+                continuous_behav_dict['preds'] = torch.cat(continuous_behav_dict['preds'], dim=-1)
+                behave_r2_results_list.append(metrics_list(
+                    gt = continuous_behav_dict['gt'],
+                    pred = continuous_behav_dict['preds'],
+                    metrics=["rsquared"],
+                    device=self.accelerator.device
+                )["rsquared"])
                     
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
@@ -451,10 +426,7 @@ class MultiModalTrainer():
 
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
-            "eval_spike_loss": eval_spike_loss/len(self.eval_dataloader),
-            "eval_behave_loss": eval_behave_loss/len(self.eval_dataloader),
-            #####
-            "eval_static_loss": eval_static_loss/len(self.eval_dataloader),
+            **mod_loss_dict,
             f"eval_trial_avg_{self.metric}": np.nanmean([spike_r2, behave_r2, choice_acc, block_acc]),
              #####
             "eval_avg_spike_r2": spike_r2,
