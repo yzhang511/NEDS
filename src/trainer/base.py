@@ -400,14 +400,15 @@ class MultiModalTrainer():
                             choice_acc_results_list.append(acc_results_list[-1])
                         elif mod == 'block':
                             block_acc_results_list.append(acc_results_list[-1])
-                continuous_behav_dict['gt'] = torch.cat(continuous_behav_dict['gt'], dim=-1)
-                continuous_behav_dict['preds'] = torch.cat(continuous_behav_dict['preds'], dim=-1)
-                behave_r2_results_list.append(metrics_list(
-                    gt = continuous_behav_dict['gt'],
-                    pred = continuous_behav_dict['preds'],
-                    metrics=["rsquared"],
-                    device=self.accelerator.device
-                )["rsquared"])
+                if 'wheel' in self.modal_filter['output']:
+                    continuous_behav_dict['gt'] = torch.cat(continuous_behav_dict['gt'], dim=-1)
+                    continuous_behav_dict['preds'] = torch.cat(continuous_behav_dict['preds'], dim=-1)
+                    behave_r2_results_list.append(metrics_list(
+                        gt = continuous_behav_dict['gt'],
+                        pred = continuous_behav_dict['preds'],
+                        metrics=["rsquared"],
+                        device=self.accelerator.device
+                    )["rsquared"])
                     
                 if self.config.model.use_contrastive:
                     assert len(session_results[eid]['s2b_acc']) == len(session_results[eid]['b2s_acc'])
