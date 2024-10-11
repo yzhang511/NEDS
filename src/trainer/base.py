@@ -424,7 +424,8 @@ class MultiModalTrainer():
         choice_acc = np.nanmean(choice_acc_results_list)
         block_acc = np.nanmean(block_acc_results_list)
         acc = np.nanmean(acc_results_list)
-
+        for key in mod_loss_dict.keys():
+            mod_loss_dict[key] /= len(self.eval_dataloader)
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
             **mod_loss_dict,
