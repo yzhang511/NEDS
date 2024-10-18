@@ -108,7 +108,7 @@ class MultiModal(nn.Module):
             for mod in self.avail_beh:
                 self.mod_sticher_proj_dict[mod] = StitchDecoder(
                     eid_list=self.eid_list,
-                    n_channels=self.hidden_size * 100 if mod in ['choice', 'block'] else self.hidden_size,
+                    n_channels=self.hidden_size,
                     mod=mod,
                 ).cuda()
         elif self.model_mode == 'encoding':
@@ -117,7 +117,7 @@ class MultiModal(nn.Module):
                 _eid_list = {k: v * 100 for k, v in self.eid_list.items()}
                 self.mod_sticher_proj_dict[mod] = StitchDecoder(
                     eid_list=_eid_list,
-                    n_channels=self.hidden_size * 202,
+                    n_channels=self.hidden_size * 400,
                     mod=mod,
                 ).cuda()
 
@@ -294,6 +294,7 @@ class MultiModal(nn.Module):
             if "spike_mask" in decoder_mod_dict[mod]:
                 targets_mask = decoder_mod_dict[mod]['spike_mask']
             else:
+                T = 100
                 targets_mask = decoder_mod_dict[mod]['targets_mask'].unsqueeze(-1).expand(B,T,N)
             #####
             preds = decoder_mod_dict[mod]['preds']
@@ -414,7 +415,7 @@ class MultiModal(nn.Module):
                 decoder_mod_dict[mod]['gt'] = mod_dict[mod]['targets']
         elif self.model_mode == 'encoding':
             for mod in ['ap']:
-                y = y.reshape(-1, 202 * self.hidden_size)
+                y = y.reshape(-1, 400 * self.hidden_size)
                 decoder_mod_dict[mod] = {}
 
                 preds = self.mod_sticher_proj_dict[mod](y, eid)
@@ -449,9 +450,11 @@ class MultiModal(nn.Module):
                 else:
                     mask = mod_dict[mod]['eval_mask']
                     # print(f"eval_mask: {mask.shape}")
-                mask = mask[:,:1,0] & mod_dict[mod]['inputs_attn_mask']  if mod in ['choice', 'block'] else mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] 
+                mask = mask[:,:,0] & mod_dict[mod]['inputs_attn_mask']  if mod in ['choice', 'block'] else mask[:,:,0] & mod_dict[mod]['inputs_attn_mask'] 
+                # mask[:,:,0] & mod_dict[mod]['inputs_attn_mask']
             mod_dict[mod]['inputs_mask'] = mask
             mod_dict[mod]['targets_mask'] = mask
+            # print(mod, mask.shape,  mod_dict[mod]['inputs_attn_mask'].shape)
             mod_dict[mod]['encoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
             mod_dict[mod]['decoder_attn_mask'] = mod_dict[mod]['inputs_attn_mask']
 
