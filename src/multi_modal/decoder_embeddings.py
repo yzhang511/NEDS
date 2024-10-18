@@ -64,6 +64,7 @@ class DecoderEmbeddingLayer(nn.Module):
         targets, targets_timestamp, targets_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
         
         B, N, D = targets.size()
+        N=100
         if hasattr(self, 'spike_stitch_decoder'):
             x = self.spike_stitch_decoder(targets, eid)
             #####

@@ -615,9 +615,9 @@ def co_smoothing_eval(
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
                         mod_dict[mod]['eid'] = batch['eid'][0]  
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
@@ -719,10 +719,10 @@ def co_smoothing_eval(
                         mod_dict[mod] = {}
                         mod_dict[mod]['inputs_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
                         mod_dict[mod]['targets_modality'] = torch.tensor(model.mod_to_indx[mod]).to(accelerator.device)
-                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
-                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
-                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
-                        mod_dict[mod]['eid'] = batch['eid'][0]  
+                        mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+                        mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
+                        mod_dict[mod]['eid'] = batch['eid'][0]
                         mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
                         if use_mtm:
                             mod_dict[mod]['masking_mode'] = model.masker.mode # change later

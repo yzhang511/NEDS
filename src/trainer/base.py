@@ -63,9 +63,12 @@ class MultiModalTrainer():
             mod_dict[mod] = {}
             mod_dict[mod]['inputs_modality'] = torch.tensor(self.mod_to_indx[mod]).to(self.accelerator.device)
             mod_dict[mod]['targets_modality'] = torch.tensor(self.mod_to_indx[mod]).to(self.accelerator.device)
-            mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
-            mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
-            mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+            # mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask'][:,:1] if mod in ['choice', 'block'] else batch['time_attn_mask']
+            mod_dict[mod]['inputs_attn_mask'] = batch['time_attn_mask']
+            # mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+            mod_dict[mod]['inputs_timestamp'] = batch['spikes_timestamps']
+            # mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps'][:,:1] if mod in ['choice', 'block'] else batch['spikes_timestamps']
+            mod_dict[mod]['targets_timestamp'] = batch['spikes_timestamps']
             mod_dict[mod]['eid'] = batch['eid'][0]  # each batch is from the same eid
             mod_dict[mod]['num_neuron'] = batch['spikes_data'].shape[2]
             mod_dict[mod]['masking_mode'] = masking_mode

@@ -66,7 +66,7 @@ class EncoderEmbeddingLayer(nn.Module):
 
         inputs, inputs_timestamp, inputs_modality, eid  = d['inputs'], d['inputs_timestamp'], d['inputs_modality'], d['eid']
         B, N, D = inputs.size()
-
+        N=100
         if hasattr(self, 'spike_stitch_encoder'):
             x = self.spike_stitch_encoder(inputs, eid)
             #####
