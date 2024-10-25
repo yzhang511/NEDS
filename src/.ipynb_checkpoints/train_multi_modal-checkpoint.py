@@ -21,7 +21,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 from multi_modal.decoder_embeddings import DecoderEmbedding
-
+from collections import defaultdict
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
@@ -64,16 +64,16 @@ set_seed(config.seed)
 last_ckpt_path = 'model_last.pt'
 best_ckpt_path = 'model_best.pt'
 
-avail_mod = ['ap', 'behavior']
+avail_mod = ['ap', 'wheel','whisker','choice','block']
 
 if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
+    input_modal = ['ap', 'wheel','whisker','choice','block']
+    output_modal = ['ap', 'wheel','whisker','choice','block']
 elif args.model_mode == "decoding":
     input_modal = ['ap']
-    output_modal = ['behavior']
+    output_modal = ['wheel','whisker','choice','block']
 elif args.model_mode == "encoding":
-    input_modal = ['behavior']
+    input_modal = ['wheel','whisker','choice','block']
     output_modal = ['ap']
 else:
     raise ValueError(f"model_mode {args.model_mode} not supported")
@@ -160,9 +160,7 @@ val_dataloader = make_loader(val_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            #####
-                            stitching=False,
-                            #####
+                            stitching=True,
                             seed=config.seed,
                             shuffle=False)
 
@@ -177,10 +175,10 @@ test_dataloader = make_loader(test_dataset,
                             dataset_name=config.data.dataset_name,
                             sort_by_depth=config.data.sort_by_depth,
                             sort_by_region=config.data.sort_by_region,
-                            stitching=False,
+                            stitching=True,
                             seed=config.seed,
                             shuffle=False)
-
+avail_beh = ['wheel', 'whisker', 'choice', 'block']
 encoder_embeddings, decoder_embeddings = {}, {}
 
 for mod in modal_filter["input"]:
@@ -193,15 +191,15 @@ for mod in modal_filter["input"]:
         config=config.model.encoder,
     )
 
-for mod in modal_filter["output"]:
+for mod in modal_filter["input"]:
     decoder_embeddings[mod] = DecoderEmbedding(
         hidden_size=config.model.decoder.transformer.hidden_size,
         #####
-        n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
-        output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
+        # n_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
+        # output_channel=(256+(256//2)) if len(modal_filter['output']) > 1 else 256,
         #####
-        # n_channel=256 if mod=='ap' else 256,
-        # output_channel=256 if mod=='ap' else 256,
+        n_channel=256 if mod=='ap' else 256,
+        output_channel=256 if mod=='ap' else 256,
         stitching=True,
         eid_list=meta_data['eid_list'],
         mod=mod,
@@ -216,6 +214,8 @@ model = model_class(
     encoder_embeddings,
     decoder_embeddings,
     avail_mod=avail_mod,
+    avail_beh=avail_beh,
+    model_mode=args.model_mode,
     config=config.model, 
     share_modality_embeddings=True,
     **config.method.model_kwargs, 
@@ -228,12 +228,24 @@ print("(train) masking active: ", model.masker.force_active)
 
 model = accelerator.prepare(model)
 
-optimizer = torch.optim.AdamW(
-    model.parameters(), 
-    lr=config.optimizer.lr, 
-    weight_decay=config.optimizer.wd, 
-    eps=config.optimizer.eps
-)
+# Initialize optimizer with default parameters for the model
+param_groups = defaultdict(list)  # To hold parameter groups
+
+# Default group
+for name, param in model.named_parameters():
+    if 'decoder_embeddings.behavior.choice_decoder.stitch_decoder_dict' in name or \
+       'decoder_embeddings.behavior.block_decoder.stitch_decoder_dict' in name:
+        # Specific weight decay for these parameters
+        param_groups['custom_decay'].append(param)
+    else:
+        # General model parameters
+        param_groups['default'].append(param)
+
+# Setup optimizer with different parameter groups
+optimizer = torch.optim.AdamW([
+    {'params': param_groups['default'], 'weight_decay': config.optimizer.wd},
+    {'params': param_groups['custom_decay'], 'weight_decay': 1.0}
+], lr=config.optimizer.lr, eps=config.optimizer.eps)
 
 lr_scheduler = OneCycleLR(
     optimizer=optimizer,
@@ -248,6 +260,7 @@ trainer_kwargs = {
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
     "avail_mod": avail_mod,
+    "avail_beh": avail_beh,
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
     "config": config,
