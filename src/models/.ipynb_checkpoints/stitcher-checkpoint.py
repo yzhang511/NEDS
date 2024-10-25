@@ -1,81 +1,69 @@
 import torch
 from torch import nn
 
-# class StitchEncoder(nn.Module):
-#     def __init__(self, 
-#                  eid_list:dict,
-#                  n_channels:int,
-#                  scale:int = 1,
-#                  mod:str = 'ap',
-#         ):
-#         super().__init__()
+STATIC_VARS = ["choice", "block"]
+DYNAMIC_VARS = ["wheel", "whisker"]
+OUTPUT_DIM = {"choice": 2, "block": 3, "wheel": 1, "whisker": 1}
 
-#         stitcher_dict = {}
-#         project_dict = {}
-#         # iterate key, value pairs in the dictionary
-#         for key, val in eid_list.items():
-#             if mod == "behavior":
-#                 val = 4
-#             # token embedding layer
-#             stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2)
-#             # projection layer
-#             project_dict[str(key)] = nn.Linear(int(val) * 2, n_channels)
-#         self.stitcher_dict = nn.ModuleDict(stitcher_dict)
-#         self.project_dict = nn.ModuleDict(project_dict)
-#         self.scale = scale
-#         self.act = nn.Softsign()
-
-#     def forward(self, x, block_idx):
-#         x = self.stitcher_dict[block_idx](x)
-#         x = self.act(x) * self.scale
-#         x = self.project_dict[block_idx](x)
-#         return x
-
-
-#####
 class StitchEncoder(nn.Module):
-
     def __init__(self, 
-                 eid_list:dict,
-                 n_channels:int,
-                 mod:str = 'ap',
-        ):
+         eid_list: dict,
+         n_channels: int,
+         scale: int=1,
+         mod: str="spike",
+         max_F: int=100,
+    ):
         super().__init__()
 
-        stitcher_dict = {}
-        # iterate key, value pairs in the dictionary
+        self.mod = mod
+        stitcher_dict, project_dict = {}, {}
         for key, val in eid_list.items():
-            if mod == "behavior":
-                val = 4
+            val = 1 if mod in STATIC_VARS + DYNAMIC_VARS else val
+            mult = max_F if mod in STATIC_VARS else 1
             # token embedding layer
-            stitcher_dict[str(key)] = nn.Linear(int(val), n_channels * 2)
+            stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2 * mult)
+            # projection layer
+            project_dict[str(key)] = nn.Linear(int(val) * 2, n_channels)
         self.stitcher_dict = nn.ModuleDict(stitcher_dict)
+        self.project_dict = nn.ModuleDict(project_dict)
+        self.scale = scale
+        self.act = nn.Softsign()
 
     def forward(self, x, block_idx):
         x = self.stitcher_dict[block_idx](x)
+        if self.mod in STATIC_VARS:
+            x = x.reshape(x.shape[0], -1, 2)
+        x = self.act(x) * self.scale
+        x = self.project_dict[block_idx](x)
         return x
-#####     
 
 
 class StitchDecoder(nn.Module):
-
     def __init__(self,
-                 eid_list:list,
-                 n_channels:int,
-                 mod:str = 'ap',
-        ):
+         eid_list: list,
+         n_channels: int,
+         mod:str="spike",
+         max_F: int=100,
+    ):
         super().__init__()
-
+        
+        self.mod = mod
+        self.max_F = max_F
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
-            if mod in ["behavior", "choice"]:
-                val = 2
-            elif mod == "block":
-                val = 3
-            stitch_decoder_dict[str(key)] = nn.Linear(n_channels, val)
+            if mod in STATIC_VARS:
+                val, mult = OUTPUT_DIM[mod], max_F
+            elif mod in DYNAMIC_VARS:
+                val, mult = OUTPUT_DIM[mod], 1
+            else:
+                mult = 1
+            stitch_decoder_dict[str(key)] = nn.Linear(n_channels * mult, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
 
     def forward(self, x, block_idx):
+        if self.mod in STATIC_VARS:
+            x = x.flatten(1)
+            if len(x.shape) == 2:
+                x = x.reshape(-1, x.shape[1] * self.max_F)
         return self.stitch_decoder_dict[block_idx](x)
-
 

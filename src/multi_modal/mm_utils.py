@@ -19,12 +19,12 @@ from utils.config_utils import DictConfig, update_config
 # Precompute cos and sin for RoPE
 def get_cos_sin(dim, max_F, base=10000, dtype=torch.get_default_dtype(), device=None):
 
-        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
-        t = torch.arange(max_F, device=device, dtype=inv_freq.dtype)
-        freqs = torch.einsum("i,j->ij", t, inv_freq)
+    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+    t = torch.arange(max_F, device=device, dtype=inv_freq.dtype)
+    freqs = torch.einsum("i,j->ij", t, inv_freq)
 
-        emb = torch.cat((freqs, freqs), dim=-1)
-        return emb.cos().to(dtype), emb.sin().to(dtype)
+    emb = torch.cat((freqs, freqs), dim=-1)
+    return emb.cos().to(dtype), emb.sin().to(dtype)
 
 # Rotates half the hidden dims of the input.
 def rotate_half(x):
