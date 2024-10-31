@@ -58,6 +58,10 @@ class MultiModal(nn.Module):
         self.max_F = config.encoder.embedder.max_F
         self.context_forward = config.context.forward
         self.context_backward = config.context.backward
+        context_mask = create_context_mask(
+            self.context_forward, self.context_backward, self.max_F*len(self.avail_mod)
+        )
+        self.register_buffer("context_mask", context_mask, persistent=False)
 
         self.encoder_modalities = set(encoder_embeddings.keys())
         self.encoder_embeddings = nn.ModuleDict(encoder_embeddings)
@@ -141,8 +145,8 @@ class MultiModal(nn.Module):
         encoder_tokens[:,encoder_mask_ids,:] = 0.
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
-        context_mask = create_context_mask(self.context_forward, self.context_backward, N)
-        context_mask = repeat(context_mask.to(encoder_mask.device), "n1 n2 -> b n1 n2", b=B)
+        context_mask = self.context_mask[:N,:N].to(encoder_mask.device).unsqueeze(0).expand(B,N,N)
+        # context_mask = repeat(self.context_mask.to(encoder_mask.device), "n1 n2 -> b n1 n2", b=B)
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
 
         return encoder_tokens, encoder_emb, input_timestamp, encoder_mask, encoder_attn_mask, mod_mask
@@ -182,7 +186,7 @@ class MultiModal(nn.Module):
                 if n_examples != 0:
                     assert preds.shape == targets.shape == targets_mask.shape, \
                     f"shape mismatch in computing loss: preds ({preds.shape}) vs. targets ({targets.shape})."
-                    loss = (self.loss_mod[mod_type](preds, targets)*targets_mask).sum()/n_examples
+                    loss = (self.mod_loss[mod_type](preds, targets)*targets_mask).sum()/n_examples
                 else:
                     loss = 0.
             else:
@@ -197,7 +201,7 @@ class MultiModal(nn.Module):
                 targets = F.one_hot(
                     targets.to(torch.int64), num_classes=self.num_class[mod]
                 ).squeeze(1)               
-                loss = self.loss_mod[mod_type](preds, targets.float()).sum() / n_examples
+                loss = self.mod_loss[mod_type](preds, targets.float()).sum() / n_examples
                 preds, targets = preds.argmax(-1), targets.argmax(-1)
             
             mod_loss[mod] = loss
@@ -229,8 +233,12 @@ class MultiModal(nn.Module):
             elif self.mod_type[mod] == "spike":
                 y = y.reshape(-1, (len(self.avail_beh) * self.max_F) * self.hidden_size)
             preds = self.mod_stitcher_proj_dict[mod](y, eid)
-            output_mod_dict[mod]["preds"] = preds if self.model_mode == "decoding" else \ 
-                preds.reshape(preds.size()[0], self.max_F, preds.size()[-1]//self.max_F)
+            if self.model_mode == "decoding":
+                output_mod_dict[mod]["preds"] = preds
+            else: 
+                output_mod_dict[mod]["preds"] = preds.reshape(
+                    preds.size()[0], self.max_F, preds.size()[-1]//self.max_F
+                )
             output_mod_dict[mod]["targets_mask"] = mod_dict[mod]["targets_mask"]
             output_mod_dict[mod]["gt"] = mod_dict[mod]["targets"]
         
@@ -255,7 +263,7 @@ class MultiModal(nn.Module):
             else:
                 mask = mod_dict[mod]["eval_mask"]
             
-            mask = mask[...,0] & mod_dict[mod]["inputs_attn_mask"]
+            mask = mask[...,0].to(torch.int64) & mod_dict[mod]["inputs_attn_mask"]
             
             mod_dict[mod]["inputs_mask"] = mask
             mod_dict[mod]["targets_mask"] = mask

@@ -14,7 +14,6 @@ ACT2FN["softsign"] = nn.Softsign
 
 from utils.config_utils import DictConfig, update_config
 
-#####
 # Copied from hf Llama
 # Precompute cos and sin for RoPE
 def get_cos_sin(dim, max_F, base=10000, dtype=torch.get_default_dtype(), device=None):
@@ -43,7 +42,7 @@ def apply_rotary_pos_emb(q, k, pos_ids, cos, sin, unsqueeze_dim=1):
 
     
     return q_embed, k_embed
-#####
+    
 
 def create_context_mask(context_forward, context_backward, max_F) -> torch.LongTensor: 
     
@@ -104,7 +103,6 @@ class FactorsProjection(nn.Module):
         return self.proj(self.dropout(x))
 
 
-#####
 class Attention(nn.Module):
     def __init__(
         self, idx, hidden_size, n_heads, use_bias, dropout, 
@@ -124,7 +122,7 @@ class Attention(nn.Module):
         self.key = nn.Linear(self.hidden_size, self.hidden_size, bias=use_bias)
         self.value  = nn.Linear(self.hidden_size, self.hidden_size, bias=use_bias)
 
-        # torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_flash_sdp(True)
         self.attn_dropout = dropout
 
         self.dropout = nn.Dropout(dropout)
@@ -166,10 +164,8 @@ class Attention(nn.Module):
         out = out.transpose(1, 2).contiguous().view(B, T, self.hidden_size) 
 
         return self.out_proj(self.dropout(out)) 
-#####
 
 
-#####
 class CrossAttention(nn.Module):
     def __init__(
         self, idx, hidden_size, n_heads, use_bias, dropout, 
@@ -189,7 +185,7 @@ class CrossAttention(nn.Module):
         self.key = nn.Linear(self.hidden_size, self.hidden_size, bias=use_bias)
         self.value  = nn.Linear(self.hidden_size, self.hidden_size, bias=use_bias)
 
-        # torch.backends.cuda.enable_flash_sdp(True)
+        torch.backends.cuda.enable_flash_sdp(True)
         self.attn_dropout = dropout
 
         self.dropout = nn.Dropout(dropout)
@@ -225,9 +221,6 @@ class CrossAttention(nn.Module):
         out = out.transpose(1, 2).contiguous().view(B, T, self.hidden_size) 
 
         return self.out_proj(self.dropout(out)) 
-#####
-
-
 
     
         

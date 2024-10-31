@@ -9,7 +9,7 @@ from transformers.activations import ACT2FN
 ACT2FN["softsign"] = nn.Softsign
 from utils.config_utils import DictConfig, update_config
 from multi_modal.mm_utils import ScaleNorm, MLP, Attention
-from models.stitcher import StitchEncoder
+from models.stitcher import StitchEncoder, StitchDecoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
@@ -104,7 +104,7 @@ class EncoderEmbedding(nn.Module):
 
         if stitching:
             self.mod_stitcher_proj_dict = StitchDecoder(
-                eid_list = eid_list, n_channels = n_channels, mod = mod,
+                eid_list = eid_list, n_channels = self.n_channel, mod = mod,
             )
             if mod in STATIC_VARS:
                 mod_static_weight_dict = {}
@@ -117,7 +117,7 @@ class EncoderEmbedding(nn.Module):
     def forward(self, d : Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:    
                         
         x, x_emb = self.embedder(d)
-        d["x"], d["emb"] = x, x_emb
+        d["x"], d["emb"], d["gt"] = x, x_emb, d["targets"]
         
         return d
 

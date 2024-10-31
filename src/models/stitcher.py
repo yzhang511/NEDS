@@ -52,7 +52,7 @@ class StitchDecoder(nn.Module):
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
             if mod in STATIC_VARS:
-                val, mult = OUTPUT_DIM[mod], max_F
+                val, mult = OUTPUT_DIM[mod], 1
             elif mod in DYNAMIC_VARS:
                 val, mult = OUTPUT_DIM[mod], 1
             else:
@@ -61,9 +61,5 @@ class StitchDecoder(nn.Module):
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
 
     def forward(self, x, block_idx):
-        if self.mod in STATIC_VARS:
-            x = x.flatten(1)
-            if len(x.shape) == 2:
-                x = x.reshape(-1, x.shape[1] * self.max_F)
         return self.stitch_decoder_dict[block_idx](x)
 

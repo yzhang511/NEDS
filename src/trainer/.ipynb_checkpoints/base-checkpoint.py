@@ -57,7 +57,7 @@ class MultiModalTrainer():
         else:
             self.training_mode = None
 
-    def _prepare_multimodal_mask(mod_dict, training_mode, all_ones, all_zeros):
+    def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
         if training_mode == "encoding":
             for mod in self.mod_to_indx.keys():
@@ -91,7 +91,7 @@ class MultiModalTrainer():
         batch = move_batch_to_device(batch, self.accelerator.device)
 
         all_ones = torch.ones_like(
-            batch["spikes_data"]).to(self.model.device, torch.int64
+            batch["spikes_data"]).to(self.accelerator.device, torch.int64
         )
         all_zeros = all_ones * 0.
         
@@ -100,8 +100,8 @@ class MultiModalTrainer():
             
             mod_idx = self.mod_to_indx[mod]
             mod_dict[mod] = {}
-            mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(self.model.device)
-            mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(self.model.device)
+            mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(self.accelerator.device)
+            mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(self.accelerator.device)
             mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
             mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
             mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
@@ -126,7 +126,7 @@ class MultiModalTrainer():
 
         return self.model(mod_dict)
 
-    def _plot_log_epoch(epoch, eval_epoch_results, n_viz=5):
+    def _plot_log_epoch(self, epoch, eval_epoch_results, n_viz=5):
         
         for mod in self.modal_filter["output"]:
             if mod in STATIC_VARS:
@@ -156,8 +156,8 @@ class MultiModalTrainer():
             
             train_epoch_results = self.train_epoch(epoch)
             eval_epoch_results = self.eval_epoch()
-            print(f"Epoch: {epoch} train loss: {train_epoch_results["train_loss"]}")
-            print(f"Epoch: {epoch} val loss: {eval_epoch_results["eval_loss"]} val metric: {eval_epoch_results["eval_avg_metric"]}")
+            print(f"Epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
+            print(f"Epoch: {epoch} val loss: {eval_epoch_results['eval_loss']} val metric: {eval_epoch_results['eval_avg_metric']}")
 
             if eval_epoch_results:
 
@@ -174,7 +174,7 @@ class MultiModalTrainer():
                 if eval_epoch_results["eval_avg_metric"] > best_eval_metric["eval_avg_metric"]:
                     best_eval_loss = eval_epoch_results["eval_loss"]
                     best_eval_metric["eval_avg_metric"] = eval_epoch_results["eval_avg_metric"]
-                    print(f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric["eval_avg_metric"]}"
+                    print(f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric['eval_avg_metric']}"
                     )
                     self.save_model(name="best", epoch=epoch)
                     self._plot_log_epoch(epoch, eval_epoch_results)
@@ -223,7 +223,7 @@ class MultiModalTrainer():
         return{"train_loss": train_loss/len(self.train_dataloader), **mod_loss_dict}
 
     
-    def _collect_eval_results(self, session_results):
+    def _collect_eval_results(self, session_results, eval_loss, mod_loss_dict):
         self.model.eval()
         
         if self.eval_dataloader:
@@ -251,7 +251,7 @@ class MultiModalTrainer():
                             mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]                        
                             session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
                             session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
-        return session_results
+        return session_results, eval_loss, mod_loss_dict
     
     
     def eval_epoch(self):
@@ -264,7 +264,9 @@ class MultiModalTrainer():
             for mod in self.modal_filter["output"]:
                 session_results[eid][mod] = {"gt": [], "preds": []}
 
-        session_results = self._collect_eval_results(session_results)
+        session_results, eval_loss, mod_loss_dict = self._collect_eval_results(
+            session_results, eval_loss, mod_loss_dict
+        )
             
         gt, preds, eval_metrics = {}, {}, {mod: [] for mod in self.modal_filter["output"]}
         for idx, eid in enumerate(self.eid_list):
@@ -284,7 +286,7 @@ class MultiModalTrainer():
                     self.session_active_neurons[eid][mod] = np.arange(gt[idx][mod].shape[-1]).tolist()
                     results = metrics_list(
                         gt = gt[idx][mod].transpose(-1,0), pred = preds[idx][mod].transpose(-1,0), 
-                        metrics=["bps"], device=self.model.device
+                        metrics=["bps"], device=self.accelerator.device
                     )
                     eval_metrics[mod].append(results["bps"])
                 
@@ -292,7 +294,7 @@ class MultiModalTrainer():
                     self.session_active_neurons[eid][mod] = [i for i in range(gt[idx][mod].size(-1))]
                     results = metrics_list(
                         gt = gt[idx][mod].unsqueeze(-1), pred = preds[idx][mod].unsqueeze(-1),
-                        metrics=["rsquared"], device=self.model.device
+                        metrics=["rsquared"], device=self.accelerator.device
                     )
                     eval_metrics[mod].append(results["rsquared"])
                 
@@ -309,8 +311,9 @@ class MultiModalTrainer():
         mod_metric_dict = {}
         for mod in eval_metrics.keys():
             mod_metric_dict[f"eval_{mod}_metric"] = np.nanmean(eval_metrics[mod])
-            
-        mod_metric_dict["eval_avg_metric"] = np.nanmean([v for k, v in mod_metric_dict])
+
+        print(mod_metric_dict)
+        mod_metric_dict["eval_avg_metric"] = np.nanmean(list(mod_metric_dict.values()))
             
         return {
             "eval_loss": eval_loss/len(self.eval_dataloader),
