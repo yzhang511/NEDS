@@ -1,10 +1,8 @@
 import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import wandb
 import pickle
 import logging
 import argparse
-import warnings
 import threading
 import numpy as np
 from math import ceil
