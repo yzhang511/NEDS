@@ -161,8 +161,8 @@ class MultiModalTrainer():
 
             if eval_epoch_results:
 
-                for mode in best_eval_metric.keys():
-                    eval_name = f"eval_{mode}_metric"
+                for eval_name in best_eval_metric.keys():
+                    mode = eval_name.split("_")[1]
                     if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
                         best_eval_metric[eval_name] = eval_epoch_results[eval_name]
                         print(

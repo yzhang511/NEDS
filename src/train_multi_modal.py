@@ -237,7 +237,7 @@ for mod in modal_filter["input"]:
         config = config.model.encoder,
     )
 
-accelerator = Accelerator(use_cpu=True)
+accelerator = Accelerator()
 
 NAME2MODEL = {"MultiModal": MultiModal}
 model_class = NAME2MODEL[config.model.model_class]
@@ -251,6 +251,9 @@ model = model_class(
     **meta_data
 )
 model = accelerator.prepare(model)
+
+total_params = sum(p.numel() for p in model.parameters())
+logging.info(f"Total parameters: {total_params}")
 
 optimizer = torch.optim.AdamW(
     model.parameters(), 

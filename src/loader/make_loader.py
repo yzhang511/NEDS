@@ -56,17 +56,17 @@ def make_loader(dataset,
 
     if stitching:
         #####
-        # session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
+        session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
         #labels = [x["target"][0][-1] for x in dataset] # block variable
         #weights = torch.from_numpy(calculate_weights(labels)).double()
         #weighted_sampler = WeightedRandomSampler(weights, num_samples=len(weights))
 
-        weighted_sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
+        #weighted_sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
         
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            # sampler=session_sampler, 
-            sampler=weighted_sampler,
+            sampler=session_sampler, 
+            #sampler=weighted_sampler,
             batch_size=batch_size,
         )
         #####
