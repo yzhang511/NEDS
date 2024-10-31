@@ -3,7 +3,6 @@ import wandb
 import pickle
 import logging
 import argparse
-import warnings
 import threading
 import numpy as np
 from math import ceil
@@ -35,7 +34,7 @@ from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
 logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
 ) 
 
 neural_acronyms = {
@@ -100,7 +99,6 @@ for mod in modality:
         dynamic_mods.append(dynamic_acronyms[mod])   
 
 if model_mode == "mm":
-    input_mods = []
     input_mods = output_mods = neural_mods + static_mods + dynamic_mods
 elif model_mode == "decoding":
     input_mods = neural_mods
@@ -195,7 +193,7 @@ log_name = \
     "-".join(modal_filter["input"]),
     "-".join(modal_filter["output"]),
     config.training.mask_type, 
-    mask_mode,
+    args.mask_mode,
     args.mask_ratio,
     args.mixed_training,
 )
@@ -243,8 +241,7 @@ NAME2MODEL = {"MultiModal": MultiModal}
 model_class = NAME2MODEL[config.model.model_class]
 model = model_class(
     encoder_embeddings,
-    decoder_embeddings,
-    avail_mod = modality,
+    avail_mod = neural_mods + static_mods + dynamic_mods,
     avail_beh = static_mods + dynamic_mods,
     model_mode = model_mode,
     config = config.model, 
@@ -252,6 +249,9 @@ model = model_class(
     **meta_data
 )
 model = accelerator.prepare(model)
+
+total_params = sum(p.numel() for p in model.parameters())
+logging.info(f"Total parameters: {total_params}")
 
 optimizer = torch.optim.AdamW(
     model.parameters(), 
@@ -274,7 +274,7 @@ trainer_kwargs = {
     "log_dir": log_dir,
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
-    "avail_mod": modality,
+    "avail_mod": neural_mods + static_mods + dynamic_mods,
     "avail_beh": static_mods + dynamic_mods,
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,

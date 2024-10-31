@@ -1,456 +1,264 @@
 import os
+import wandb
 import pickle
 import argparse
-from math import ceil
 import numpy as np
+from math import ceil
 import torch
-import wandb
-import warnings
-
-from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
-from utils.dataset_utils import get_user_datasets, load_ibl_dataset, split_both_dataset
-from datasets import load_dataset, load_from_disk, concatenate_datasets
-from utils.dataset_utils import load_ibl_dataset
-from accelerate import Accelerator
-from loader.make_loader import make_loader
-from utils.utils import set_seed
-from utils.config_utils import config_from_kwargs, update_config
+from datasets import (
+    load_dataset, 
+    load_from_disk, 
+    concatenate_datasets, 
+    load_dataset_builder
+)
+from utils.dataset_utils import (
+    get_user_datasets, 
+    load_ibl_dataset, 
+    split_both_dataset,
+    load_ibl_dataset
+)
 from multi_modal.mm import MultiModal
-from torch.optim.lr_scheduler import OneCycleLR
-from trainer.make import make_multimodal_trainer
-from multi_modal.encoder_embeddings import EncoderEmbedding
-from multi_modal.decoder_embeddings import DecoderEmbedding
+from utils.utils import set_seed
+from loader.make_loader import make_loader
+from utils.config_utils import config_from_kwargs, update_config
+from utils.eval_utils import (
+    load_model_data_local, 
+    spiking_activity_recon_eval, 
+    behavior_recon_eval, 
+    co_smoothing_eval
+)
+from accelerate import Accelerator
 
-from utils.eval_utils import load_model_data_local, spiking_activity_recon_eval, behavior_recon_eval, co_smoothing_eval
+logging.basicConfig(
+    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
+) 
 
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--eid", type=str, default='db4df448-e449-4a6f-a0e7-288711e7a75a')
-ap.add_argument("--mask_ratio", type=float, default=0.1)
-ap.add_argument("--mask_mode", type=str, default="temporal")
-ap.add_argument("--use_MtM", action='store_true')
-ap.add_argument("--mixed_training", action='store_true')
-ap.add_argument("--mask_type", type=str, default="input")
-ap.add_argument("--overwrite", action='store_true')
-ap.add_argument("--save_plot", action='store_true')
-ap.add_argument("--base_path", type=str, default="/expanse/lustre/scratch/yzhang39/temp_project")
-ap.add_argument('--seed', type=int, default=42)
-ap.add_argument('--wandb', action='store_true')
-ap.add_argument("--num_sessions", type=int, default=1)
-ap.add_argument("--model_mode", type=str, default="mm")
-ap.add_argument("--use_contrastive", action='store_true')
-
-args = ap.parse_args()
-
-base_path = args.base_path
-
-eid = args.eid
-
-avail_beh = ['wheel-speed', 'whisker-motion-energy']
-    
-print(f'Working on EID: {eid} ...')
-
-model_config = f"src/configs/multi_modal/mm.yaml"
-mask_name = f"mask_{args.mask_mode}"
-n_time_steps = 100
-avail_mod = ['ap','behavior']
-
-if args.model_mode == "mm":
-    input_modal = ['ap', 'behavior']
-    output_modal = ['ap', 'behavior']
-elif args.model_mode == "decoding":
-    input_modal = ['ap']
-    output_modal = ['behavior']
-elif args.model_mode == "encoding":
-    input_modal = ['behavior']
-    output_modal = ['ap']
-else:
-    raise ValueError(f"model_mode {args.model_mode} not supported")
-
-modal_filter = {
-    "input": input_modal,
-    "output": output_modal
+neural_acronyms = {
+    "ap": "spike",
+    "lfp": "lfp",
+}
+static_acronyms = {
+    "choice": "choice", 
+    "block": "block",
+}
+dynamic_acronyms = {
+    "wheel-speed": "wheel", 
+    "whisker-motion-energy": "whisker",
 }
 
-if args.mask_type == 'input':
-    mask_mode = ["temporal"]
-    mask_mode = '-'.join(mask_mode)
-    use_mtm = True
+model_config = "src/configs/multi_modal/mm.yaml"
+kwargs = {"model": f"include:{model_config}"}
+config = config_from_kwargs(kwargs)
+config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
+set_seed(config.seed)
+
+best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
+
+# ------ 
+# SET UP
+# ------
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
+ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--num_sessions", type=int, default=1)
+ap.add_argument("--model_mode", type=str, default="mm")
+ap.add_argument("--mask_mode", type=str, default="temporal")
+ap.add_argument("--mask_ratio", type=float, default=0.1)
+ap.add_argument("--mixed_training", action="store_true")
+ap.add_argument("--finetune", action="store_true")
+ap.add_argument(
+    "--modality", nargs="+", 
+    default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
+)
+ap.add_argument("--overwrite", action="store_true")
+ap.add_argument("--save_plot", action="store_true")
+ap.add_argument("--seed", type=int, default=42)
+ap.add_argument("--wandb", action="store_true")
+args = ap.parse_args()
+
+eid = args.eid
+base_path = args.base_path
+model_mode = args.model_mode
+modality = args.modality
+mask_mode = args.mask_mode
+mask_name = f"mask_{mask_mode}"
+
+logging.info(f"EID: {eid} model mode: {args.model_mode} mask ratio: {args.mask_ratio}")
+logging.info(f"Available modality: {modality}")
+
+neural_mods, static_mods, dynamic_mods = [], [], []
+for mod in modality:
+    if mod in neural_acronyms:
+        neural_mods.append(neural_acronyms[mod])
+    elif mod in static_acronyms:
+        static_mods.append(static_acronyms[mod])   
+    elif mod in dynamic_acronyms:
+        dynamic_mods.append(dynamic_acronyms[mod])   
+
+if model_mode == "mm":
+    input_mods = output_mods = neural_mods + static_mods + dynamic_mods
+elif model_mode == "decoding":
+    input_mods = neural_mods
+    output_mods = static_mods + dynamic_mods
+elif model_mode == "encoding":
+    input_mods = static_mods + dynamic_mods
+    output_mods = neural_mods
 else:
-    mask_mode = args.mask_mode
-    use_mtm = False
+    raise ValueError(f"Model mode {model_mode} not supported.")
 
-set_seed(args.seed)
+modal_filter = {"input": input_mods, "output": output_mods}
 
-last_ckpt_path = 'model_last.pt'
-best_ckpt_path = 'model_best.pt'
 
-spike_recon = False
-behave_recon = False
-co_smooth = False
-# forward_pred = True if 'ap' in avail_mod else False
-forward_pred = False
-inter_region = False
-intra_region = False
+# --------
+# SET PATH
+# --------
 
-modal_spike = True if 'ap' in modal_filter['output'] else False
-modal_behavior = True if 'behavior' in modal_filter['output'] else False
-
-if args.num_sessions > 1:
-    warnings.warn("num_sessions > 1, make sure the model is trained with multiple sessions")
+num_sessions = args.num_sessions
+if num_sessions > 1:
+    logging.warning("num_sessions > 1: ensure the model is trained with multiple sessions.")
     eid_ = "multi"
 else:
     eid_ = eid[:5]
 
-print('Start model evaluation.')
-print('=======================')
+log_name = \
+"sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+        num_sessions,
+        eid[:5], 
+        "-".join(modal_filter["input"]),
+        "-".join(modal_filter["output"]),
+        config.training.mask_type, 
+        mask_mode,
+        args.mask_ratio,
+        args.mixed_training,
+)
 
-save_path = os.path.join(base_path,
-                        "results",
-                        f"sesNum-{args.num_sessions}",
-                        f"ses-{eid[:5]}",
-                        # f"ses-{eid}", # fine-tune
-                        "set-eval",
-                        f"inModal-{'-'.join(modal_filter['input'])}",
-                        f"outModal-{'-'.join(modal_filter['output'])}",
-                        f"mask-{args.mask_type}",
-                        f"mode-{mask_mode}",
-                        f"ratio-{args.mask_ratio}",
-                        f"mixedTraining-{args.mixed_training}",
-                        f"contrast-{args.use_contrastive}",
-                        )
+save_path = os.path.join(base_path, "results", log_name)
+
+logging.info(f"Save results to {save_path}")
 
 if args.wandb:
     wandb.init(
-        project="4m-benchmark",
+        project=config.wandb.project, 
+        entity=config.wandb.entity, 
         config=args,
-        name="sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}_contrast-{}".format(
-            args.num_sessions,
-            eid[:5], 
-            '-'.join(modal_filter['input']),
-            '-'.join(modal_filter['output']),
-            args.mask_type, 
-            mask_mode,
-            args.mask_ratio,
-            args.mixed_training,
-            args.use_contrastive
-    )
+        name=log_name
 )
 
+# ----------
+# LOAD MODEL
+# ----------
+
+if args.model_mode == "mm":
+    best_ckpt_path = [
+        "model_best_avg.pt", 
+        "model_best_wheel.pt", 
+        "model_best_whisker.pt",
+        "model_best_choice.pt",
+        "model_best_block.pt"
+    ]
+else:
+    best_ckpt_path = ["model_best_avg.pt"]
+
 avg_state_dict = []
-# for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt', 'model_best_static.pt']:
-for best_ckpt_path in ['model_best.pt', 'model_best_spike.pt', 'model_best_behave.pt']:
-    model_path = os.path.join(base_path, 
-                            "results",
-                            f"sesNum-{args.num_sessions}",
-                            f"ses-{eid_}",
-                            "set-train",
-                            # f"ses-{eid}",   # fine-tune
-                            # "set-finetune", # fine-tune
-                            f"inModal-{'-'.join(modal_filter['input'])}",
-                            f"outModal-{'-'.join(modal_filter['output'])}",
-                            f"mask-{args.mask_type}",
-                            f"mode-{mask_mode}",
-                            f"ratio-{args.mask_ratio}",
-                            f"mixedTraining-{args.mixed_training}",
-                            f"contrast-{args.use_contrastive}",
-                            best_ckpt_path
-                            )
-    
+for best_ckpt_path in best_ckpt_path:
+    model_path = os.path.join(
+        base_path, "results", save_path.replace("eval", "train"), best_ckpt_path
+    )    
     configs = {
-        'model_config': model_config,
-        'model_path': model_path,
-        'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
-        'dataset_path': None, 
-        'seed': 42,
-        'mask_name': mask_name,
-        'eid': eid,
-        'avail_mod': avail_mod,
-        'avail_beh': avail_beh,
-    }  
-    
+        "model_config": model_config,
+        "model_path": model_path,
+        "trainer_config": "src/configs/multi_modal/trainer_mm.yaml",
+        "dataset_path": None, 
+        "seed": 42,
+        "mask_name": mask_name,
+        "eid": eid,
+        "avail_mod": neural_mods + static_mods + dynamic_mods,
+        "avail_beh": static_mods + dynamic_mods,
+    }      
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
     model_state_dict = model.state_dict()
     avg_state_dict.append(model_state_dict)
 
+# Model Averaging
 for key in model_state_dict:
-    # model_state_dict[key] = (
-    #     avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]+avg_state_dict[3][key]
-    # ) / len(avg_state_dict)
-    model_state_dict[key] = (
-        avg_state_dict[0][key]+avg_state_dict[1][key]+avg_state_dict[2][key]
+    model_state_dict[key] = sum(
+        [state_dict[key] for state_dict in avg_state_dict]
     ) / len(avg_state_dict)
-    
-    
 model.load_state_dict(model_state_dict)
 
-#model_path = os.path.join(base_path, 
-#                        "results",
-#                        f"sesNum-{args.num_sessions}",
-#                        f"ses-{eid_}",
-#                        "set-train",
-#                        f"inModal-{'-'.join(modal_filter['input'])}",
-#                        f"outModal-{'-'.join(modal_filter['output'])}",
-#                        f"mask-{args.mask_type}",
-#                        f"mode-{mask_mode}",
-#                        f"ratio-{args.mask_ratio}",
-#                        f"mixedTraining-{args.mixed_training}",
-#                        f"contrast-{args.use_contrastive}",
-#                        best_ckpt_path
-#                        )
 
-#configs = {
-#    'model_config': model_config,
-#    'model_path': model_path,
-#    'trainer_config': f'src/configs/multi_modal/trainer_mm.yaml',
-#    'dataset_path': None, 
-#    'seed': 42,
-#    'mask_name': mask_name,
-#   'eid': eid,
-#    'avail_mod': avail_mod,
-#    'avail_beh': avail_beh,
-#}  
+# ----------
+# EVAL MODEL
+# ----------
 
-#model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+eval_spike = True if model_mode in ["mm", "encoding"] else False
+eval_behavior = True if model_mode in ["mm", "decoding"] else False
 
-print("(eval) masking ratio: ", model.masker.ratio)
-print("(eval) masking mask regions: ", model.masker.mask_regions)
-print("(eval) masking target regions: ", model.masker.target_regions)
+logging.info(f"Start model evaluation:")
 
-if spike_recon:
-    spike_recon_bps_file = f'{save_path}/spike_recon/bps.npy'
-    spike_recon_r2_file = f'{save_path}/spike_recon/r2.npy'
-    if not os.path.exists(spike_recon_bps_file) or not os.path.exists(spike_recon_r2_file) or args.overwrite:
-        print('Start spike_recon:')
-        spike_recon_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/spike_recon',
-            'n_time_steps': n_time_steps,    
-            'is_aligned': True,
-            'target_regions': None,
-        }
-        results = spiking_activity_recon_eval(
-            model, accelerator, 
-            dataloader, dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm
-            **spike_recon_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping spike_recon since files exist or overwrite is False")
-
-
-if behave_recon:
-    behave_recon_bps_file = f'{save_path}/behave_recon/bps.npy'
-    behave_recon_r2_file = f'{save_path}/behave_recon/r2.npy'
-    if not os.path.exists(behave_recon_bps_file) or not os.path.exists(behave_recon_r2_file) or args.overwrite:
-        print('Start behave_recon:')
-        behave_recon_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/behave_recon',
-            'n_time_steps': n_time_steps,    
-            'is_aligned': True,
-            'target_regions': None,
-            'avail_beh': avail_beh,
-        }
-        results = behavior_recon_eval(
-            model, accelerator, 
-            dataloader, dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm,
-            **behave_recon_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping behave_recon since files exist or overwrite is False")
-
-
-
-if co_smooth:
-    co_smooth_bps_file = f'{save_path}/co_smooth/bps.npy'
-    co_smooth_r2_file = f'{save_path}/co_smooth/r2.npy'
-    if not os.path.exists(co_smooth_bps_file) or not os.path.exists(co_smooth_r2_file) or args.overwrite:
-        print('Start co-smoothing:')
+if eval_spike:
+    eval_spike_bps_file = f"{save_path}/eval_spike/bps.npy"
+    eval_spike_r2_file = f"{save_path}/eval_spike/r2.npy"
+    if not os.path.exists(eval_spike_bps_file) or \
+        not os.path.exists(eval_spike_r2_file) or args.overwrite:
+        logging.info(f"Start evaluation for encoding:")
         co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/co_smooth',
-            'mode': 'per_neuron',
-            'n_time_steps': n_time_steps,    
-            'is_aligned': True,
-            'target_regions': None,
-        }
-        results = co_smoothing_eval(
-            model, accelerator, 
-            dataloader, dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm,
-            **co_smoothing_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping co_smoothing since files exist or overwrite is False")
-
-
-if forward_pred:
-    forward_pred_bps_file = f'{save_path}/forward_pred/bps.npy'
-    forward_pred_r2_file = f'{save_path}/forward_pred/r2.npy'
-    if not os.path.exists(forward_pred_bps_file) or not os.path.exists(forward_pred_r2_file) or args.overwrite:
-        print('Start forward_pred:')
-        co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/forward_pred',
-            'mode': 'forward_pred',
-            'n_time_steps': n_time_steps,  
-            'held_out_list': list(range(70, 100)),
-            'is_aligned': True,
-            'target_regions': None,
+            "subtract": "task",
+            "onset_alignment": [40],
+            "method_name": mask_name, 
+            "save_path": f"{save_path}/eval_spike",
+            "mode": "eval_spike",
+            "n_time_steps": config.model.encoder.embedder.max_F,  
+            "held_out_list": list(range(0, 100)),
+            "is_aligned": True,
+            "target_regions": None,
         }
         results = co_smoothing_eval(
             model=model, 
             accelerator=accelerator, 
             test_dataloader=dataloader, 
             test_dataset=dataset, 
+            is_multimodal=True if model_mode == "mm" else False,
             save_plot=args.save_plot,
-            use_mtm=use_mtm,
             **co_smoothing_configs
         )
-        print(results)
-        wandb.log(results)
+        logging.info(results)
+        wandb.log(results) if args.wandb else None
     else:
-        print("skipping forward_pred since files exist or overwrite is False")
+        logging.info("Skip evaluation for encoding since files exist or overwrite is False.")
 
 
-if inter_region:
-    inter_region_bps_file = f'{save_path}/inter_region/bps.npy'
-    inter_region_pred_r2_file = f'{save_path}/inter_region/r2.npy'
-    if not os.path.exists(inter_region_bps_file) or not os.path.exists(inter_region_r2_file) or args.overwrite:
-        print('Start inter_region:')
+if eval_behavior:
+    eval_behavior_bps_file = f"{save_path}/eval_behavior/bps.npy"
+    eval_behavior_r2_file = f"{save_path}/eval_behavior/r2.npy"
+    if not os.path.exists(eval_behavior_bps_file) or \
+        not os.path.exists(eval_behavior_r2_file) or args.overwrite:
+        logging.info(f"Start evaluation for decoding:")
         co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/inter_region',
-            'mode': 'inter_region',
-            'n_time_steps': n_time_steps,   
-            'held_out_list': None,
-            'is_aligned': True,
-            'target_regions': None,
-        }
-        results = co_smoothing_eval(
-            model, accelerator, 
-            dataloader, dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm,
-            **co_smoothing_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping inter_region since files exist or overwrite is False")
-
-
-if intra_region:
-    intra_region_bps_file = f'{save_path}/intra_region/bps.npy'
-    intra_region_pred_r2_file = f'{save_path}/intra_region/r2.npy'
-    if not os.path.exists(intra_region_bps_file) or not os.path.exists(intra_region_r2_file) or args.overwrite:
-        print('Start intra_region:')
-        co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/intra_region',
-            'mode': 'intra_region',
-            'n_time_steps': n_time_steps,    
-            'held_out_list': None,
-            'is_aligned': True,
-            'target_regions': ['all'],
-        }
-        results = co_smoothing_eval(
-            model, accelerator, 
-            dataloader, dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm,
-            **co_smoothing_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping intra_region since files exist or overwrite is False")
-
-# 4M encoding
-if modal_spike:
-    modal_spike_bps_file = f'{save_path}/modal_spike/bps.npy'
-    modal_spike_r2_file = f'{save_path}/modal_spike/r2.npy'
-    if not os.path.exists(modal_spike_bps_file) or not os.path.exists(modal_spike_r2_file) or args.overwrite:
-        print('Start modal_spike:')
-        co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/modal_spike',
-            'mode': 'modal_spike',
-            'n_time_steps': n_time_steps,  
-            'held_out_list': list(range(0, 100)),
-            'is_aligned': True,
-            'target_regions': None,
+            "subtract": "task",
+            "onset_alignment": [40],
+            "method_name": mask_name, 
+            "save_path": f"{save_path}/eval_behavior",
+            "mode": "eval_behavior",
+            "n_time_steps": config.model.encoder.embedder.max_F,  
+            "held_out_list": list(range(0, 100)),
+            "is_aligned": True,
+            "target_regions": None,
+            "avail_beh": static_mods + dynamic_mods,
         }
         results = co_smoothing_eval(
             model=model, 
             accelerator=accelerator, 
             test_dataloader=dataloader, 
             test_dataset=dataset, 
+            is_multimodal=True if model_mode == "mm" else False,
             save_plot=args.save_plot,
-            use_mtm=use_mtm,
             **co_smoothing_configs
         )
-        print(results)
-        wandb.log(results)
+        logging.info(results)
+        wandb.log(results) if args.wandb else None
     else:
-        print("skipping modal_spike since files exist or overwrite is False")
+        logging.info("Skip evaluation for decoding since files exist or overwrite is False.")
 
-# 4M decoding
-if modal_behavior:
-    modal_behavior_bps_file = f'{save_path}/modal_behavior/bps.npy'
-    modal_behavior_r2_file = f'{save_path}/modal_behavior/r2.npy'
-    if not os.path.exists(modal_behavior_bps_file) or not os.path.exists(modal_behavior_r2_file) or args.overwrite:
-        print('Start modal_behavior:')
-        co_smoothing_configs = {
-            'subtract': 'task',
-            'onset_alignment': [40],
-            'method_name': mask_name, 
-            'save_path': f'{save_path}/modal_behavior',
-            'mode': 'modal_behavior',
-            'n_time_steps': n_time_steps,  
-            'held_out_list': list(range(0, 100)),
-            'is_aligned': True,
-            'target_regions': None,
-            'avail_beh': avail_beh
-        }
-        results = co_smoothing_eval(
-            model=model, 
-            accelerator=accelerator, 
-            test_dataloader=dataloader, 
-            test_dataset=dataset, 
-            save_plot=args.save_plot,
-            use_mtm=use_mtm,
-            **co_smoothing_configs
-        )
-        print(results)
-        wandb.log(results)
-    else:
-        print("skipping modal_behavior since files exist or overwrite is False")
-
-print('Finish model evaluation.')
-print('=======================')
+logging.info("Finish model evaluation")
