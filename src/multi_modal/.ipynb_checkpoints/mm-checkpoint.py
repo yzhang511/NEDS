@@ -247,44 +247,43 @@ class MultiModal(nn.Module):
         return output_mod_dict
 
     def _prepare_mixed_masking(self, mod_dict):
+                    
+        tmp = mod_dict["spike"]["inputs"]
         
-        if mod_dict["spike"]["training_mode"] == "mixed":
-            
-            tmp = mod_dict["spike"]["inputs"]
-            
-            masking_schemes = [
-                "encoding", "decoding", "self-spike", "self-behavior", "random_token"
-            ]
-            selected_schemes = np.random.choice(
-                masking_schemes, size=tmp.size()[0], replace=True
-            )
-            all_ones = torch.ones_like(tmp).to(tmp.device, torch.int64)
-            all_zeros = all_ones * 0.
-            
-            mask_map = {}
-            for mod in self.avail_mod:
-                if mod == "spike":
-                    mask_map[mod] = {
-                        "encoding": all_ones,
-                        "decoding": all_zeros,
-                        "self-spike": self.masker(tmp, None)[1],
-                        "self-behavior": all_zeros,
-                        "random_token": self.masker(tmp, None)[1],
-                    }
-                elif mod in DYNAMIC_VARS + STATIC_VARS:
-                    mask_map[mod] = {
-                        "encoding": 1 - mask_map["spike"]["encoding"],
-                        "decoding": 1 - mask_map["spike"]["decoding"],
-                        "self-spike": all_zeros,
-                        "self-behavior": self.masker(tmp, None)[1],
-                        "random_token": mask_map["spike"]["random_token"],
-                    }
+        masking_schemes = [
+            "encoding", "decoding", "self-spike", "self-behavior", "random_token"
+        ]
+        selected_schemes = np.random.choice(
+            masking_schemes, size=tmp.size()[0], replace=True
+        )
+        all_ones = torch.ones_like(tmp).to(tmp.device, torch.int64)
+        all_zeros = all_ones * 0.
+        
+        mask_map = {}
+        for mod in self.avail_mod:
+            if mod == "spike":
+                mask_map[mod] = {
+                    "encoding": all_ones,
+                    "decoding": all_zeros,
+                    "self-spike": self.masker(tmp, None)[1],
+                    "self-behavior": all_zeros,
+                    "random_token": self.masker(tmp, None)[1],
+                }
+            elif mod in DYNAMIC_VARS + STATIC_VARS:
+                mask_map[mod] = {
+                    "encoding": 1 - mask_map["spike"]["encoding"],
+                    "decoding": 1 - mask_map["spike"]["decoding"],
+                    "self-spike": all_zeros,
+                    "self-behavior": self.masker(tmp, None)[1],
+                    "random_token": mask_map["spike"]["random_token"],
+                }
         return mask_map, selected_schemes
 
     
     def forward(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> MultiModalOutput:
 
-        mask_map, selected_schemes = self._prepare_mixed_masking(mod_dict)
+        if mod_dict["spike"]["training_mode"] == "mixed":
+            mask_map, selected_schemes = self._prepare_mixed_masking(mod_dict)
 
         for mod, d in mod_dict.items():
 
@@ -307,7 +306,7 @@ class MultiModal(nn.Module):
             if mod_dict[mod]["training_mode"] == "mixed":
                 mask_list = []
                 for scheme in selected_schemes:
-                    tmp = mask_map[mod][scheme][0,:,0] & mod_dict[mod]["inputs_attn_mask"][0]
+                    tmp = mask_map[mod][scheme][0,:,0].to(torch.int64) & mod_dict[mod]["inputs_attn_mask"][0]
                     mask_list.append(tmp.unsqueeze(0))
                 mask = torch.cat(mask_list, dim=0)
             

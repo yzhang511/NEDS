@@ -209,6 +209,7 @@ class MultiModalTrainer():
         for batch in tqdm(self.train_dataloader):
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
+            print("training_mode: ", self.training_mode)
             outputs = self._forward_model_inputs(batch, self.training_mode)
             loss = outputs.loss
             loss.backward()
