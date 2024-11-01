@@ -2,8 +2,8 @@
 
 #SBATCH --account=col169
 #SBATCH --partition=gpu-shared
-#SBATCH --job-name="mm"
-#SBATCH --output="mm.%j.out"
+#SBATCH --job-name="eval"
+#SBATCH --output="eval.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 8
@@ -30,7 +30,6 @@ if [ $model_mode = "mm" ]; then
                                 --seed 42 \
                                 --base_path ./ \
                                 --save_plot \
-                                --mask_type embd \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
@@ -44,7 +43,6 @@ then
                                 --seed 42 \
                                 --base_path ./ \
                                 --save_plot \
-                                --mask_type embd \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
