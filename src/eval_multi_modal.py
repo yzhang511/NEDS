@@ -1,6 +1,7 @@
 import os
 import wandb
 import pickle
+import logging
 import argparse
 import numpy as np
 from math import ceil
@@ -23,8 +24,6 @@ from loader.make_loader import make_loader
 from utils.config_utils import config_from_kwargs, update_config
 from utils.eval_utils import (
     load_model_data_local, 
-    spiking_activity_recon_eval, 
-    behavior_recon_eval, 
     co_smoothing_eval
 )
 from accelerate import Accelerator
@@ -152,10 +151,11 @@ if args.wandb:
 if args.model_mode == "mm":
     best_ckpt_path = [
         "model_best_avg.pt", 
+        "model_best_spike.pt",
         "model_best_wheel.pt", 
         "model_best_whisker.pt",
-        "model_best_choice.pt",
-        "model_best_block.pt"
+        #"model_best_choice.pt",
+        #"model_best_block.pt"
     ]
 else:
     best_ckpt_path = ["model_best_avg.pt"]
@@ -163,7 +163,7 @@ else:
 avg_state_dict = []
 for best_ckpt_path in best_ckpt_path:
     model_path = os.path.join(
-        base_path, "results", save_path.replace("eval", "train"), best_ckpt_path
+        save_path.replace("eval", "train"), best_ckpt_path
     )    
     configs = {
         "model_config": model_config,

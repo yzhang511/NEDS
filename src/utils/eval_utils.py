@@ -24,7 +24,6 @@ from utils.utils import (
 )
 from utils.config_utils import config_from_kwargs, update_config
 from multi_modal.mm import MultiModal
-from multi_modal.decoder_embeddings import DecoderEmbedding
 from accelerate import Accelerator
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -39,6 +38,19 @@ logger = logging.getLogger(__name__)
 
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
+
+neural_acronyms = {
+    "ap": "spike",
+    "lfp": "lfp",
+}
+static_acronyms = {
+    "choice": "choice",
+    "block": "block",
+}
+dynamic_acronyms = {
+    "wheel-speed": "wheel",
+    "whisker-motion-energy": "whisker",
+}
 
 # --------------------------------------------------------------------------------------------------
 # Model/Dataset Loading and Configuration
@@ -63,15 +75,16 @@ def load_model_data_local(**kwargs):
     config = update_config(trainer_config, config)
 
     _, _, dataset, meta_data = load_ibl_dataset(
-            config.dirs.dataset_cache_dir, 
-            config.dirs.huggingface_org,
-            num_sessions=1,
-            eid = eid,
-            use_re=True,
-            split_method="predefined",
-            test_session_eid=[],
-            batch_size=config.training.train_batch_size,
-            seed=config.seed)
+        config.dirs.dataset_cache_dir, 
+        config.dirs.huggingface_org,
+        num_sessions=1,
+        eid = eid,
+        use_re=True,
+        split_method="predefined",
+        test_session_eid=[],
+        batch_size=config.training.train_batch_size,
+        seed=config.seed
+    )
 
     logger.info(meta_data)
     
@@ -95,7 +108,7 @@ def load_model_data_local(**kwargs):
     
     dataloader = make_loader(
         dataset, 
-        target=avail_beh,
+        target=list(dynamic_acronyms.keys()),
         batch_size=len(dataset),
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
@@ -206,10 +219,10 @@ def co_smoothing_eval(
                     )
                     all_zeros = all_ones * 0.
 
-                    mod_idx = model.mod_to_indx[mod]
                     mod_dict = {}
                     for mod in model.mod_to_indx.keys():
                         mod_dict[mod] = {}
+                        mod_idx = model.mod_to_indx[mod]
                         mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(accelerator.device)
                         mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(accelerator.device)
                         mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
@@ -222,7 +235,7 @@ def co_smoothing_eval(
                         if mod == "spike":
                             mod_dict[mod]["inputs"] = batch["spikes_data"].clone()
                             mod_dict[mod]["targets"] = batch["spikes_data"].clone()
-                        elif mod in self.avail_beh:
+                        elif mod in model.avail_beh:
                             mod_dict[mod]["inputs"] = batch[mod].clone()
                             mod_dict[mod]["targets"] = batch[mod].clone()
                         else:
@@ -231,11 +244,11 @@ def co_smoothing_eval(
                         mod_dict[mod]["eval_mask"] = all_ones \
                             if not is_multimodal and mod in model.modal_filter["output"] else all_zeros
 
-                        if is_multimodal:
-                            for mod in model.mod_to_indx.keys():
-                                mod_dict[mod]["eval_mask"] = all_ones if mod == "spike" else all_zeros
+                if is_multimodal:
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod]["eval_mask"] = all_ones if mod == "spike" else all_zeros
                     
-                    outputs = model(mod_dict)
+                outputs = model(mod_dict)
                     
             gt = outputs.mod_targets["spike"][...,:N]
             preds = torch.exp(outputs.mod_preds["spike"][...,:N])
@@ -308,10 +321,10 @@ def co_smoothing_eval(
                     )
                     all_zeros = all_ones * 0.
 
-                    mod_idx = model.mod_to_indx[mod]
                     mod_dict = {}
                     for mod in model.mod_to_indx.keys():
                         mod_dict[mod] = {}
+                        mod_idx = model.mod_to_indx[mod]
                         mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(accelerator.device)
                         mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(accelerator.device)
                         mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
@@ -324,7 +337,7 @@ def co_smoothing_eval(
                         if mod == "spike":
                             mod_dict[mod]["inputs"] = batch["spikes_data"].clone()
                             mod_dict[mod]["targets"] = batch["spikes_data"].clone()
-                        elif mod in self.avail_beh:
+                        elif mod in model.avail_beh:
                             mod_dict[mod]["inputs"] = batch[mod].clone()
                             mod_dict[mod]["targets"] = batch[mod].clone()
                         else:
@@ -333,12 +346,12 @@ def co_smoothing_eval(
                         mod_dict[mod]["eval_mask"] = all_ones \
                             if not is_multimodal and mod in model.modal_filter["output"] else all_zeros
 
-                        if is_multimodal:
-                            for mod in self.mod_to_indx.keys():
-                                mod_dict[mod]["eval_mask"] = \
-                                all_ones if mod in model.avail_beh else all_zeros
+                if is_multimodal:
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod]["eval_mask"] = \
+                        all_ones if mod in model.avail_beh else all_zeros
                     
-                    outputs = model(mod_dict)
+                outputs = model(mod_dict)
                                 
             gt, preds = [], []
             gt_static, preds_static = {}, {}
@@ -369,6 +382,7 @@ def co_smoothing_eval(
             ys, y_preds = gt[:,target_t_i], preds[:,target_t_i]
             behav_results = {}
             for i in tqdm(range(target_n_i.shape[0]), desc="R2"):
+                beh_name = DYNAMIC_VARS[i]
                 if is_aligned:
                     X = behavior_set[:,target_t_i,:]  
                     _r2_psth, _r2_trial = viz_single_cell(
@@ -382,8 +396,8 @@ def co_smoothing_eval(
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
-                    behav_results[f"{kwargs['avail_beh'][i]}_r2_psth"] = _r2_psth
-                    behav_results[f"{kwargs['avail_beh'][i]}_r2_trial"] = _r2_trial
+                    behav_results[f"{beh_name}_r2_psth"] = _r2_psth
+                    behav_results[f"{beh_name}_r2_trial"] = _r2_trial
                 else:
                     raise ValueError("Unaligned data not supported.")
                     
@@ -393,7 +407,7 @@ def co_smoothing_eval(
                 {"acc": acc_dict, "balanced_acc": balanced_acc_dict}
             )
             return {
-                f"{mode}_behav_results": behav_results,
+                **behav_results,
                 **acc_dict,
                 **balanced_acc_dict
             }     
@@ -411,8 +425,6 @@ def co_smoothing_eval(
         f"{mode}_mean_bps": bps_mean,
         f"{mode}_mean_r2_psth": np.nanmean(r2_all[:, 0]),
         f"{mode}_mean_r2_trial": np.nanmean(r2_all[:, 1]),
-        **acc_dict,
-        **balanced_acc_dict
     }
 
 
@@ -464,17 +476,17 @@ def heldout_mask(
             hd.append(target_idxs)
         hd = np.stack(hd).flatten()
             
-    elif mode == 'forward_pred' or mode == 'modal_spike':
+    elif mode == 'forward_pred' or mode == 'eval_spike':
         hd = heldout_idxs
         mask[:, hd, :] = 0
     
-    elif mode == 'modal_behavior':
+    elif mode == 'eval_behavior':
         hd = heldout_idxs
         mask[:, hd] = 0
-    elif mode in ['wheel', 'whisker']:
+    elif mode in DYNAMIC_VARS:
         hd = heldout_idxs
         mask[:, hd] = 0
-    elif mode in ['choice', 'block']:
+    elif mode in STATIC_VARS:
         mask[:] = 0
         hd = 0
 
