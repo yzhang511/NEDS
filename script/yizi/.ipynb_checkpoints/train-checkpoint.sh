@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA40x4
+#SBATCH --partition=gpuA100x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
 #SBATCH -N 1
@@ -10,10 +10,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 100000
 #SBATCH --gpus=1
-#SBATCH -t 0-01
+#SBATCH -t 0-10
 #SBATCH --export=ALL
 
 . ~/.bashrc
+
 num_sessions=${1}
 eid=${2}
 model_mode=${3}
