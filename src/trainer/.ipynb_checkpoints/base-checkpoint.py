@@ -49,13 +49,13 @@ class MultiModalTrainer():
 
         self.mixed_training = kwargs.get("mixed_training", False)
         if self.mixed_training:
+            self.training_mode = "mixed"
+        else:
             self.training_schemes = [
                 "encoding", "decoding", 
                 "self-spike", "self-behavior", 
                 "random_token"
             ]
-        else:
-            self.training_mode = None
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
@@ -78,6 +78,9 @@ class MultiModalTrainer():
         elif training_mode == "self-behavior":
             for mod in self.mod_to_indx.keys():
                 mod_dict[mod]["eval_mask"] = None if mod in self.avail_beh else all_zeros
+        elif training_mode == "mixed":
+            for mod in self.mod_to_indx.keys():
+                mod_dict[mod]["eval_mask"] = None
         else:
            raise Exception(f"masking mode {training_mode} not implemented.")
                 
@@ -161,8 +164,8 @@ class MultiModalTrainer():
 
             if eval_epoch_results:
 
-                for mode in best_eval_metric.keys():
-                    eval_name = f"eval_{mode}_metric"
+                for eval_name in best_eval_metric.keys():
+                    mode = eval_name.split("_")[1]
                     if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
                         best_eval_metric[eval_name] = eval_epoch_results[eval_name]
                         print(
@@ -204,7 +207,7 @@ class MultiModalTrainer():
         
         self.model.train()
         for batch in tqdm(self.train_dataloader):
-            if self.mixed_training:
+            if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
             outputs = self._forward_model_inputs(batch, self.training_mode)
             loss = outputs.loss

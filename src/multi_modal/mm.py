@@ -24,6 +24,9 @@ from multi_modal.mm_utils import create_context_mask
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
+STATIC_VARS = ["choice", "block"]
+DYNAMIC_VARS = ["wheel", "whisker"]
+
 @dataclass
 class MultiModalOutput(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
@@ -146,7 +149,6 @@ class MultiModal(nn.Module):
         encoder_attn_mask = encoder_attn_mask.unsqueeze(1).expand(B,N,N)
         self_mask = torch.eye(N).to(encoder_attn_mask.device, torch.int64).expand(B,N,N)
         context_mask = self.context_mask[:N,:N].to(encoder_mask.device).unsqueeze(0).expand(B,N,N)
-        # context_mask = repeat(self.context_mask.to(encoder_mask.device), "n1 n2 -> b n1 n2", b=B)
         encoder_attn_mask = self_mask | (context_mask & encoder_attn_mask)
 
         return encoder_tokens, encoder_emb, input_timestamp, encoder_mask, encoder_attn_mask, mod_mask
@@ -244,8 +246,45 @@ class MultiModal(nn.Module):
         
         return output_mod_dict
 
+    def _prepare_mixed_masking(self, mod_dict):
+        
+        if mod_dict["spike"]["training_mode"] == "mixed":
+            
+            tmp = mod_dict["spike"]["inputs"]
+            
+            masking_schemes = [
+                "encoding", "decoding", "self-spike", "self-behavior", "random_token"
+            ]
+            selected_schemes = np.random.choice(
+                masking_schemes, size=tmp.size()[0], replace=True
+            )
+            all_ones = torch.ones_like(tmp).to(tmp.device, torch.int64)
+            all_zeros = all_ones * 0.
+            
+            mask_map = {}
+            for mod in self.avail_mod:
+                if mod == "spike":
+                    mask_map[mod] = {
+                        "encoding": all_ones,
+                        "decoding": all_zeros,
+                        "self-spike": self.masker(tmp, None)[1],
+                        "self-behavior": all_zeros,
+                        "random_token": self.masker(tmp, None)[1],
+                    }
+                elif mod in DYNAMIC_VARS + STATIC_VARS:
+                    mask_map[mod] = {
+                        "encoding": 1 - mask_map["spike"]["encoding"],
+                        "decoding": 1 - mask_map["spike"]["decoding"],
+                        "self-spike": all_zeros,
+                        "self-behavior": self.masker(tmp, None)[1],
+                        "random_token": mask_map["spike"]["random_token"],
+                    }
+        return mask_map, selected_schemes
+
     
     def forward(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> MultiModalOutput:
+
+        mask_map, selected_schemes = self._prepare_mixed_masking(mod_dict)
 
         for mod, d in mod_dict.items():
 
@@ -264,6 +303,13 @@ class MultiModal(nn.Module):
                 mask = mod_dict[mod]["eval_mask"]
             
             mask = mask[...,0].to(torch.int64) & mod_dict[mod]["inputs_attn_mask"]
+
+            if mod_dict[mod]["training_mode"] == "mixed":
+                mask_list = []
+                for scheme in selected_schemes:
+                    tmp = mask_map[mod][scheme][0,:,0] & mod_dict[mod]["inputs_attn_mask"][0]
+                    mask_list.append(tmp.unsqueeze(0))
+                mask = torch.cat(mask_list, dim=0)
             
             mod_dict[mod]["inputs_mask"] = mask
             mod_dict[mod]["targets_mask"] = mask
