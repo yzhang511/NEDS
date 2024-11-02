@@ -1,16 +1,16 @@
 #!/bin/bash
 
-#SBATCH --account=col169
-#SBATCH --partition=gpu-shared
-#SBATCH --job-name="eval"
-#SBATCH --output="eval.%j.out"
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="mm"
+#SBATCH --output="mm.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
-#SBATCH -c 8
+#SBATCH -c 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem 150000
+#SBATCH --mem 100000
 #SBATCH --gpus=1
-#SBATCH -t 0-1
+#SBATCH -t 0-01
 #SBATCH --export=ALL
 
 num_sessions=${1}
