@@ -1,16 +1,16 @@
 #!/bin/bash
 
 #SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA40x4
+#SBATCH --partition=gpuA100x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem 100000
+#SBATCH --mem 150000
 #SBATCH --gpus=1
-#SBATCH -t 0-10
+#SBATCH -t 2-00
 #SBATCH --export=ALL
 
 . ~/.bashrc

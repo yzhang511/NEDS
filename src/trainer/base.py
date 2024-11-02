@@ -209,7 +209,6 @@ class MultiModalTrainer():
         for batch in tqdm(self.train_dataloader):
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
-            print("training_mode: ", self.training_mode)
             outputs = self._forward_model_inputs(batch, self.training_mode)
             loss = outputs.loss
             loss.backward()
@@ -232,11 +231,10 @@ class MultiModalTrainer():
         
         if self.eval_dataloader:
             with torch.no_grad(): 
-                for batch in self.eval_dataloader:
-                    num_neuron, eid = batch["spikes_data"].shape[-1], batch["eid"][0]
                     
                 if "spike" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
+                        num_neuron, eid = batch["spikes_data"].shape[-1], batch["eid"][0]
                         outputs = self._forward_model_inputs(batch, training_mode="encoding")
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
@@ -249,12 +247,14 @@ class MultiModalTrainer():
     
                 if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
+                        eid = batch["eid"][0]
                         outputs = self._forward_model_inputs(batch, training_mode="decoding")
                         eval_loss += outputs.loss.item()
                         for mod in self.avail_beh:
-                            mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]                        
+                            mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]                       
                             session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
                             session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
+
         return session_results, eval_loss, mod_loss_dict
     
     
