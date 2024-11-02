@@ -300,6 +300,7 @@ class MultiModalTrainer():
                         gt = gt[idx][mod].unsqueeze(-1), pred = preds[idx][mod].unsqueeze(-1),
                         metrics=["rsquared"], device=self.accelerator.device
                     )
+                    results["rsquared"] = np.nan if results["rsquared"] == -float("inf") else results["rsquared"]
                     eval_metrics[mod].append(results["rsquared"])
                 
                 elif mod in STATIC_VARS:
@@ -316,7 +317,6 @@ class MultiModalTrainer():
         for mod in eval_metrics.keys():
             mod_metric_dict[f"eval_{mod}_metric"] = np.nanmean(eval_metrics[mod])
 
-        print(mod_metric_dict)
         mod_metric_dict["eval_avg_metric"] = np.nanmean(list(mod_metric_dict.values()))
             
         return {
