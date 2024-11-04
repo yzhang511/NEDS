@@ -178,6 +178,7 @@ class MultiModal(nn.Module):
 
         for mod, d in output_mod_dict.items():
             targets = output_mod_dict[mod]["gt"]
+            device = targets.device
             B, T, N = targets.size()
             targets_mask = output_mod_dict[mod]["targets_mask"].unsqueeze(-1).expand(B, self.max_F, N)
             preds = output_mod_dict[mod]["preds"]
@@ -190,14 +191,14 @@ class MultiModal(nn.Module):
                     f"shape mismatch in computing loss: preds ({preds.shape}) vs. targets ({targets.shape})."
                     loss = (self.mod_loss[mod_type](preds, targets)*targets_mask).sum()/n_examples
                 else:
-                    loss = 0.
+                    loss = torch.tensor([0.], requires_grad=True).to(device)
             else:
                 preds, targets = preds.squeeze(1), targets.squeeze(1)
                 targets_mask = targets_mask.squeeze(1)
                 n_examples = targets_mask.sum()
                 if n_examples == 0:
                     mod_loss[mod], mod_n_examples[mod], mod_preds[mod], mod_targets[mod] = \
-                    0., n_examples, preds, targets
+                    torch.tensor([0.], requires_grad=True).to(device), n_examples, preds, targets
                     continue                
                 static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1)    
                 targets = F.one_hot(
