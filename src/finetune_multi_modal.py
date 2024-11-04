@@ -280,6 +280,8 @@ for key in model_state_dict:
     ) / len(avg_state_dict)
 model.load_state_dict(model_state_dict)
 
+model.masker.ratio = args.mask_ratio
+logging.info(f"Reset mask ratio to {model.masker.ratio} for fine-tuning.")
 
 # -----------------------
 # ACCOMMODATE NEW SESSION
