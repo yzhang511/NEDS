@@ -224,7 +224,7 @@ if config.wandb.use:
 
 logging.info(f"Start model training:")
 
-encoder_embeddings, decoder_embeddings = {}, {}
+encoder_embeddings = {}
 
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
