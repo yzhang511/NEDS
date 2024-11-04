@@ -1,4 +1,6 @@
 import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import wandb
 import pickle
 import logging
@@ -222,7 +224,7 @@ if config.wandb.use:
 
 logging.info(f"Start model training:")
 
-encoder_embeddings, decoder_embeddings = {}, {}
+encoder_embeddings = {}
 
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(

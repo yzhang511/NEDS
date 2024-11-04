@@ -161,9 +161,9 @@ else:
     best_ckpt_path = ["model_best_avg.pt"]
 
 avg_state_dict = []
-for best_ckpt_path in best_ckpt_path:
+for ckpt_path in best_ckpt_path:
     model_path = os.path.join(
-        save_path.replace("eval", "train"), best_ckpt_path
+        save_path.replace("eval", "train"), ckpt_path
     )    
     configs = {
         "model_config": model_config,

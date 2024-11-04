@@ -1,20 +1,17 @@
 #!/bin/bash
 
-#SBATCH --account=col169
-#SBATCH --partition=gpu-shared
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
 #SBATCH --job-name="finetune"
 #SBATCH --output="finetune.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
-#SBATCH -c 8
+#SBATCH -c 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 150000
 #SBATCH --gpus=1
-#SBATCH -t 0-10
+#SBATCH -t 0-16
 #SBATCH --export=ALL
-
-module load gpu
-module load slurm
 
 . ~/.bashrc
 num_sessions=${1}
@@ -34,7 +31,6 @@ if [ $model_mode = "mm" ]; then
                                     --mixed_training \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
-                                    --mask_type embd \
                                     --model_mode $model_mode 
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
@@ -43,7 +39,6 @@ then
                                     --mask_ratio $mask_ratio \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
-                                    --mask_type embd \
                                     --model_mode $model_mode 
 else
     echo "model_mode: $model_mode not supported"
