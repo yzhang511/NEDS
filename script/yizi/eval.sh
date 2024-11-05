@@ -2,8 +2,8 @@
 
 #SBATCH --account=bcxj-delta-gpu
 #SBATCH --partition=gpuA40x4
-#SBATCH --job-name="mm"
-#SBATCH --output="mm.%j.out"
+#SBATCH --job-name="eval"
+#SBATCH --output="eval.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 1
@@ -34,6 +34,7 @@ if [ $model_mode = "mm" ]; then
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
+				--finetune \
 			        --overwrite	
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
