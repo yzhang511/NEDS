@@ -35,9 +35,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
-logging.basicConfig(
-    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
-) 
+logging.basicConfig(level=logging.info) 
 
 neural_acronyms = {
     "ap": "spike",
@@ -253,7 +251,7 @@ model = model_class(
 model = accelerator.prepare(model)
 
 total_params = sum(p.numel() for p in model.parameters())
-logging.info(f"Total parameters: {total_params}")
+print(f"Total parameters: {total_params}")
 
 optimizer = torch.optim.AdamW(
     model.parameters(), 

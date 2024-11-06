@@ -120,9 +120,12 @@ def merge_probes(spikes_list, clusters_list):
     return merged_spikes, merged_clusters
 
 
+#def load_trials_and_mask(
+#        one, eid, min_rt=None, max_rt=None, nan_exclude='default', min_trial_len=None,
+#        max_trial_len=None, exclude_unbiased=False, exclude_nochoice=True, sess_loader=None):
 def load_trials_and_mask(
-        one, eid, min_rt=0.08, max_rt=2., nan_exclude='default', min_trial_len=None,
-        max_trial_len=None, exclude_unbiased=False, exclude_nochoice=True, sess_loader=None):
+        one, eid, min_rt=0.0, max_rt=10., nan_exclude='default', min_trial_len=None,
+        max_trial_len=10, exclude_unbiased=False, exclude_nochoice=True, sess_loader=None):
     """
     Function to load all trials for a given session and create a mask to exclude all trials that have a reaction time
     shorter than min_rt or longer than max_rt or that have NaN for one of the specified events.
@@ -430,7 +433,6 @@ def load_target_behavior(one, eid, target):
                 'times': sess_loader.wheel['times'].to_numpy(),
                 'values': np.abs(sess_loader.wheel['velocity'].to_numpy())
             }
-    
         # motion_energy is a dictionary of dataframes, each containing the times and the motion energy for each view
         # for the side views, they contain columns ['times', 'whiskerMotionEnergy'] for the body view it contains
         # ['times', 'bodyMotionEnergy']
@@ -446,7 +448,12 @@ def load_target_behavior(one, eid, target):
                 'times': sess_loader.motion_energy['rightCamera']['times'].to_numpy(),
                 'values': sess_loader.motion_energy['rightCamera']['whiskerMotionEnergy'].to_numpy()
             }
-    
+        elif target == 'body-motion-energy':
+            sess_loader.load_motion_energy(views=['body'])
+            beh_dict = {
+                'times': sess_loader.motion_energy['bodyCamera']['times'].to_numpy(),
+                'values': sess_loader.motion_energy['bodyCamera']['bodyMotionEnergy'].to_numpy()
+            }
         # To load pose (DLC) data, e.g.
         # TO DO: Add pupil traces from lightning pose when they become available in the IBL database, e.g.,
         #        sessions = one.search(dataset='lightningPose', details=False)
@@ -464,6 +471,36 @@ def load_target_behavior(one, eid, target):
             beh_dict = {
                 'times': dlc_right.times,
                 'values': dlc_right.features.pupilDiameter_smooth
+            }
+        elif target == 'lightning-pose-left-pupil-diameter':
+            lp_left = one.load_object(eid, f'leftCamera', attribute=['lightningPose', 'times'])
+            dm1 = np.fabs(
+                lp_left['lightningPose']['pupil_right_r_x'] - \
+                lp_left['lightningPose']['pupil_left_r_x']
+            )
+            dm2 = np.fabs(
+                lp_left['lightningPose']['pupil_top_r_y'] - \
+                lp_left['lightningPose']['pupil_bottom_r_y']
+            )
+            assert (np.allclose(dm1, dm2))
+            beh_dict = {
+                'times': lp_left['times'],
+                'values': dm1
+            }
+        elif target == 'lightning-pose-right-pupil-diameter':
+            lp_right = one.load_object(eid, f'rightCamera', attribute=['lightningPose', 'times'])
+            dm1 = np.fabs(
+                lp_right['lightningPose']['pupil_right_r_x'] - \
+                lp_right['lightningPose']['pupil_left_r_x']
+            )
+            dm2 = np.fabs(
+                lp_right['lightningPose']['pupil_top_r_y'] - \
+                lp_right['lightningPose']['pupil_bottom_r_y']
+            )
+            assert (np.allclose(dm1, dm2))
+            beh_dict = {
+                'times': lp_right['times'],
+                'values': dm1
             }
         elif target == 'left-camera-left-paw-speed':
             dlc_left = one.load_object(eid, "leftCamera", attribute=["dlc", "features", "times"], collection="alf")
@@ -558,11 +595,11 @@ def get_behavior_per_interval(
     """
 
     binsize = kwargs['binsize']
-    align_interval = kwargs['time_window']
-    interval_len = align_interval[1] - align_interval[0]
 
     if trials_df is not None:
         align_event = kwargs['align_time']
+        align_interval = kwargs['time_window']
+        interval_len = align_interval[1] - align_interval[0]
         align_times = trials_df[align_event].values
         interval_begs = align_times + align_interval[0]
         interval_ends = align_times + align_interval[1]
@@ -650,10 +687,13 @@ def get_behavior_per_interval(
 def load_anytime_behaviors(one, eid, n_workers=os.cpu_count()):
 
     behaviors = [
-        #'wheel-position', 'wheel-velocity', 'wheel-speed',
-        'left-whisker-motion-energy', 'right-whisker-motion-energy',
+        #'wheel-position', 'wheel-velocity', 
+        'wheel-speed',
+        'left-whisker-motion-energy', 
+        'right-whisker-motion-energy',
+        # 'body-motion-energy',
         #'left-pupil-diameter', 'right-pupil-diameter',
-        #'lightning-pose-left-pupil-diameter',
+        #'lightning-pose-left-pupil-diameter', 'lightning-pose-right-pupil-diameter'
         # These behaviors are of bad quality - skip them for now
         # 'left-camera-left-paw-speed', 'left-camera-right-paw-speed', 
         # 'right-camera-left-paw-speed', 'right-camera-right-paw-speed',
@@ -689,9 +729,11 @@ def bin_behaviors(
 ):
 
     behaviors = [
-        #'wheel-velocity', 'wheel-speed', 
-        'whisker-motion-energy', 
-        # 'pupil-diameter', # 'lightning-pose-left-pupil-diameter',
+        #'wheel-velocity', 
+        'wheel-speed', 
+        'whisker-motion-energy',
+        # 'body-motion-energy'
+        #'pupil-diameter', # 'lightning-pose-left-pupil-diameter',
     ]
 
     behave_dict, mask_dict = {}, {}
@@ -718,7 +760,13 @@ def bin_behaviors(
         if beh == 'whisker-motion-energy':
             target_dict = load_target_behavior(one, eid, 'left-whisker-motion-energy')
             if 'skip' in target_dict.keys():
-                target_dict = load_target_behavior(one, eid, 'right-whisker-motion-energy')                    
+                target_dict = load_target_behavior(one, eid, 'right-whisker-motion-energy')
+        elif beh == 'pupil-diameter':
+            target_dict = load_target_behavior(one, eid, 'lightning-pose-left-pupil-diameter')
+            if 'skip' in target_dict.keys():
+                target_dict = load_target_behavior(one, eid, 'lightning-pose-right-pupil-diameter')
+        elif beh == 'body-motion-energy':
+            target_dict = load_target_behavior(one, eid, 'body-motion-energy')
         else:
             target_dict = load_target_behavior(one, eid, beh)
         target_times, target_vals = target_dict['times'], target_dict['values']
@@ -738,16 +786,8 @@ def bin_behaviors(
 
 
 def prepare_data(one, eid, bwm_df, params, n_workers=os.cpu_count()):
-    
-    # When merging probes we are interested in eids, not pids
-    idx = (bwm_df.eid.unique() == eid).argmax()
-    eid = bwm_df.eid.unique()[idx]
-    tmp_df = bwm_df.set_index(['eid', 'subject']).xs(eid, level='eid')
-    subject = tmp_df.index[0]
-    lab = tmp_df.lab.iloc[0]
-    
-    pids = tmp_df['pid'].to_list()  # Select all probes of this session
-    probe_names = tmp_df['probe_name'].to_list()
+
+    pids, probe_names = one.eid2pid(eid)  # Select all probes of this session
     print(f"Merge {len(probe_names)} probes for session eid: {eid}")
 
     clusters_list = []
@@ -759,7 +799,11 @@ def prepare_data(one, eid, bwm_df, params, n_workers=os.cpu_count()):
         clusters_list.append(tmp_clusters)
     spikes, clusters = merge_probes(spikes_list, clusters_list)
 
-    trials_df, trials_mask = load_trials_and_mask(one=one, eid=eid, max_trial_len=10.0)
+    _, good_trials_mask = load_trials_and_mask(one=one, eid=eid)
+
+    trials_df, trials_mask = load_trials_and_mask(
+        one=one, eid=eid, min_rt=0., max_rt=10., qc=1.,
+    )
         
     behave_dict = load_anytime_behaviors(one, eid, n_workers=n_workers)
     
@@ -770,10 +814,7 @@ def prepare_data(one, eid, bwm_df, params, n_workers=os.cpu_count()):
     }
         
     meta_data = {
-        'subject': subject,
         'eid': eid,
-        'probe_name': probe_name,
-        'lab': lab,
         'sampling_freq': sampling_freq,
         'cluster_channels': list(clusters['channels']),
         'cluster_regions': list(clusters['acronym']),
@@ -781,7 +822,6 @@ def prepare_data(one, eid, bwm_df, params, n_workers=os.cpu_count()):
         'cluster_depths': list(clusters['depths']),
         'uuids':  list(clusters['uuids']),
         'cluster_qc': {k: np.asarray(v) for k, v in clusters.to_dict('list').items()},
-        # 'cluster_df': clusters
     }
 
     trials_data = {
@@ -789,19 +829,44 @@ def prepare_data(one, eid, bwm_df, params, n_workers=os.cpu_count()):
         'trials_mask': trials_mask
     }
 
-    return neural_dict, behave_dict, meta_data, trials_data
+    return neural_dict, behave_dict, meta_data, trials_data, good_trials_mask
 
 
-def align_spike_behavior(binned_spikes, binned_behaviors, trials_mask=None):
+def standardize_lfp_data(lfp_data, means=None, stds=None):
+    
+    K, T, N = lfp_data.shape
+    if (means is None) and (stds == None):
+        means, stds = np.empty((T, N)), np.empty((T, N))
 
-    beh_names = ['choice', 'reward', 'block', 
-                 #'wheel-speed', 
-                 'whisker-motion-energy', #'pupil-diameter', 
+    std_lfp_data = lfp_data.reshape((K, -1))
+    std_lfp_data[np.isnan(std_lfp_data)] = 0
+    for t in range(T):
+        mean = np.mean(std_lfp_data[:, t*N:(t+1)*N])
+        std = np.std(std_lfp_data[:, t*N:(t+1)*N])
+        std_lfp_data[:, t*N:(t+1)*N] -= mean
+        if std != 0:
+            std_lfp_data[:, t*N:(t+1)*N] /= std
+        means[t], stds[t] = mean, std
+    std_lfp_data = std_lfp_data.reshape(K, T, N)
+    return std_lfp_data, means, stds
+
+
+def align_spike_behavior(binned_spikes, binned_lfp, binned_behaviors, beh_names, trials_mask=None):
+    """Function to verify trial alignment between neural and behavior data.
+    """
+    assert len(binned_spikes)==len(binned_lfp), \
+    f'Mismatch between spike shape {len(binned_spikes)} and LFP shape {len(binned_lfp)}'
+
+    beh_names = ['choice', 'reward', 'block',
+                 'wheel-speed', 
+                 'whisker-motion-energy', 
+                 # 'body-motion-energy', 
+                 #'pupil-diameter'
                 ]
 
     target_mask = [1] * len(binned_spikes)
     for beh_name in beh_names:
-       beh_mask = [1 if trial is not None else 0 for trial in binned_behaviors[beh_name]]
+        beh_mask = [1 if trial is not None else 0 for trial in binned_behaviors[beh_name]]
     target_mask = target_mask and beh_mask
 
     if trials_mask is not None:
@@ -810,6 +875,9 @@ def align_spike_behavior(binned_spikes, binned_behaviors, trials_mask=None):
     del_idxs = np.argwhere(np.array(target_mask) == 0)
 
     aligned_binned_spikes = np.delete(binned_spikes, del_idxs, axis=0)
+    aligned_binned_lfp = np.delete(binned_lfp, del_idxs, axis=0)
+
+    aligned_binned_lfp, means, stds = standardize_lfp_data(aligned_binned_lfp)
 
     aligned_binned_behaviors = {}
     for beh_name in beh_names:
@@ -818,8 +886,15 @@ def align_spike_behavior(binned_spikes, binned_behaviors, trials_mask=None):
                 [y for y in aligned_binned_behaviors[beh_name]], dtype=float
             ).reshape((aligned_binned_spikes.shape[0], -1)
         )
-        assert len(aligned_binned_spikes) == len(aligned_binned_behaviors[beh_name]), f'mismatch between spike shape {len(aligned_binned_spikes)} and {beh_name} shape {len(aligned_binned_behaviors[beh_name])}'
+        if beh_name in [
+            'wheel-speed', 'whisker-motion-energy', #'body-motion-energy', #'pupil-diameter'
+        ]:
+            aligned_binned_behaviors[beh_name] = (
+                aligned_binned_behaviors[beh_name] - np.min(aligned_binned_behaviors[beh_name])
+            ) / (np.max(aligned_binned_behaviors[beh_name]) - np.min(aligned_binned_behaviors[beh_name]))
+            aligned_binned_behaviors[beh_name] = 2 * aligned_binned_behaviors[beh_name] - 1
+        assert len(aligned_binned_spikes) == len(aligned_binned_behaviors[beh_name]), \
+        f'mismatch between spike shape {len(aligned_binned_spikes)} and {beh_name} shape {len(aligned_binned_behaviors[beh_name])}'
+        
+    return aligned_binned_spikes, aligned_binned_lfp, aligned_binned_behaviors, target_mask, del_idxs
     
-    return aligned_binned_spikes, aligned_binned_behaviors
-
-
