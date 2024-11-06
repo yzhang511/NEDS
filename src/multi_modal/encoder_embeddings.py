@@ -171,11 +171,11 @@ class EncoderLayer(nn.Module):
 
     def forward(
         self, x: torch.FloatTensor, 
-        mask: torch.LongTensor, 
+        mask: Optional[torch.LongTensor] = None, 
         timestamp: Optional[torch.LongTensor] = None,  
     ) -> torch.FloatTensor :                           
         
-        x = x + self.attn(self.ln1(x), mask, timestamp)
+        x = x + self.attn(self.ln1(x), timestamp=timestamp)
 
         x = x + self.mlp(self.ln2(x))
 
