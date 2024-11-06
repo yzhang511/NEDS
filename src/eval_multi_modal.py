@@ -134,6 +134,11 @@ log_name = \
 
 save_path = os.path.join(base_path, "results", log_name)
 
+if args.finetune:
+    pretrain_path = save_path.replace("eval", "finetune")
+else:
+    pretrain_path = save_path.replace("eval", "train")
+
 logging.info(f"Save results to {save_path}")
 
 if args.wandb:
@@ -151,9 +156,9 @@ if args.wandb:
 if args.model_mode == "mm":
     best_ckpt_path = [
         "model_best_avg.pt", 
-        "model_best_spike.pt",
-        "model_best_wheel.pt", 
-        "model_best_whisker.pt",
+        #"model_best_spike.pt",
+        #"model_best_wheel.pt", 
+        #"model_best_whisker.pt",
         #"model_best_choice.pt",
         #"model_best_block.pt"
     ]
@@ -162,9 +167,7 @@ else:
 
 avg_state_dict = []
 for ckpt_path in best_ckpt_path:
-    model_path = os.path.join(
-        save_path.replace("eval", "train"), ckpt_path
-    )    
+    model_path = os.path.join(pretrain_path, ckpt_path)    
     configs = {
         "model_config": model_config,
         "model_path": model_path,
