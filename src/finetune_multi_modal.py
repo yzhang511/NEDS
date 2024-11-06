@@ -36,9 +36,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
-logging.basicConfig(
-    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
-) 
+logging.basicConfig(level=logging.info) 
 
 neural_acronyms = {
     "ap": "spike",
@@ -306,6 +304,9 @@ for mod in modal_filter["input"]:
     model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb)
     model.encoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb)
 
+
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total parameters: {total_params}")
 
 # ------------
 # SET UP MODEL
