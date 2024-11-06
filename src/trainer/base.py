@@ -11,6 +11,7 @@ from utils.utils import (
     plot_neurons_r2
 )
 from sklearn.metrics import balanced_accuracy_score
+from torch.cuda.amp import autocast
 
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
@@ -34,6 +35,7 @@ class MultiModalTrainer():
         self.log_dir = kwargs.get("log_dir", None)
         self.accelerator = kwargs.get("accelerator", None)
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
+        self.scaler = kwargs.get("scaler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
@@ -56,6 +58,7 @@ class MultiModalTrainer():
                 "self-spike", "self-behavior", 
                 "random_token"
             ]
+
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
@@ -207,14 +210,18 @@ class MultiModalTrainer():
         
         self.model.train()
         for batch in tqdm(self.train_dataloader):
+            self.optimizer.zero_grad()
+            
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
-            outputs = self._forward_model_inputs(batch, self.training_mode)
-            loss = outputs.loss
-            loss.backward()
-            self.optimizer.step()
+            with autocast(dtype=torch.float16):
+                outputs = self._forward_model_inputs(batch, self.training_mode)
+                loss = outputs.loss
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             self.lr_scheduler.step()
-            self.optimizer.zero_grad()
+            
             train_loss += loss.item()
 
             for mod in self.modal_filter["output"]:
@@ -359,7 +366,8 @@ class MultiModalTrainer():
             "epoch": epoch,
             "model": self.model,
             "optimizer": self.optimizer,
-            "lr_sched": self.lr_scheduler
+            "lr_sched": self.lr_scheduler,
+            "scaler": self.scaler,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
 

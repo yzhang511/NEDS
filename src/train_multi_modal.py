@@ -35,7 +35,10 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
-logging.basicConfig(level=logging.info) 
+from torch.cuda.amp import GradScaler
+
+
+logging.basicConfig(level=logging.INFO) 
 
 neural_acronyms = {
     "ap": "spike",
@@ -224,11 +227,12 @@ logging.info(f"Start model training:")
 
 encoder_embeddings = {}
 
+hidden_size = config.model.encoder.transformer.hidden_size
 for mod in modal_filter["input"]:
     encoder_embeddings[mod] = EncoderEmbedding(
-        hidden_size = config.model.encoder.transformer.hidden_size,
-        n_channel = 256,
-        output_channel = 256,
+        hidden_size = hidden_size,
+        n_channel = hidden_size,
+        output_channel = hidden_size,
         stitching = True,
         eid_list = meta_data["eid_list"],
         mod = mod,
@@ -250,9 +254,6 @@ model = model_class(
 )
 model = accelerator.prepare(model)
 
-total_params = sum(p.numel() for p in model.parameters())
-print(f"Total parameters: {total_params}")
-
 optimizer = torch.optim.AdamW(
     model.parameters(), 
     lr=config.optimizer.lr, 
@@ -270,10 +271,34 @@ lr_scheduler = OneCycleLR(
     div_factor = config.optimizer.div_factor,
 )
 
+scaler = GradScaler()
+
+# -----------------------
+# TRACK MODEL & DATA SIZE
+# -----------------------
+
+n_mods = len(modal_filter["input"])
+n_tokens_per_mod = config.model.encoder.embedder.max_F
+n_batches = len(train_dataloader)
+batch_size = config.training.train_batch_size
+logging.info(f"Total modality: {n_mods} Total tokens per modality: {n_tokens_per_mod}")
+logging.info(f"Total batch: {n_batches} batch size: {batch_size}")
+
+total_tokens = n_mods*n_tokens_per_mod*n_batches*batch_size
+logging.info(f"Total tokens: {total_tokens}")
+
+total_params = sum(p.numel() for p in model.parameters())
+logging.info(f"Total parameters: {total_params}")
+
+# -----
+# TRAIN
+# -----
+
 trainer_kwargs = {
     "log_dir": log_dir,
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
+    "scaler": scaler,
     "avail_mod": neural_mods + static_mods + dynamic_mods,
     "avail_beh": static_mods + dynamic_mods,
     "modal_filter": modal_filter,
