@@ -173,8 +173,6 @@ if config.wandb.use:
 # SET UP MODEL
 # ------------
 
-encoder_embeddings, decoder_embeddings = {}, {}
-
 if "ap" in modal_filter["output"]:
     if args.model == "linear":
         model_class = "LinearEncoder" 

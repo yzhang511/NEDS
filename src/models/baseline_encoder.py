@@ -41,7 +41,6 @@ class BaselineEncoder(nn.Module):
         inputs, targets = data_dict['inputs'], data_dict['targets']
         B, T, N = targets.size()
         preds = self.layer(inputs.flatten(1)).reshape(B, T, N)
-        # loss, n_examples = self.forward_loss(preds, targets)
         loss, n_examples = self.forward_loss(preds, targets)
 
         return EncoderOutput(
@@ -61,15 +60,25 @@ class ReducedRankEncoder(nn.Module):
         self.seq_len = seq_len
         self.in_channel = in_channel   
         self.out_channel = out_channel 
-        self.eid_list = list(kwargs["eids"])
+        self.eid_list = kwargs["eid_list"]
         self.rank = kwargs["rank"]
-        self.Us = torch.nn.ParameterList(
-            [torch.nn.Parameter(torch.randn(out_channel, self.in_channel, self.rank)) for out_channel in self.out_channel]
-        )
+
         self.V = nn.Parameter(torch.randn(self.rank, self.seq_len))
-        self.bs = torch.nn.ParameterList(
-            [torch.nn.Parameter(torch.randn(self.out_channel,)) for _ in self.eid_list]
-        )
+
+        Us, bs = {}, {}
+        for key, val in self.eid_list.items():
+            Us[str(key)] = torch.nn.Parameter(torch.randn(val, self.in_channel, self.rank))
+            bs[str(key)] = torch.nn.Parameter(torch.randn(val,))
+        self.Us = torch.nn.ParameterDict(Us)
+        self.bs = torch.nn.ParameterDict(bs)
+        
+        # self.Us = torch.nn.ParameterList(
+        #     [torch.nn.Parameter(torch.randn(out_channel, self.in_channel, self.rank)) for out_channel in self.out_channel]
+        # )
+        # self.bs = torch.nn.ParameterList(
+        #     [torch.nn.Parameter(torch.randn(out_channel,)) for out_channel in self.out_channel]
+        # )
+        
         self.loss = nn.PoissonNLLLoss(reduction="none", log_input=True)
 
     def forward_loss(
@@ -82,7 +91,8 @@ class ReducedRankEncoder(nn.Module):
     def forward(
             self, data_dict: Dict[str, Dict[str, torch.Tensor]]
         ) -> EncoderOutput:
-        eid_idx = self.eid_list.index(data_dict['eid'])
+        # eid_idx = self.eid_list.index(data_dict['eid'])
+        eid_idx = data_dict['eid']
         inputs, targets = data_dict['inputs'], data_dict['targets']
         self.B = torch.einsum('npr,rt->npt', self.Us[eid_idx], self.V)
         preds = torch.einsum('npt,ktp->ktn', self.B, inputs)
