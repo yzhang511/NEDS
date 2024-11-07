@@ -8,7 +8,7 @@
 #SBACTH --array=0
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem 150000
+#SBATCH --mem 200000
 #SBATCH --gpus=1
 #SBATCH -t 2-00
 #SBATCH --export=ALL

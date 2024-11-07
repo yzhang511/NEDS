@@ -34,8 +34,8 @@ if [ $model_mode = "mm" ]; then
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
-				--finetune \
-			        --overwrite	
+                				--finetune \
+            			        --overwrite	
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \

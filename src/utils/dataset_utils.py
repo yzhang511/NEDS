@@ -42,10 +42,18 @@ def get_binned_spikes_from_sparse(spikes_sparse_data_list, spikes_sparse_indices
 
     return binned_spikes
 
-def create_dataset(binned_spikes, bwm_df, eid, params, meta_data=None, binned_behaviors=None):
+def create_dataset(
+    binned_spikes,
+    eid,
+    params,
+    meta_data=None,
+    binned_behaviors=None,
+    binned_lfp=None
+):
 
     # Scipy sparse matrices can't be directly loaded into HuggingFace Datasets so they are converted to lists
-    sparse_binned_spikes, spikes_sparse_data_list, spikes_sparse_indices_list, spikes_sparse_indptr_list, spikes_sparse_shape_list = get_sparse_from_binned_spikes(binned_spikes)
+    sparse_binned_spikes, spikes_sparse_data_list, spikes_sparse_indices_list, \
+    spikes_sparse_indptr_list, spikes_sparse_shape_list = get_sparse_from_binned_spikes(binned_spikes)
 
     data_dict = {
         'spikes_sparse_data': spikes_sparse_data_list,
@@ -53,20 +61,22 @@ def create_dataset(binned_spikes, bwm_df, eid, params, meta_data=None, binned_be
         'spikes_sparse_indptr': spikes_sparse_indptr_list,
         'spikes_sparse_shape': spikes_sparse_shape_list,
     }
-    
+
     if binned_behaviors is not None:
         # Store choice behaviors more efficiently (save this option for later)
         # binned_behaviors["choice"] = np.where(binned_behaviors["choice"] > 0, 0, 1).astype(bool)
         data_dict.update(binned_behaviors)
-        
+
+    if binned_lfp is not None:
+        data_dict.update({"lfp": binned_lfp})
+
     if meta_data is not None:
         meta_dict = {
             'binsize': [params['binsize']] * len(sparse_binned_spikes),
             'interval_len': [params['interval_len']] * len(sparse_binned_spikes),
             'eid': [meta_data['eid']] * len(sparse_binned_spikes),
-            'probe_name': [meta_data['probe_name']] * len(sparse_binned_spikes),
-            'subject': [meta_data['subject']] * len(sparse_binned_spikes),
             'lab': [meta_data['lab']] * len(sparse_binned_spikes),
+            'subject': [meta_data['subject']] * len(sparse_binned_spikes),
             'sampling_freq': [meta_data['sampling_freq']] * len(sparse_binned_spikes),
             'cluster_regions': [meta_data['cluster_regions']] * len(sparse_binned_spikes),
             'cluster_channels': [meta_data['cluster_channels']] * len(sparse_binned_spikes),
@@ -78,6 +88,7 @@ def create_dataset(binned_spikes, bwm_df, eid, params, meta_data=None, binned_be
         data_dict.update(meta_dict)
 
     return Dataset.from_dict(data_dict)
+    
 
 def upload_dataset(dataset, org, eid, is_private=True):
     dataset.push_to_hub(f"{org}/{eid}", private=is_private)
