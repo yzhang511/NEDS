@@ -644,6 +644,7 @@ def align_data(
     ], 
     trials_mask=None,
     nan_thresh=0.2,
+    beh_offset=3,
 ):
     num_trials = len(binned_spikes)
     
@@ -682,10 +683,11 @@ def align_data(
             dtype=float).reshape((num_trials, -1)
         )
         if beh in DYNAMIC_VARS:
-            # Normalize continuous-valued behaviors to -1 and 1
+            # Normalize continuous-valued behaviors to [-3, 3] ~ N(0, 1)
             top = aligned_binned_behaviors[beh] - np.min(aligned_binned_behaviors[beh])
             bottom = np.max(aligned_binned_behaviors[beh]) - np.min(aligned_binned_behaviors[beh])
             aligned_binned_behaviors[beh] = 2 * (top / bottom) - 1
+            aligned_binned_behaviors[beh] *= beh_offset
     return (
         aligned_binned_spikes, 
         aligned_binned_behaviors,
