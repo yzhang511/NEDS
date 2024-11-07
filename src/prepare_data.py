@@ -87,10 +87,6 @@ one = ONE(
 
 for eid_idx, eid in enumerate(eids):
     
-
-    if eid_idx + 1 <= 59:
-        continue 
-
     logging.info(f"EID {eid}")
 
     neural_dict, behave_dict, meta_dict, trials_dict, _ = prepare_data(
