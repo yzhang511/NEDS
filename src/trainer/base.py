@@ -391,118 +391,108 @@ class BaselineTrainer():
         self.log_dir = kwargs.get("log_dir", None)
         self.accelerator = kwargs.get("accelerator", None)
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
+        self.scaler = kwargs.get("scaler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
+        self.eid_list = kwargs.get("eid_list", None)
   
-        self.session_active_neurons = []      
+        self.session_active_neurons = {}      
         self.avail_mod = kwargs.get("avail_mod", None)
         self.modal_filter = kwargs.get("modal_filter", None)
 
-        #####
         self.target_to_decode = kwargs["target_to_decode"]
-        if ('choice' in self.target_to_decode) or ('block' in self.target_to_decode):
+        if ("choice" in self.target_to_decode) or ("block" in self.target_to_decode):
             self.metric = "acc"      
         else:
             self.metric = "r2"    
-        #####
 
+    
     def _forward_model_outputs(self, batch):
         batch = move_batch_to_device(batch, self.accelerator.device)
         data_dict = {}
-        if 'ap' in self.modal_filter['output']:
-            data_dict['inputs'] = batch['target']
-            data_dict['targets'] = batch['spikes_data']
+        if "ap" in self.modal_filter["output"]:
+            data_dict["inputs"] = batch["target"]
+            data_dict["targets"] = batch["spikes_data"]
         else:
-            data_dict['inputs'] = batch['spikes_data']
-            #####
-            T = len(['wheel-speed', 'whisker-motion-energy'])
-            if self.target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
-                data_dict['targets'] = batch['target'][:,:,:T]
-            elif self.target_to_decode[0] == 'choice':
-                data_dict['targets'] = batch['target'][:,0,2]
-            elif self.target_to_decode[0] == 'block':
-                data_dict['targets'] = batch['target'][:,0,3]
-            #####
-        data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
-        data_dict['num_neuron'] = batch['spikes_data'].shape[2]
+            data_dict["inputs"] = batch["spikes_data"]
+            if self.target_to_decode == DYNAMIC_VARS:
+                data_dict["targets"] = batch["target"][..., :len(DYNAMIC_VARS)]
+            elif self.target_to_decode[0] == "choice":
+                data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)]
+            elif self.target_to_decode[0] == "block":
+                data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)+1]
+        data_dict["eid"] = batch["eid"][0] 
+        data_dict["num_neuron"] = batch["spikes_data"].shape[-1]
         return self.model(data_dict)
 
     
     def train(self):
-        best_eval_loss = torch.tensor(float('inf'))
-        best_eval_trial_avg_metric = -torch.tensor(float('inf'))
+        best_eval_loss = torch.tensor(float("inf"))
+        best_eval_trial_avg_metric = -torch.tensor(float("inf"))
         
         for epoch in range(self.config.training.num_epochs):
             train_epoch_results = self.train_epoch(epoch)
             eval_epoch_results = self.eval_epoch()
-            print(f"epoch: {epoch} train loss: {train_epoch_results['train_loss'] }")
+            print(f"epoch: {epoch} train loss: {train_epoch_results["train_loss"]}")
 
             if eval_epoch_results:
-                if eval_epoch_results[f'eval_trial_avg_{self.metric}'] > best_eval_trial_avg_metric:
-                    best_eval_loss = eval_epoch_results[f'eval_loss']
-                    best_eval_trial_avg_metric = eval_epoch_results[f'eval_trial_avg_{self.metric}']
+                if eval_epoch_results[f"eval_trial_avg_{self.metric}"] > best_eval_trial_avg_metric:
+                    best_eval_loss = eval_epoch_results["eval_loss"]
+                    best_eval_trial_avg_metric = eval_epoch_results[f"eval_trial_avg_{self.metric}"]
                     print(f"epoch: {epoch} best eval loss: {best_eval_loss} trial avg {self.metric}: {best_eval_trial_avg_metric}")
                     self.save_model(name="best", epoch=epoch)
-
-                    for mod in self.modal_filter['output']:
-                        #####
-                        if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                        #####
+                    for mod in self.modal_filter["output"]:
+                        if ("choice" not in self.target_to_decode) and ("block" not in self.target_to_decode):
                             gt_pred_fig = self.plot_epoch(
-                                gt=eval_epoch_results['eval_gt'][0][mod], 
-                                preds=eval_epoch_results['eval_preds'][0][mod], 
+                                gt=eval_epoch_results["eval_gt"][0][mod], 
+                                preds=eval_epoch_results["eval_preds"][0][mod], 
                                 epoch=epoch,
-                                active_neurons=self.session_active_neurons[0][:5], 
+                                active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
                                 modality=mod
                             )
                             if self.config.wandb.use:
-                                wandb.log(
-                                    {"best_epoch": epoch,
-                                     f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
-                                     f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])}
+                                wandb.log({
+                                    "best_epoch": epoch,
+                                    f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
+                                    f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])}
                                 )
                             else:
-                                gt_pred_fig['plot_gt_pred'].savefig(
+                                gt_pred_fig["plot_gt_pred"].savefig(
                                     os.path.join(self.log_dir, f"best_gt_pred_fig_{mod}_{epoch}.png")
                                 )
-                                gt_pred_fig['plot_r2'].savefig(
+                                gt_pred_fig["plot_r2"].savefig(
                                     os.path.join(self.log_dir, f"best_r2_fig_{mod}_{epoch}.png")
                                 )
-
                 print(f"epoch: {epoch} eval loss: {eval_epoch_results['eval_loss']} trial avg {self.metric}: {eval_epoch_results[f'eval_trial_avg_{self.metric}']}")
 
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
-                for mod in self.modal_filter['output']:
-                    #####
-                    if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                    #####
+                for mod in self.modal_filter["output"]:
+                    if ("choice" not in self.target_to_decode) and ("block" not in self.target_to_decode):
                         gt_pred_fig = self.plot_epoch(
-                            gt=eval_epoch_results['eval_gt'][0][mod], 
-                            preds=eval_epoch_results['eval_preds'][0][mod], 
+                            gt=eval_epoch_results["eval_gt"][0][mod], 
+                            preds=eval_epoch_results["eval_preds"][0][mod], 
                             epoch=epoch, 
                             modality=mod,
-                            active_neurons=self.session_active_neurons[0][:5]
+                            active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
                         )
                         if self.config.wandb.use:
                             wandb.log({
-                                f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig['plot_gt_pred']),
-                                f"r2_fig_{mod}": wandb.Image(gt_pred_fig['plot_r2'])
+                                f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
+                                f"r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])
                             })
                         else:
-                            gt_pred_fig['plot_gt_pred'].savefig(
+                            gt_pred_fig["plot_gt_pred"].savefig(
                                 os.path.join(self.log_dir, f"gt_pred_fig_{mod}_{epoch}.png")
                             )
-                            gt_pred_fig['plot_r2'].savefig(
+                            gt_pred_fig["plot_r2"].savefig(
                                 os.path.join(self.log_dir, f"r2_fig_{mod}_{epoch}.png")
                             )
-
             if self.config.wandb.use:
                 wandb.log({
-                    "train_loss": train_epoch_results['train_loss'],
-                    "eval_loss": eval_epoch_results['eval_loss'],
-                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f'eval_trial_avg_{self.metric}']
-                })
-                
+                    "train_loss": train_epoch_results["train_loss"],
+                    "eval_loss": eval_epoch_results["eval_loss"],
+                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f"eval_trial_avg_{self.metric}"]
+                })     
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
@@ -515,71 +505,94 @@ class BaselineTrainer():
         train_examples = 0
         self.model.train()
         for batch in tqdm(self.train_dataloader):
-            outputs = self._forward_model_outputs(batch)
-            loss = outputs.loss
-            loss.backward()
-            self.optimizer.step()
-            self.lr_scheduler.step()
             self.optimizer.zero_grad()
+            with autocast(dtype=torch.float32):
+                outputs = self._forward_model_outputs(batch)
+                loss = outputs.loss
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.lr_scheduler.step()
             train_loss += loss.item()
         return{
             "train_loss": train_loss
         }
-    
+
     
     def eval_epoch(self):
         
         self.model.eval()
         eval_loss = 0.
         session_results = {}
-        for num_neuron in self.num_neurons:
-            session_results[num_neuron] = {}
-            for mod in self.modal_filter['output']:
-                session_results[num_neuron][mod] = {"gt": [], "preds": []}
+        for eid in self.eid_list:
+            session_results[eid] = {}
+            for mod in self.modal_filter["output"]:
+                session_results[eid][mod] = {"gt": [], "preds": []}
                 
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
-                    outputs = self._forward_model_outputs(batch)
-                    loss = outputs.loss
+                    with autocast(dtype=torch.float32):
+                        outputs = self._forward_model_outputs(batch)
+                        loss = outputs.loss
                     eval_loss += loss.item()
-                    num_neuron = batch['spikes_data'].shape[2] 
+                    num_neuron = batch["spikes_data"].shape[2] 
+                    eid = batch["eid"][0]
 
-                    for mod in self.modal_filter['output']:
-                        session_results[num_neuron][mod]["gt"].append(outputs.targets.clone())
-                        session_results[num_neuron][mod]["preds"].append(outputs.preds.clone())
+                    for mod in self.modal_filter["output"]:
+                        session_results[eid][mod]["gt"].append(outputs.targets.clone())
+                        session_results[eid][mod]["preds"].append(outputs.preds.clone())
 
             gt, preds, results_list = {}, {}, []
-            for idx, num_neuron in enumerate(self.num_neurons):
+            for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
-                for mod in self.modal_filter['output']:
-                    _gt = torch.cat(session_results[num_neuron][mod]["gt"], dim=0)
-                    _preds = torch.cat(session_results[num_neuron][mod]["preds"], dim=0)
-                    if mod == 'ap':
+                for mod in self.modal_filter["output"]:
+                    _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                    _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                    if mod == "ap":
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
-                    if mod == 'ap':
-                        active_neurons = np.argsort(gt[idx][mod].cpu().numpy().sum((0,1)))[::-1][:50].tolist()
-                    else:
-                        active_neurons = np.arange(gt[idx][mod].size(-1)).tolist()
-                    self.session_active_neurons.append(active_neurons)
 
-                for mod in self.modal_filter['output']:
-                    #####
-                    if ('choice' not in self.target_to_decode) and ('block' not in self.target_to_decode):
-                        results = metrics_list(gt = gt[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0),
-                                            pred = preds[idx][mod][:,:,self.session_active_neurons[idx]].transpose(-1,0), 
-                                            metrics=["r2"], 
-                                            device=self.accelerator.device)
+                    if eid not in self.session_active_neurons:
+                        self.session_active_neurons[eid] = {}
+
+                    if mod == "ap":
+                        active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
+                        self.session_active_neurons[eid][mod] = active_neurons
+                        
+                    if mod == "behavior" and (("choice" not in self.target_to_decode) \
+                            and ("block" not in self.target_to_decode)):
+                        self.session_active_neurons[eid]["behavior"] = [
+                            i for i in range(gt[idx]["behavior"].size(-1))
+                        ]
+
+                for mod in self.modal_filter["output"]:
+                    if mod == "ap":
+                        results = metrics_list(
+                                gt = gt[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0),
+                                pred = preds[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0), 
+                                metrics=["bps"], 
+                                device=self.accelerator.device
+                        )
+                        results_list.append(results["bps"])
+                    elif (mod == "behavior") and (("choice" not in self.target_to_decode) \
+                            and ("block" not in self.target_to_decode)):
+                        results = metrics_list(
+                            gt = gt[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0),
+                            pred = preds[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0), 
+                            metrics=["r2"], 
+                            device=self.accelerator.device
+                        )
                         results_list.append(results["r2"])
-                    else:
-                        from sklearn.metrics import balanced_accuracy_score
-                        results_list.append(balanced_accuracy_score(
-                            gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy().argmax(-1)
-                        ))
-                    #####
-
+                    elif (mod == "behavior") and (("choice" in self.target_to_decode) \
+                            or ("block" in self.target_to_decode)):
+                        results_list.append(
+                            balanced_accuracy_score(
+                                gt[idx][mod].cpu().numpy(), 
+                                preds[idx][mod].cpu().numpy().argmax(-1)
+                            )
+                        )
         return {
             "eval_loss": eval_loss,
             f"eval_trial_avg_{self.metric}": np.nanmean(results_list),
@@ -590,25 +603,28 @@ class BaselineTrainer():
     
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
-        if modality == 'ap':
+        if modality == "ap":
             gt_pred_fig = plot_gt_pred(
                 gt = gt.mean(0).T.cpu().numpy(),
                 pred = preds.mean(0).T.detach().cpu().numpy(),
                 epoch = epoch,
                 modality = modality
-                )
-        elif modality == 'behavior':
-            gt_pred_fig = plot_gt_pred(gt = gt.mean(0).T.cpu().numpy(),
-                        pred = preds.mean(0).T.detach().cpu().numpy(),
-                        epoch = epoch,
-                        modality=modality)
+            )
+        elif modality == "behavior":
+            gt_pred_fig = plot_gt_pred(
+                gt = gt.mean(0).T.cpu().numpy(),
+                pred = preds.mean(0).T.detach().cpu().numpy(),
+                epoch = epoch,
+                modality=modality
+            )
             active_neurons = range(gt.size()[-1])
             
-        r2_fig = plot_neurons_r2(gt = gt.mean(0),
-                pred = preds.mean(0),
-                neuron_idx=active_neurons,
-                epoch = epoch)
-        
+        r2_fig = plot_neurons_r2(
+            gt = gt.mean(0),
+            pred = preds.mean(0),
+            neuron_idx=active_neurons,
+            epoch = epoch
+        )
         return {
             "plot_gt_pred": gt_pred_fig,
             "plot_r2": r2_fig
@@ -618,8 +634,11 @@ class BaselineTrainer():
     def save_model(self, name="last", epoch=0):
         print(f"saving model: {name} to {self.log_dir}")
         dict_config = {
-            "model": self.model,
             "epoch": epoch,
+            "model": self.model,
+            "optimizer": self.optimizer,
+            "lr_sched": self.lr_scheduler,
+            "scaler": self.scaler,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
         

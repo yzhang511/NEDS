@@ -1,30 +1,39 @@
 import os
 import logging
-from pathlib import Path
-from math import ceil
 import numpy as np
 from tqdm import tqdm
+from math import ceil
+from pathlib import Path
 import torch
-
 from loader.make_loader import make_loader
 from utils.dataset_utils import load_ibl_dataset
-from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict
-from utils.utils import set_seed, move_batch_to_device, plot_gt_pred, metrics_list, plot_avg_rate_and_spike, plot_rate_and_spike, plot_neurons_r2
+from datasets import (
+    load_dataset, 
+    load_from_disk, 
+    concatenate_datasets, 
+    DatasetDict
+)
+from utils.utils import (
+    set_seed, 
+    move_batch_to_device, 
+    plot_gt_pred, 
+    metrics_list, 
+    plot_avg_rate_and_spike, 
+    plot_rate_and_spike, 
+    plot_neurons_r2,
+)
 from utils.config_utils import config_from_kwargs, update_config
-
-from models.baseline_encoder import BaselineEncoder
-from models.baseline_decoder import BaselineDecoder
-
-from accelerate import Accelerator
-from torch.optim.lr_scheduler import OneCycleLR
-
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.special import gammaln
 from sklearn.cluster import SpectralClustering
 from sklearn.metrics import r2_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 
 logger = logging.getLogger(__name__)
+
+STATIC_VARS = ["choice", "block"]
+DYNAMIC_VARS = ["wheel", "whisker"]
 
 # --------------------------------------------------------------------------------------------------
 # Model/Dataset Loading and Configuration
@@ -70,7 +79,7 @@ def load_model_data_local(**kwargs):
     
     dataloader = make_loader(
         dataset, 
-        target=["wheel-speed", "whisker-motion-energy"],
+        target=DYNAMIC_VARS,
         batch_size=len(dataset),
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
@@ -110,9 +119,7 @@ def co_smoothing_eval(
     modal_filter = kwargs['modal_filter']
     mode = kwargs['mode']
     method_name = 'linear'
-    #####
     target_to_decode = kwargs['target_to_decode']
-    #####
 
     if sum(batch['space_attn_mask'][0] == 0) == 0:
         N = batch['space_attn_mask'].size()[-1]
@@ -171,7 +178,6 @@ def co_smoothing_eval(
                         data_dict['targets'] = batch['spikes_data']
                     else:
                         data_dict['inputs'] = batch['spikes_data']
-                        #####
                         T = len(['wheel-speed', 'whisker-motion-energy'])
                         if target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
                             data_dict['targets'] = batch['target'][:,:,:T]
@@ -179,7 +185,6 @@ def co_smoothing_eval(
                             data_dict['targets'] = batch['target'][:,0,T:][:,0]
                         elif target_to_decode[0] == 'block':
                             data_dict['targets'] = batch['target'][:,0,T:][:,1]
-                        #####
                     data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
                     data_dict['num_neuron'] = batch['spikes_data'].shape[2]
 
@@ -259,7 +264,6 @@ def co_smoothing_eval(
                         data_dict['targets'] = batch['spikes_data']
                     else:
                         data_dict['inputs'] = batch['spikes_data']
-                        #####
                         T = len(['wheel-speed', 'whisker-motion-energy'])
                         if target_to_decode == ['wheel-speed', 'whisker-motion-energy']:
                             data_dict['targets'] = batch['target'][:,:,:T]
@@ -267,7 +271,6 @@ def co_smoothing_eval(
                             data_dict['targets'] = batch['target'][:,0,T:][:,0]
                         elif target_to_decode[0] == 'block':
                             data_dict['targets'] = batch['target'][:,0,T:][:,1]
-                        #####
                     data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
                     data_dict['num_neuron'] = batch['spikes_data'].shape[2]
                     
@@ -311,16 +314,11 @@ def co_smoothing_eval(
                             method=method_name, save_path=kwargs['save_path'],
                             save_plot=save_plot
                         )
-                        r2_result_list[target_n_i[i]] = r2
-                # np.save(os.path.join(kwargs['save_path'], f'r2.npy'), behav_results)
-                # np.save(os.path.join(kwargs['save_path'], f'bps.npy'), np.nanmean(bps_result_list))
-                
+                        r2_result_list[target_n_i[i]] = r2                
             else:
                 from sklearn.metrics import accuracy_score, balanced_accuracy_score
                 behav_results[f'{target_to_decode[0]}_acc'] = accuracy_score(gt, preds.argmax(-1))
                 behav_results[f'{target_to_decode[0]}_balanced_acc'] = balanced_accuracy_score(gt, preds.argmax(-1))
-                # np.save(os.path.join(kwargs['save_path'], f'acc.npy'), behav_results)
-            
             return {
                 f"{mode}_behav_results": behav_results
             } 
