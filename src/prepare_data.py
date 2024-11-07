@@ -86,6 +86,10 @@ one = ONE(
 )
 
 for eid_idx, eid in enumerate(eids):
+    
+
+    if eid_idx + 1 <= 59:
+        continue 
 
     logging.info(f"EID {eid}")
 
@@ -146,13 +150,17 @@ for eid_idx, eid in enumerate(eids):
     else:
         bin_lfp = None
 
-    align_bin_spikes, align_bin_beh, align_bin_lfp, _, _ = align_data(
-        bin_spikes, 
-        bin_beh, 
-        bin_lfp, 
-        list(bin_beh.keys()), 
-        trials_dict["trials_mask"], 
-    )
+    try:
+        align_bin_spikes, align_bin_beh, align_bin_lfp, _, _ = align_data(
+            bin_spikes, 
+            bin_beh, 
+            bin_lfp, 
+            list(bin_beh.keys()), 
+            trials_dict["trials_mask"], 
+        )
+    except ValueError as e:
+        logging.info(f"Skip EID {eid} due to error: {e}")
+        continue
 
     # Data partition (train: 0.7 val: 0.1 test: 0.2)
     num_trials = len(align_bin_spikes)

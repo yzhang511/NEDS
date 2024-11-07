@@ -214,7 +214,7 @@ class MultiModalTrainer():
             
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
-            with autocast(dtype=torch.float16):
+            with autocast(dtype=torch.float32):
                 outputs = self._forward_model_inputs(batch, self.training_mode)
                 loss = outputs.loss
             self.scaler.scale(loss).backward()
