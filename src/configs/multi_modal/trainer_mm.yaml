@@ -22,15 +22,15 @@ dirs:
   # pretrained_model_path: checkpoints/models/ndt1/ssl/temporal/model_best_multi-session.pt
   dataset_dir: neurofm123/671c7ea7-6726-4fbe-adeb-f89c2c8e489b_aligned
   behav_dir:  data/671c7ea7-6726-4fbe-adeb-f89c2c8e489b_aligned
-  huggingface_org: ibl-repro-ephys # neurofm123
+  huggingface_org: neurofm123
   
 
 
 # Training configuration
 training:
   num_epochs: 4000
-  train_batch_size: 64 # 16
-  test_batch_size: 64 # 16  
+  train_batch_size: 16
+  test_batch_size: 16  
   shuffle_test_dataloader: false    # Shuffle test dataloader between epochs
 
   save_plot_every_n_epochs: 20  # Plot the model output every n epochs

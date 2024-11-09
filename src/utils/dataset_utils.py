@@ -273,13 +273,17 @@ def load_ibl_dataset(cache_dir,
                 # print("Loading dataset: ", dataset_eid)
                 session_dataset = load_dataset(dataset_eid)
                 train_trials = len(session_dataset["train"]["spikes_sparse_data"])
+                train_trials = train_trials - train_trials % batch_size
                 session_train_datasets.append(session_dataset["train"].select(list(range(train_trials))))
 
                 val_trials = len(session_dataset["val"]["spikes_sparse_data"])
+                val_trials = val_trials - val_trials % batch_size
                 session_val_datasets.append(session_dataset["val"].select(list(range(val_trials))))
-
+                
                 test_trials = len(session_dataset["test"]["spikes_sparse_data"])
+                test_trials = test_trials - test_trials % batch_size
                 session_test_datasets.append(session_dataset["test"].select(list(range(test_trials))))
+                
                 binned_spikes_data = get_binned_spikes_from_sparse([session_dataset["train"]["spikes_sparse_data"][0]], 
                                                                     [session_dataset["train"]["spikes_sparse_indices"][0]],
                                                                     [session_dataset["train"]["spikes_sparse_indptr"][0]],
