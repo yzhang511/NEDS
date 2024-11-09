@@ -11,7 +11,6 @@ from utils.utils import (
     plot_neurons_r2
 )
 from sklearn.metrics import balanced_accuracy_score
-from torch.cuda.amp import autocast
 
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
@@ -35,7 +34,6 @@ class MultiModalTrainer():
         self.log_dir = kwargs.get("log_dir", None)
         self.accelerator = kwargs.get("accelerator", None)
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
-        self.scaler = kwargs.get("scaler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
@@ -214,12 +212,11 @@ class MultiModalTrainer():
             
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
-            with autocast(dtype=torch.float32):
-                outputs = self._forward_model_inputs(batch, self.training_mode)
-                loss = outputs.loss
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+                
+            outputs = self._forward_model_inputs(batch, self.training_mode)
+            loss = outputs.loss
+            loss.backward()
+            self.optimizer.step()
             self.lr_scheduler.step()
             
             train_loss += loss.item()
@@ -367,7 +364,6 @@ class MultiModalTrainer():
             "model": self.model,
             "optimizer": self.optimizer,
             "lr_sched": self.lr_scheduler,
-            "scaler": self.scaler,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
 
@@ -391,7 +387,6 @@ class BaselineTrainer():
         self.log_dir = kwargs.get("log_dir", None)
         self.accelerator = kwargs.get("accelerator", None)
         self.lr_scheduler = kwargs.get("lr_scheduler", None)
-        self.scaler = kwargs.get("scaler", None)
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
@@ -506,12 +501,10 @@ class BaselineTrainer():
         self.model.train()
         for batch in tqdm(self.train_dataloader):
             self.optimizer.zero_grad()
-            with autocast(dtype=torch.float32):
-                outputs = self._forward_model_outputs(batch)
-                loss = outputs.loss
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            outputs = self._forward_model_outputs(batch)
+            loss = outputs.loss
+            loss.backward()
+            self.optimizer.step()
             self.lr_scheduler.step()
             train_loss += loss.item()
         return{
@@ -532,9 +525,8 @@ class BaselineTrainer():
         if self.eval_dataloader:
             with torch.no_grad():  
                 for batch in self.eval_dataloader:
-                    with autocast(dtype=torch.float32):
-                        outputs = self._forward_model_outputs(batch)
-                        loss = outputs.loss
+                    outputs = self._forward_model_outputs(batch)
+                    loss = outputs.loss
                     eval_loss += loss.item()
                     num_neuron = batch["spikes_data"].shape[2] 
                     eid = batch["eid"][0]
@@ -638,7 +630,6 @@ class BaselineTrainer():
             "model": self.model,
             "optimizer": self.optimizer,
             "lr_sched": self.lr_scheduler,
-            "scaler": self.scaler,
         }
         torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
         
