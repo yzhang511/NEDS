@@ -428,7 +428,7 @@ class BaselineTrainer():
         for epoch in range(self.config.training.num_epochs):
             train_epoch_results = self.train_epoch(epoch)
             eval_epoch_results = self.eval_epoch()
-            print(f"epoch: {epoch} train loss: {train_epoch_results["train_loss"]}")
+            print(f"epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
 
             if eval_epoch_results:
                 if eval_epoch_results[f"eval_trial_avg_{self.metric}"] > best_eval_trial_avg_metric:
