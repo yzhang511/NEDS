@@ -40,7 +40,7 @@ class MultiModalTrainer():
 
         self.model_class = self.config.model.model_class
         self.session_active_neurons = {}   
-        self.mod_to_indx = self.model.mod_to_indx
+        self.mod_to_indx = self.model.module.mod_to_indx
         self.avail_mod = kwargs.get("avail_mod", None)
         self.avail_beh = kwargs.get("avail_beh", None)
         self.modal_filter = kwargs.get("modal_filter", None)
@@ -143,10 +143,11 @@ class MultiModalTrainer():
                 modality=mod
             )
             if self.config.wandb.use:
-                wandb.log({
-                    f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
-                    f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])
-                })        
+                if self.accelerator.is_main_process:
+                    wandb.log({
+                        f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
+                        f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])
+                    })        
 
     def train(self):
 
@@ -173,7 +174,9 @@ class MultiModalTrainer():
                             f"Epoch: {epoch} best val {mode} metric: {best_eval_metric[eval_name]}"
                         )
                         self.save_model(name=f"best_{mode}", epoch=epoch)
-                        wandb.log({f"best_{mode}_epoch": epoch}) if self.config.wandb.use else None
+                        if self.config.wandb.use:
+                            if self.accelerator.is_main_process:
+                                wandb.log({f"best_{mode}_epoch": epoch}) if self.config.wandb.use else None
                 
                 if eval_epoch_results["eval_avg_metric"] > best_eval_metric["eval_avg_metric"]:
                     best_eval_loss = eval_epoch_results["eval_loss"]
@@ -183,7 +186,8 @@ class MultiModalTrainer():
                     self.save_model(name="best", epoch=epoch)
                     self._plot_log_epoch(epoch, eval_epoch_results)
                     if self.config.wandb.use:
-                        wandb.log({"best_epoch": epoch})        
+                        if self.accelerator.is_main_process:
+                            wandb.log({"best_epoch": epoch})        
                     
             if epoch % self.config.training.save_plot_every_n_epochs == 0:
                 self._plot_log_epoch(epoch, eval_epoch_results)
@@ -192,14 +196,16 @@ class MultiModalTrainer():
             logs_results.pop("eval_gt", None)
             logs_results.pop("eval_preds", None)
             if self.config.wandb.use:
-                wandb.log(logs_results)
+                if self.accelerator.is_main_process:
+                    wandb.log(logs_results)
             else:
                 print(logs_results)
                 
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
-            wandb.log({"best_eval_loss": best_eval_loss, **best_eval_metric})
+            if self.accelerator.is_main_process:
+                wandb.log({"best_eval_loss": best_eval_loss, **best_eval_metric})
 
     
     def train_epoch(self, epoch):
@@ -215,7 +221,7 @@ class MultiModalTrainer():
                 
             outputs = self._forward_model_inputs(batch, self.training_mode)
             loss = outputs.loss
-            loss.backward()
+            self.accelerator.backward(loss)
             self.optimizer.step()
             self.lr_scheduler.step()
             
@@ -446,11 +452,12 @@ class BaselineTrainer():
                                 modality=mod
                             )
                             if self.config.wandb.use:
-                                wandb.log({
-                                    "best_epoch": epoch,
-                                    f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
-                                    f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])}
-                                )
+                                if self.accelerator.is_main_process:
+                                    wandb.log({
+                                        "best_epoch": epoch,
+                                        f"best_gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
+                                        f"best_r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])}
+                                    )
                             else:
                                 gt_pred_fig["plot_gt_pred"].savefig(
                                     os.path.join(self.log_dir, f"best_gt_pred_fig_{mod}_{epoch}.png")
@@ -471,10 +478,11 @@ class BaselineTrainer():
                             active_neurons=next(iter(self.session_active_neurons.values()))[mod][:5],
                         )
                         if self.config.wandb.use:
-                            wandb.log({
-                                f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
-                                f"r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])
-                            })
+                            if self.accelerator.is_main_process:
+                                wandb.log({
+                                    f"gt_pred_fig_{mod}": wandb.Image(gt_pred_fig["plot_gt_pred"]),
+                                    f"r2_fig_{mod}": wandb.Image(gt_pred_fig["plot_r2"])
+                                })
                         else:
                             gt_pred_fig["plot_gt_pred"].savefig(
                                 os.path.join(self.log_dir, f"gt_pred_fig_{mod}_{epoch}.png")
@@ -483,16 +491,18 @@ class BaselineTrainer():
                                 os.path.join(self.log_dir, f"r2_fig_{mod}_{epoch}.png")
                             )
             if self.config.wandb.use:
-                wandb.log({
-                    "train_loss": train_epoch_results["train_loss"],
-                    "eval_loss": eval_epoch_results["eval_loss"],
-                    f"eval_trial_avg_{self.metric}": eval_epoch_results[f"eval_trial_avg_{self.metric}"]
-                })     
+                if self.accelerator.is_main_process:
+                    wandb.log({
+                        "train_loss": train_epoch_results["train_loss"],
+                        "eval_loss": eval_epoch_results["eval_loss"],
+                        f"eval_trial_avg_{self.metric}": eval_epoch_results[f"eval_trial_avg_{self.metric}"]
+                    })     
         self.save_model(name="last", epoch=epoch)
         
         if self.config.wandb.use:
-            wandb.log({"best_eval_loss": best_eval_loss,
-                       f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric})
+            if self.accelerator.is_main_process:
+                wandb.log({"best_eval_loss": best_eval_loss,
+                        f"best_eval_trial_avg_{self.metric}": best_eval_trial_avg_metric})
 
     
     def train_epoch(self, epoch):
