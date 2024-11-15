@@ -35,6 +35,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
+from accelerate.utils import DistributedDataParallelKwargs
 
 logging.basicConfig(level=logging.INFO) 
 
@@ -76,6 +77,7 @@ ap.add_argument(
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
 )
 ap.add_argument("--continue_pretrain", action="store_true")
+ap.add_argument("--multi_gpu", action="store_true")
 ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--dummy_load", action="store_true")
 ap.add_argument("--dummy_size", type=int, default=50000)
@@ -209,14 +211,6 @@ assert not os.path.exists(final_checkpoint) or args.overwrite, \
     "Last checkpoint exists and overwrite is False"
 os.makedirs(log_dir, exist_ok=True)
 
-if config.wandb.use:
-    wandb.init(
-        project=config.wandb.project, 
-        entity=config.wandb.entity, 
-        config=config,
-        name=log_name
-    )
-
 
 # ------------
 # SET UP MODEL
@@ -224,7 +218,20 @@ if config.wandb.use:
 
 logging.info(f"Start model training:")
 
-accelerator = Accelerator()
+if args.multi_gpu:
+    kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator = Accelerator(kwargs_handlers=[kwargs])
+else:
+    accelerator = Accelerator()
+
+if config.wandb.use:
+    if accelerator.is_main_process:
+        wandb.init(
+            project=config.wandb.project, 
+            entity=config.wandb.entity, 
+            config=config,
+            name=log_name
+        )
 
 if not args.continue_pretrain:
     encoder_embeddings = {}
@@ -252,12 +259,20 @@ if not args.continue_pretrain:
         **config.method.model_kwargs, 
         **meta_data
     )
-    optimizer = torch.optim.AdamW(
-        model.parameters(), 
-        lr=config.optimizer.lr, 
-        weight_decay=config.optimizer.wd, 
-        eps=config.optimizer.eps
-    )
+    if args.multi_gpu:
+        # Do not use optimizer with momentum for multi-GPU training
+        optimizer = torch.optim.SGD(
+            model.parameters(), 
+            lr=config.optimizer.lr, 
+            weight_decay=config.optimizer.wd, 
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            model.parameters(), 
+            lr=config.optimizer.lr, 
+            weight_decay=config.optimizer.wd, 
+            eps=config.optimizer.eps
+        )
     
     grad_accum_steps = config.optimizer.gradient_accumulation_steps
     

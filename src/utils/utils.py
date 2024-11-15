@@ -25,15 +25,16 @@ def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
             time.sleep(check_interval)  # Adjust the sleep interval as needed
 
 def set_seed(seed):
-    # set seed for reproducibility
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    
+    print("Global seed set to {}.".format(seed))
+
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.deterministic = True
-    print('seed set to {}'.format(seed))
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
 def move_batch_to_device(batch, device):
     # if batch values are tensors, move them to device
