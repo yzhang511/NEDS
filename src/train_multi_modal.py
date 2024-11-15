@@ -335,6 +335,7 @@ trainer_kwargs = {
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
     "config": config,
+    "multi_gpu": args.multi_gpu,
 }
 
 stop_dummy_load = threading.Event()

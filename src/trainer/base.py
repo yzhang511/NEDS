@@ -37,10 +37,14 @@ class MultiModalTrainer():
         self.config = kwargs.get("config", None)
         self.num_neurons = kwargs.get("num_neurons", None)
         self.eid_list = kwargs.get("eid_list", None)
+        self.multi_gpu = kwargs.get("multi_gpu", None)
 
         self.model_class = self.config.model.model_class
         self.session_active_neurons = {}   
-        self.mod_to_indx = self.model.module.mod_to_indx
+        if self.multi_gpu:
+            self.mod_to_indx = self.model.module.mod_to_indx
+        else:
+            self.mod_to_indx = self.model.mod_to_indx
         self.avail_mod = kwargs.get("avail_mod", None)
         self.avail_beh = kwargs.get("avail_beh", None)
         self.modal_filter = kwargs.get("modal_filter", None)

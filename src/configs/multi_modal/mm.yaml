@@ -35,7 +35,7 @@ encoder:
 
   transformer:
     use_rope: true
-    n_layers: 5           # number of transformer layers
+    n_layers: 6           # number of transformer layers
     hidden_size: 256     # hidden space of the transformer
     use_scalenorm: false  # use scalenorm  instead of layernorm
     n_heads: 8            # number of attentiomn heads
