@@ -303,7 +303,10 @@ else:
     optimizer = torch.load(pretrained_model_path)["optimizer"]
     lr_scheduler = torch.load(pretrained_model_path)["lr_sched"]
 
-model = accelerator.prepare(model)
+# model = accelerator.prepare(model)
+model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+    model, optimizer, train_dataloader, lr_scheduler
+)
 
 # -----------------------
 # TRACK MODEL & DATA SIZE
