@@ -4,13 +4,12 @@
 #SBATCH --partition=gpuA40x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
-#SBATCH -N 1
-#SBACTH --array=0
-#SBATCH -c 1
-#SBATCH --ntasks-per-node=1
+#SBATCH --nodes=2
+#SBATCH --ntasks=2
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=2
 #SBATCH --mem 100000
-#SBATCH --gpus=2
-#SBATCH -t 0-03
+#SBATCH -t 1-10
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -26,27 +25,51 @@ conda activate ibl-mm
 
 cd ../..
 
+nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
+nodes_array=($nodes)
+head_node=${nodes_array[0]}
+head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+
+echo Node IP: $head_node_ip
+export LOGLEVEL=INFO
+
+export LAUNCHER="torchrun \
+    --nnodes $SLURM_NNODES \
+    --nproc_per_node 1 \
+    --rdzv_id $RANDOM \
+    --rdzv_backend c10d \
+    --rdzv_endpoint $head_node_ip:29500 \
+    "
+export SCRIPT="src/train_multi_modal.py"
+
 if [ $model_mode = "mm" ]; then
-    accelerate launch src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
-                                    --mask_ratio $mask_ratio \
-                                    --mixed_training \
-                                    --num_sessions $num_sessions \
-                                    --dummy_size $dummy_size \
-                                    --model_mode $model_mode \
-                                    --multi_gpu
+    export SCRIPT_ARGS=" \
+            --eid $eid \
+            --base_path ./ \
+            --mask_ratio $mask_ratio \
+            --mixed_training \
+            --num_sessions $num_sessions \
+            --dummy_size $dummy_size \
+            --model_mode $model_mode \
+            --multi_gpu
+        "
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
-    accelerate launch src/train_multi_modal.py --eid $eid \
-                                    --base_path ./ \
-                                    --mask_ratio $mask_ratio \
-                                    --num_sessions $num_sessions \
-                                    --dummy_size $dummy_size \
-                                    --model_mode $model_mode \
-                                    --multi_gpu
+    export SCRIPT_ARGS=" \
+            --eid $eid \
+            --base_path ./ \
+            --mask_ratio $mask_ratio \
+            --num_sessions $num_sessions \
+            --dummy_size $dummy_size \
+            --model_mode $model_mode \
+            --multi_gpu
+        "
 else
     echo "model_mode: $model_mode not supported"
 fi
+
+export CMD="$LAUNCHER $SCRIPT $SCRIPT_ARGS" 
+srun $CMD
 
 cd script/yizi
 
