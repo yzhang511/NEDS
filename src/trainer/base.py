@@ -164,46 +164,47 @@ class MultiModalTrainer():
         for epoch in range(self.config.training.num_epochs):
             
             train_epoch_results = self.train_epoch(epoch)
-            eval_epoch_results = self.eval_epoch()
-            print(f"Epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
-            print(f"Epoch: {epoch} val loss: {eval_epoch_results['eval_loss']} val metric: {eval_epoch_results['eval_avg_metric']}")
 
-            if eval_epoch_results:
+            if self.accelerator.is_main_process:
 
-                for eval_name in best_eval_metric.keys():
-                    mode = eval_name.split("_")[1]
-                    if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
-                        best_eval_metric[eval_name] = eval_epoch_results[eval_name]
-                        print(
-                            f"Epoch: {epoch} best val {mode} metric: {best_eval_metric[eval_name]}"
-                        )
-                        self.save_model(name=f"best_{mode}", epoch=epoch)
-                        if self.config.wandb.use:
-                            if self.accelerator.is_main_process:
+                eval_epoch_results = self.eval_epoch()
+                print(f"Epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
+                print(f"Epoch: {epoch} val loss: {eval_epoch_results['eval_loss']} val metric: {eval_epoch_results['eval_avg_metric']}")
+
+                if eval_epoch_results:
+
+                    for eval_name in best_eval_metric.keys():
+                        mode = eval_name.split("_")[1]
+                        if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
+                            best_eval_metric[eval_name] = eval_epoch_results[eval_name]
+                            print(
+                                f"Epoch: {epoch} best val {mode} metric: {best_eval_metric[eval_name]}"
+                            )
+                            self.save_model(name=f"best_{mode}", epoch=epoch)
+                            if self.config.wandb.use:
                                 wandb.log({f"best_{mode}_epoch": epoch}) if self.config.wandb.use else None
-                
-                if eval_epoch_results["eval_avg_metric"] > best_eval_metric["eval_avg_metric"]:
-                    best_eval_loss = eval_epoch_results["eval_loss"]
-                    best_eval_metric["eval_avg_metric"] = eval_epoch_results["eval_avg_metric"]
-                    print(f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric['eval_avg_metric']}"
-                    )
-                    self.save_model(name="best", epoch=epoch)
-                    self._plot_log_epoch(epoch, eval_epoch_results)
-                    if self.config.wandb.use:
-                        if self.accelerator.is_main_process:
-                            wandb.log({"best_epoch": epoch})        
                     
-            if epoch % self.config.training.save_plot_every_n_epochs == 0:
-                self._plot_log_epoch(epoch, eval_epoch_results)
+                    if eval_epoch_results["eval_avg_metric"] > best_eval_metric["eval_avg_metric"]:
+                        best_eval_loss = eval_epoch_results["eval_loss"]
+                        best_eval_metric["eval_avg_metric"] = eval_epoch_results["eval_avg_metric"]
+                        print(f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric['eval_avg_metric']}"
+                        )
+                        self.save_model(name="best", epoch=epoch)
+                        self._plot_log_epoch(epoch, eval_epoch_results)
+                        if self.config.wandb.use:
+                            wandb.log({"best_epoch": epoch})        
                         
-            logs_results = {"epoch": epoch, **train_epoch_results, **eval_epoch_results}
-            logs_results.pop("eval_gt", None)
-            logs_results.pop("eval_preds", None)
-            if self.config.wandb.use:
-                if self.accelerator.is_main_process:
+                if epoch % self.config.training.save_plot_every_n_epochs == 0:
+                    self._plot_log_epoch(epoch, eval_epoch_results)
+
+                logs_results = {"epoch": epoch, **train_epoch_results, **eval_epoch_results}
+                logs_results.pop("eval_gt", None)
+                logs_results.pop("eval_preds", None)
+
+                if self.config.wandb.use:
                     wandb.log(logs_results)
-            else:
-                print(logs_results)
+                else:
+                    print(logs_results)
                 
         self.save_model(name="last", epoch=epoch)
         
@@ -368,7 +369,7 @@ class MultiModalTrainer():
         return {"plot_gt_pred": gt_pred_fig, "plot_r2": r2_fig}
 
     def save_model(self, name="last", epoch=0):
-        if self.accelerator.is_local_main_process:
+        if self.accelerator.is_main_process:
             print(f"Saving model: {name} to {self.log_dir}")
             dict_config = {
                 "epoch": epoch,
