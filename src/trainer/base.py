@@ -368,14 +368,15 @@ class MultiModalTrainer():
         return {"plot_gt_pred": gt_pred_fig, "plot_r2": r2_fig}
 
     def save_model(self, name="last", epoch=0):
-        print(f"Saving model: {name} to {self.log_dir}")
-        dict_config = {
-            "epoch": epoch,
-            "model": self.model,
-            "optimizer": self.optimizer,
-            "lr_sched": self.lr_scheduler,
-        }
-        torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
+        if self.accelerator.is_local_main_process:
+            print(f"Saving model: {name} to {self.log_dir}")
+            dict_config = {
+                "epoch": epoch,
+                "model": self.model,
+                "optimizer": self.optimizer,
+                "lr_sched": self.lr_scheduler,
+            }
+            torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
 
 
 
