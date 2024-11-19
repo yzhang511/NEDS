@@ -218,33 +218,35 @@ class LengthGroupedSampler(Sampler):
 
 class SessionSampler(Sampler):
     """Custom Sampler that batches data by session ID (eid)."""
-    def __init__(self, dataset, shuffle=True, seed=42):
+    def __init__(self, dataset, generator, shuffle=True, seed=42):
         self.data_source = dataset
         self.shuffle = shuffle
-        self.random_state = default_rng(seed)
+        self.generator = generator
         self.indices_by_eid = self._group_by_eid()
         
     def _group_by_eid(self):
         from collections import defaultdict
         indices_by_eid = defaultdict(list)
         for idx, data in enumerate(self.data_source):
-            indices_by_eid[data['eid']].append(idx)
+            indices_by_eid[data["eid"]].append(idx)
         return indices_by_eid
 
     def __iter__(self):
         group_indices = list(self.indices_by_eid.values())
         if self.shuffle:
-            np.random.shuffle(group_indices)
+            shuffled_indices = torch.randperm(len(group_indices), generator=self.generator)
+            group_indices = group_indices[shuffled_indices]
         for indices in group_indices:
             if self.shuffle:
-                np.random.shuffle(indices)
+                shuffled_indices = torch.randperm(len(indices), generator=self.generator)
+                indices = indices[shuffled_indices]
             yield from indices
 
     def __len__(self):
         return len(self.data_source)
 
 
-#####
+
 def calculate_weights(labels):
     unique_classes = np.unique(labels)
     class_counts = np.zeros(len(unique_classes))
@@ -310,8 +312,7 @@ class WeightedSessionSampler(Sampler):
                 yield from indices
 
     def __len__(self):
-        return len(self.data_source)
-#####  
+        return len(self.data_source) 
 
 
 class LengthStitchGroupedSampler(Sampler):
