@@ -78,12 +78,14 @@ ap.add_argument(
 )
 ap.add_argument("--continue_pretrain", action="store_true")
 ap.add_argument("--multi_gpu", action="store_true")
+ap.add_argument("--debug", action="store_true")
 ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--dummy_load", action="store_true")
 ap.add_argument("--dummy_size", type=int, default=50000)
 args = ap.parse_args()
 
-if args.multi_gpu:
+if args.debug:
+    # Debug using deterministic mode
     torch.use_deterministic_algorithms(True)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True

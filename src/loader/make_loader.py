@@ -7,7 +7,12 @@ from loader.base import (
     SessionSampler,
     WeightedSessionSampler
 )
-#from torch.utils.data.sampler import WeightedRandomSampler
+from torch.utils.data.sampler import WeightedRandomSampler
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    numpy.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 def calculate_weights(labels):
     unique_classes = np.unique(labels)
@@ -18,23 +23,26 @@ def calculate_weights(labels):
     weights = np.array([class_weights[int(l)] for l in labels])
     return weights
 
-def make_loader(dataset, 
-                 batch_size, 
-                 target = None,
-                 pad_to_right = True,
-                 sort_by_depth = False,
-                 sort_by_region = False,
-                 pad_value = 0.,
-                 max_time_length = 5000,
-                 max_space_length = 100,
-                 bin_size = 0.05,
-                 brain_region = 'all',
-                 load_meta=False,
-                 use_nemo=False,
-                 dataset_name = "ibl",
-                 stitching = False,
-                 seed=42,
-                 shuffle = True):
+def make_loader(
+    dataset, 
+    batch_size, 
+    target = None,
+    pad_to_right = True,
+    sort_by_depth = False,
+    sort_by_region = False,
+    pad_value = 0.,
+    max_time_length = 5000,
+    max_space_length = 100,
+    bin_size = 0.05,
+    brain_region = 'all',
+    load_meta=False,
+    use_nemo=False,
+    dataset_name = "ibl",
+    stitching = False,
+    seed=42,
+    shuffle = True,
+    weighted_sampler=False,
+):
     
     dataset = BaseDataset(dataset=dataset, 
                           target=target,
@@ -54,23 +62,37 @@ def make_loader(dataset,
     
     print(f"len(dataset): {len(dataset)}")
 
-    if stitching:
-        #####
-        session_sampler = SessionSampler(dataset=dataset, shuffle=shuffle, seed=seed)
-        #labels = [x["target"][0][-1] for x in dataset] # block variable
-        #weights = torch.from_numpy(calculate_weights(labels)).double()
-        #weighted_sampler = WeightedRandomSampler(weights, num_samples=len(weights))
+    generator = torch.Generator()
+    generator.manual_seed(seed)
 
-        #weighted_sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
-        
+    if stitching:
+        if weighted_sampler:
+            assert weighted_sampler == False, "Weighted sampler not seeded yet."
+            sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
+        else:
+            sampler = SessionSampler(dataset=dataset, generator=generator, shuffle=shuffle, seed=seed)
+
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            sampler=session_sampler, 
-            #sampler=weighted_sampler,
+            sampler=sampler, 
             batch_size=batch_size,
+            worker_init_fn=seed_worker,
+            generator=generator,
+            pin_memory=True,
         )
-        #####
     else:
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+        if weighted_sampler:
+            labels = [x["target"][0][-1] for x in dataset]   # weight samples according to block
+            weights = torch.from_numpy(calculate_weights(labels)).double()
+            sampler = WeightedRandomSampler(weights, num_samples=len(weights), generator=generator)
+            dataloader = torch.utils.data.DataLoader(
+                dataset, sampler=sampler, batch_size=batch_size, 
+                worker_init_fn=seed_worker, generator=generator, pin_memory=True,
+            )
+        else:
+            dataloader = torch.utils.data.DataLoader(
+                dataset, batch_size=batch_size, shuffle=shuffle, 
+                worker_init_fn=seed_worker, generator=generator, pin_memory=True,
+            )
 
     return dataloader
