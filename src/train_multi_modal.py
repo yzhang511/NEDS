@@ -30,6 +30,7 @@ from collections import defaultdict
 from loader.make_loader import make_loader
 from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
+from utils.optimizer import SparseLamb
 from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
@@ -82,6 +83,13 @@ ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--dummy_load", action="store_true")
 ap.add_argument("--dummy_size", type=int, default=50000)
 args = ap.parse_args()
+
+if args.multi_gpu:
+    torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    logging.info("Deterministic mode is activated. This will negatively impact performance.")
 
 eid = args.eid
 base_path = args.base_path
@@ -260,11 +268,13 @@ if not args.continue_pretrain:
         **meta_data
     )
     if args.multi_gpu:
-        # Do not use optimizer with momentum for multi-GPU training
-        optimizer = torch.optim.SGD(
+        # Be careful with optimizer using momentum for multi-device training
+        optimizer = SparseLamb(
             model.parameters(), 
             lr=config.optimizer.lr, 
             weight_decay=config.optimizer.wd, 
+            eps=config.optimizer.eps,
+            sparse=True, # Only update the values that are non-zero
         )
     else:
         optimizer = torch.optim.AdamW(
