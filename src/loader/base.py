@@ -235,11 +235,11 @@ class SessionSampler(Sampler):
         group_indices = list(self.indices_by_eid.values())
         if self.shuffle:
             shuffled_indices = torch.randperm(len(group_indices), generator=self.generator)
-            group_indices = group_indices[shuffled_indices]
+            group_indices = [group_indices[ind] for ind in shuffled_indices]
         for indices in group_indices:
             if self.shuffle:
                 shuffled_indices = torch.randperm(len(indices), generator=self.generator)
-                indices = indices[shuffled_indices]
+                indices = [indices[ind] for ind in shuffled_indices]
             yield from indices
 
     def __len__(self):
