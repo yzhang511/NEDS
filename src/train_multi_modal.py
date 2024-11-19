@@ -30,7 +30,6 @@ from collections import defaultdict
 from loader.make_loader import make_loader
 from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
-from utils.optimizer import SparseLamb
 from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
@@ -267,14 +266,13 @@ if not args.continue_pretrain:
         **config.method.model_kwargs, 
         **meta_data
     )
-    if args.multi_gpu:
+    if args.multi_gpu and args.num_sessions > 1:
         # Be careful with optimizer using momentum for multi-device training
-        optimizer = SparseLamb(
+        # Only update the momentum of non-zero grad
+        optimizer = torch.optim.SparseAdam(
             model.parameters(), 
             lr=config.optimizer.lr, 
-            weight_decay=config.optimizer.wd, 
             eps=config.optimizer.eps,
-            sparse=True, # Only update the values that are non-zero
         )
     else:
         optimizer = torch.optim.AdamW(
