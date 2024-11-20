@@ -317,23 +317,27 @@ if args.continue_pretrain:
     old_optimizer_state_dict = torch.load(pretrained_model_path)["optimizer"]
     old_lr_scheduler_state_dict = torch.load(pretrained_model_path)["lr_sched"]
 
-    new_model_state_dict = OrderedDict()
-    for k, v in old_model_state_dict.items():
-        new_model_state_dict[k.replace("module.", "")] = v
+    try: 
+        model = model.load_state_dict(old_model_state_dict)
+        optimizer = optimizer.load_state_dict(old_optimizer_state_dict)
+        lr_scheduler = lr_scheduler.load_state_dict(old_lr_scheduler_state_dict)
+    except:
+        new_model_state_dict = OrderedDict()
+        for k, v in old_model_state_dict.items():
+            new_model_state_dict[k.replace("module.", "")] = v
 
-    new_optimizer_state_dict = OrderedDict()
-    for k, v in old_optimizer_state_dict.items():
-        new_optimizer_state_dict[k.replace("module.", "")] = v
+        new_optimizer_state_dict = OrderedDict()
+        for k, v in old_optimizer_state_dict.items():
+            new_optimizer_state_dict[k.replace("module.", "")] = v
 
-    new_lr_scheduler_state_dict = OrderedDict()
-    for k, v in old_lr_scheduler_state_dict.items():
-        new_lr_scheduler_state_dict[k.replace("module.", "")] = v
+        new_lr_scheduler_state_dict = OrderedDict()
+        for k, v in old_lr_scheduler_state_dict.items():
+            new_lr_scheduler_state_dict[k.replace("module.", "")] = v
 
-    model = model.load_state_dict(new_model_state_dict)
-    optimizer = optimizer.load_state_dict(new_optimizer_state_dict)
-    lr_scheduler = lr_scheduler.load_state_dict(new_lr_scheduler_state_dict)
+        model = model.load_state_dict(new_model_state_dict)
+        optimizer = optimizer.load_state_dict(new_optimizer_state_dict)
+        lr_scheduler = lr_scheduler.load_state_dict(new_lr_scheduler_state_dict)
 
-# model = accelerator.prepare(model)
 model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
     model, optimizer, train_dataloader, lr_scheduler
 )
