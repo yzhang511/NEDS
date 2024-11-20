@@ -5,6 +5,7 @@ from tqdm import tqdm
 from math import ceil
 from pathlib import Path
 import torch
+from collections import OrderedDict
 from loader.make_loader import make_loader
 from utils.dataset_utils import load_ibl_dataset
 from datasets import (
@@ -67,6 +68,7 @@ def load_model_data_local(**kwargs):
     mask_mode = mask_name.split("_")[1]
     eid = kwargs["eid"]
     modal_filter = kwargs["modal_filter"]
+    model_mode = kwargs["model_mode"]
     neural_mods = kwargs["neural_mods"]
     static_mods = kwargs["static_mods"]
     dynamic_mods = kwargs["dynamic_mods"]
@@ -125,11 +127,14 @@ def load_model_data_local(**kwargs):
     )
 
     try:
-        model_state_dict = torch.load(model_path)["model"]
+        state_dict = torch.load(model_path)["model"]
     except:
-        model_state_dict = torch.load(model_path, map_location=torch.device("cpu"))["model"]
+        state_dict = torch.load(model_path, map_location=torch.device("cpu"))["model"]
 
-    model.load_state_dict(model_state_dict)
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        new_state_dict[k.replace("module.", "")] = v
+    model.load_state_dict(new_state_dict)
     
     # Change model to eval mode
     model.masker.ratio = 0

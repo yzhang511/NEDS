@@ -254,6 +254,7 @@ for ckpt_path in best_ckpt_path:
         "static_mods": static_mods,
         "dynamic_mods": dynamic_mods,
         "modal_filter": modal_filter,
+        "model_mode": model_mode,
     }      
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
     model_state_dict = model.state_dict()
