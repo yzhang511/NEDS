@@ -131,10 +131,13 @@ def load_model_data_local(**kwargs):
     except:
         state_dict = torch.load(model_path, map_location=torch.device("cpu"))["model"]
 
-    new_state_dict = OrderedDict()
-    for k, v in state_dict.items():
-        new_state_dict[k.replace("module.", "")] = v
-    model.load_state_dict(new_state_dict)
+    try:
+        model.load_state_dict(state_dict) 
+    except:
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            new_state_dict[k.replace("module.", "")] = v
+        model.load_state_dict(new_state_dict)
     
     # Change model to eval mode
     model.masker.ratio = 0
