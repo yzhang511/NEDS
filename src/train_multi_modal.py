@@ -25,6 +25,7 @@ from datasets import (
     load_from_disk, 
     concatenate_datasets
 )
+from collections import OrderedDict
 from accelerate import Accelerator
 from collections import defaultdict
 from loader.make_loader import make_loader
@@ -311,9 +312,26 @@ if args.continue_pretrain:
     pretrained_model_path = os.path.join(
         base_path, "results", pretrain_path, "pretrained", best_pretrain_ckpt
     )       
-    model = model.load_state_dict(torch.load(pretrained_model_path)["model"])
-    optimizer = optimizer.load_state_dict(torch.load(pretrained_model_path)["optimizer"])
-    lr_scheduler = lr_scheduler.load_state_dict(torch.load(pretrained_model_path)["lr_sched"])
+
+    old_model_state_dict = torch.load(pretrained_model_path)["model"]
+    old_optimizer_state_dict = torch.load(pretrained_model_path)["optimizer"]
+    old_lr_scheduler_state_dict = torch.load(pretrained_model_path)["lr_sched"]
+
+    new_model_state_dict = OrderedDict()
+    for k, v in old_model_state_dict.items():
+        new_model_state_dict[k.replace("module.", "")] = v
+
+    new_optimizer_state_dict = OrderedDict()
+    for k, v in old_optimizer_state_dict.items():
+        new_optimizer_state_dict[k.replace("module.", "")] = v
+
+    new_lr_scheduler_state_dict = OrderedDict()
+    for k, v in old_lr_scheduler_state_dict.items():
+        new_lr_scheduler_state_dict[k.replace("module.", "")] = v
+
+    model = model.load_state_dict(new_model_state_dict)
+    optimizer = optimizer.load_state_dict(new_optimizer_state_dict)
+    lr_scheduler = lr_scheduler.load_state_dict(new_lr_scheduler_state_dict)
 
 # model = accelerator.prepare(model)
 model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
