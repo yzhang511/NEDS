@@ -242,58 +242,60 @@ if config.wandb.use:
             name=log_name
         )
 
-if not args.continue_pretrain:
-    encoder_embeddings = {}
-    
-    hidden_size = config.model.encoder.transformer.hidden_size
-    for mod in modal_filter["input"]:
-        encoder_embeddings[mod] = EncoderEmbedding(
-            hidden_size = hidden_size,
-            n_channel = hidden_size,
-            output_channel = hidden_size,
-            stitching = True,
-            eid_list = meta_data["eid_list"],
-            mod = mod,
-            config = config.model.encoder,
-        )
-    
-    NAME2MODEL = {"MultiModal": MultiModal}
-    model_class = NAME2MODEL[config.model.model_class]
-    model = model_class(
-        encoder_embeddings,
-        avail_mod = neural_mods + static_mods + dynamic_mods,
-        avail_beh = static_mods + dynamic_mods,
-        model_mode = model_mode,
-        config = config.model, 
-        **config.method.model_kwargs, 
-        **meta_data
+
+encoder_embeddings = {}
+
+hidden_size = config.model.encoder.transformer.hidden_size
+for mod in modal_filter["input"]:
+    encoder_embeddings[mod] = EncoderEmbedding(
+        hidden_size = hidden_size,
+        n_channel = hidden_size,
+        output_channel = hidden_size,
+        stitching = True,
+        eid_list = meta_data["eid_list"],
+        mod = mod,
+        config = config.model.encoder,
     )
-    if args.multi_gpu and args.num_sessions > 1:
-        # Be careful with optimizer using momentum for multi-device training
-        # Only update the momentum of non-zero grad
-        optimizer = torch.optim.SparseAdam(
-            model.parameters(), 
-            lr=config.optimizer.lr, 
-            eps=config.optimizer.eps,
-        )
-    else:
-        optimizer = torch.optim.AdamW(
-            model.parameters(), 
-            lr=config.optimizer.lr, 
-            weight_decay=config.optimizer.wd, 
-            eps=config.optimizer.eps
-        )
-    
-    grad_accum_steps = config.optimizer.gradient_accumulation_steps
-    
-    lr_scheduler = OneCycleLR(
-        optimizer = optimizer,
-        total_steps = config.training.num_epochs*len(train_dataloader)//grad_accum_steps,
-        max_lr = config.optimizer.lr,
-        pct_start = config.optimizer.warmup_pct,
-        div_factor = config.optimizer.div_factor,
+
+NAME2MODEL = {"MultiModal": MultiModal}
+model_class = NAME2MODEL[config.model.model_class]
+model = model_class(
+    encoder_embeddings,
+    avail_mod = neural_mods + static_mods + dynamic_mods,
+    avail_beh = static_mods + dynamic_mods,
+    model_mode = model_mode,
+    config = config.model, 
+    **config.method.model_kwargs, 
+    **meta_data
+)
+if args.multi_gpu and args.num_sessions > 1:
+    # Be careful with optimizer using momentum for multi-device training
+    # Only update the momentum of non-zero grad
+    optimizer = torch.optim.SparseAdam(
+        model.parameters(), 
+        lr=config.optimizer.lr, 
+        eps=config.optimizer.eps,
     )
 else:
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
+        lr=config.optimizer.lr, 
+        weight_decay=config.optimizer.wd, 
+        eps=config.optimizer.eps
+    )
+
+grad_accum_steps = config.optimizer.gradient_accumulation_steps
+
+lr_scheduler = OneCycleLR(
+    optimizer = optimizer,
+    total_steps = config.training.num_epochs*len(train_dataloader)//grad_accum_steps,
+    max_lr = config.optimizer.lr,
+    pct_start = config.optimizer.warmup_pct,
+    div_factor = config.optimizer.div_factor,
+)
+
+if args.continue_pretrain:
+
     best_pretrain_ckpt = "model_best_spike.pt"
     pretrain_path = \
     "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
@@ -309,9 +311,9 @@ else:
     pretrained_model_path = os.path.join(
         base_path, "results", pretrain_path, "pretrained", best_pretrain_ckpt
     )       
-    model = torch.load(pretrained_model_path)["model"]
-    optimizer = torch.load(pretrained_model_path)["optimizer"]
-    lr_scheduler = torch.load(pretrained_model_path)["lr_sched"]
+    model = model.load_state_dict(torch.load(pretrained_model_path)["model"])
+    optimizer = optimizer.load_state_dict(torch.load(pretrained_model_path)["optimizer"])
+    lr_scheduler = lr_scheduler.load_state_dict(torch.load(pretrained_model_path)["lr_sched"])
 
 # model = accelerator.prepare(model)
 model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
