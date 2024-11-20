@@ -373,9 +373,9 @@ class MultiModalTrainer():
             print(f"Saving model: {name} to {self.log_dir}")
             dict_config = {
                 "epoch": epoch,
-                "model": self.model,
-                "optimizer": self.optimizer,
-                "lr_sched": self.lr_scheduler,
+                "model": self.model.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "lr_sched": self.lr_scheduler.state_dict(),
             }
             torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
 
@@ -643,7 +643,8 @@ class BaselineTrainer():
         print(f"saving model: {name} to {self.log_dir}")
         dict_config = {
             "epoch": epoch,
-            "model": self.model,
+            # TO DO: Change to save state dict for multi-device training
+            "model": self.model, 
             "optimizer": self.optimizer,
             "lr_sched": self.lr_scheduler,
         }

@@ -165,8 +165,10 @@ for ckpt_path in best_ckpt_path:
         "seed": 42,
         "mask_name": mask_name,
         "eid": eid,
-        "avail_mod": neural_mods + static_mods + dynamic_mods,
-        "avail_beh": static_mods + dynamic_mods,
+        "neural_mods": neural_mods,
+        "static_mods": static_mods,
+        "dynamic_mods": dynamic_mods,
+        "modal_filter": modal_filter,
     }      
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
     model_state_dict = model.state_dict()

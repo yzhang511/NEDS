@@ -23,6 +23,7 @@ from utils.utils import (
     plot_neurons_r2,
 )
 from utils.config_utils import config_from_kwargs, update_config
+from multi_modal.encoder_embeddings import EncoderEmbedding
 from multi_modal.mm import MultiModal
 from accelerate import Accelerator
 import matplotlib.pyplot as plt
@@ -65,8 +66,12 @@ def load_model_data_local(**kwargs):
     mask_name = kwargs["mask_name"]
     mask_mode = mask_name.split("_")[1]
     eid = kwargs["eid"]
-    avail_mod = kwargs["avail_mod"]
-    avail_beh = kwargs["avail_beh"]
+    modal_filter = kwargs["modal_filter"]
+    neural_mods = kwargs["neural_mods"]
+    static_mods = kwargs["static_mods"]
+    dynamic_mods = kwargs["dynamic_mods"]
+    avail_mod = neural_mods + static_mods + dynamic_mods
+    avail_beh = static_mods + dynamic_mods
 
     set_seed(seed)
 
@@ -93,17 +98,45 @@ def load_model_data_local(**kwargs):
 
     logger.info(f"Load test data with {n_neurons} neurons.")
 
-    accelerator = Accelerator()
+    encoder_embeddings = {}
+
+    hidden_size = config.model.encoder.transformer.hidden_size
+    for mod in modal_filter["input"]:
+        encoder_embeddings[mod] = EncoderEmbedding(
+            hidden_size = hidden_size,
+            n_channel = hidden_size,
+            output_channel = hidden_size,
+            stitching = True,
+            eid_list = meta_data["eid_list"],
+            mod = mod,
+            config = config.model.encoder,
+        )
+
+    NAME2MODEL = {"MultiModal": MultiModal}
+    model_class = NAME2MODEL[config.model.model_class]
+    model = model_class(
+        encoder_embeddings,
+        avail_mod = neural_mods + static_mods + dynamic_mods,
+        avail_beh = static_mods + dynamic_mods,
+        model_mode = model_mode,
+        config = config.model, 
+        **config.method.model_kwargs, 
+        **meta_data
+    )
+
     try:
-        model = torch.load(model_path)["model"]
+        model_state_dict = torch.load(model_path)["model"]
     except:
-        model = torch.load(model_path, map_location=torch.device("cpu"))["model"]
+        model_state_dict = torch.load(model_path, map_location=torch.device("cpu"))["model"]
+
+    model.load_state_dict(model_state_dict)
     
     # Change model to eval mode
     model.masker.ratio = 0
     model.masker.mask_regions = []
     model.masker.target_regions = []
-    
+
+    accelerator = Accelerator()
     model = accelerator.prepare(model)
     
     dataloader = make_loader(
