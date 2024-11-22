@@ -371,12 +371,20 @@ class MultiModalTrainer():
     def save_model(self, name="last", epoch=0):
         if self.accelerator.is_main_process:
             print(f"Saving model: {name} to {self.log_dir}")
-            dict_config = {
-                "epoch": epoch,
-                "model": self.model.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-                "lr_sched": self.lr_scheduler.state_dict(),
-            }
+            if self.multi_gpu:
+                dict_config = {
+                    "epoch": epoch,
+                    "model": self.model.module.state_dict(),
+                    "optimizer": self.optimizer.module.state_dict(),
+                    "lr_sched": self.lr_scheduler.module.state_dict(),
+                }
+            else:
+                dict_config = {
+                    "epoch": epoch,
+                    "model": self.model.state_dict(),
+                    "optimizer": self.optimizer.state_dict(),
+                    "lr_sched": self.lr_scheduler.state_dict(),
+                }
             torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
 
 
