@@ -255,14 +255,19 @@ class MultiModalTrainer():
                         outputs = self._forward_model_inputs(batch, training_mode="encoding")
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
-                        for idx in range(len(eid)):
-                            num_neuron = sum(space_attn_mask[idx] != 0)
-                            session_results[eid[idx]]["spike"]["gt"].append(
-                                outputs.mod_targets["spike"][idx,:,:num_neuron].unsqueeze(0)
-                            )
-                            session_results[eid[idx]]["spike"]["preds"].append(
-                                outputs.mod_preds["spike"][idx,:,:num_neuron].unsqueeze(0)
-                            )
+                        unique_eids = torch.unique(eid)
+                        for group_eid in unique_eids:
+                            mask = eid == group_eid
+                            _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
+                            _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
+                            if sum(mask) == 1:
+                                num_neuron = sum(space_attn_mask[mask] != 0)
+                                _gt = _gt.unsqueeze(0)
+                                _pred = _pred.unsqueeze(0)
+                            else:
+                                num_neuron = sum(space_attn_mask[mask][0] != 0)
+                            session_results[eid[idx]]["spike"]["gt"].append(_gt)
+                            session_results[eid[idx]]["spike"]["preds"].append(_pred)
     
                 if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
@@ -271,13 +276,16 @@ class MultiModalTrainer():
                         eval_loss += outputs.loss.item()
                         for mod in self.avail_beh:
                             mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]     
-                            for idx in range(len(eid)):   
-                                session_results[eid[idx]][mod]["gt"].append(
-                                    outputs.mod_targets[mod][idx].unsqueeze(0)
-                                )
-                                session_results[eid[idx]][mod]["preds"].append(
-                                    outputs.mod_preds[mod][idx].unsqueeze(0)
-                                )
+                            unique_eids = torch.unique(eid)
+                            for group_eid in unique_eids:
+                                mask = eid == group_eid
+                                _gt = outputs.mod_targets[mod][mask]
+                                _pred = outputs.mod_preds[mod][mask]
+                                if sum(mask) == 1:
+                                    _gt = _gt.unsqueeze(0)
+                                    _pred = _pred.unsqueeze(0)
+                                session_results[eid[idx]][mod]["gt"].append(_gt)
+                                session_results[eid[idx]][mod]["preds"].append(_pred)
 
         return session_results, eval_loss, mod_loss_dict
     
