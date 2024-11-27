@@ -196,7 +196,7 @@ class MultiModal(nn.Module):
             mod_loss[mod] = loss
             mod_n_examples[mod] = n_examples
             mod_preds[mod] = preds
-            mod_targets[mod] = targetssqu
+            mod_targets[mod] = targets
                 
         loss = sum(mod_loss.values())
 
