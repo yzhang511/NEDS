@@ -32,14 +32,18 @@ class StitchEncoder(nn.Module):
         self.act = nn.Softsign()
 
     def forward(self, x, eid):
-        out = []
-        for idx in range(len(x)):
-            tmp = self.stitcher_dict[eid[idx]](x[idx].unsqueeze(0))
+        B, T, _ = x.size()
+        out = torch.empty((B,T,self.P), device=x.device)
+        unique_eids = torch.unique(eid)
+        for group_eid in unique_eids:
+            mask = eid == group_eid
+            x_group = x[mask]
+            stitched = self.stitcher_dict[group_eid](x_group)
             if self.mod in STATIC_VARS:
-                tmp = tmp.reshape(1, -1, 2)
-            tmp = self.act(tmp) * self.scale
-            out.append(self.project_dict[eid[idx]](tmp))
-        return torch.cat(out, dim=0).to(x.device)
+                stitched = stitched.reshape(stitched.shape[0], -1, 2)
+            stitched = self.act(stitched) * self.scale
+            out[mask] = self.project_dict[group_eid](stitched)
+        return out
 
 
 class StitchDecoder(nn.Module):
@@ -68,8 +72,12 @@ class StitchDecoder(nn.Module):
 
     def forward(self, x, eid):
         x = x.reshape(len(eid), -1, self.P)
-        out = []
-        for idx in range(len(x)):
-            out.append(self.stitch_decoder_dict[eid[idx]](x[idx]))
-        return torch.cat(out, dim=0).to(x.device)
+        B, T, _ = x.size()
+        out = torch.empty((B,T,self.N), device=x.device)
+        unique_eids = torch.unique(eid)
+        for group_eid in unique_eids:
+            mask = eid == group_eid
+            x_group = x[mask]
+            out[mask] = self.stitch_decoder_dict[group_eid](x_group)
+        return out
 
