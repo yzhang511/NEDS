@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 
@@ -17,6 +18,7 @@ class StitchEncoder(nn.Module):
 
         self.mod = mod
         self.P = n_channels
+        self.max_F = max_F
         self.N = max(list(eid_list.values()))
         stitcher_dict, project_dict = {}, {}
         for key, val in eid_list.items():
@@ -32,11 +34,10 @@ class StitchEncoder(nn.Module):
         self.act = nn.Softsign()
 
     def forward(self, x, eid):
-        B, T, _ = x.size()
-        out = torch.empty((B,T,self.P), device=x.device)
-        unique_eids = torch.unique(eid)
+        out = torch.zeros((len(x), self.max_F, self.P), device=x.device)
+        unique_eids = list(set(eid))
         for group_eid in unique_eids:
-            mask = eid == group_eid
+            mask = [i for i, x in enumerate(eid) if x == group_eid]
             x_group = x[mask]
             stitched = self.stitcher_dict[group_eid](x_group)
             if self.mod in STATIC_VARS:
@@ -58,7 +59,7 @@ class StitchDecoder(nn.Module):
         self.mod = mod
         self.max_F = max_F
         self.P = n_channels
-        self.N = max(list(eid_list.values()))
+        max_num_neuron = max(list(eid_list.values()))
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
             if mod in STATIC_VARS:
@@ -66,17 +67,18 @@ class StitchDecoder(nn.Module):
             elif mod in DYNAMIC_VARS:
                 val, mult = OUTPUT_DIM[mod], 1
             else:
-                val, mult = self.N, 1
+                val, mult = max_num_neuron, 1
             stitch_decoder_dict[str(key)] = nn.Linear(n_channels * mult, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
+        self.N = max_num_neuron if mod == "spike" else val
 
     def forward(self, x, eid):
         x = x.reshape(len(eid), -1, self.P)
         B, T, _ = x.size()
-        out = torch.empty((B,T,self.N), device=x.device)
-        unique_eids = torch.unique(eid)
+        out = torch.zeros((B,T,self.N), device=x.device)
+        unique_eids = list(set(eid))
         for group_eid in unique_eids:
-            mask = eid == group_eid
+            mask = [i for i, x in enumerate(eid) if x == group_eid]
             x_group = x[mask]
             out[mask] = self.stitch_decoder_dict[group_eid](x_group)
         return out

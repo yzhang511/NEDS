@@ -134,10 +134,10 @@ class EncoderEmbedding(nn.Module):
         if hasattr(self, "mod_stitcher_proj_dict"):
             if hasattr(self, "mod_static_weight_dict"):
                 weight = torch.empty_like(y_mod.reshape(B,-1,P), device=y.device) 
-                unique_eids = torch.unique(d["eid"])
+                unique_eids = list(set(d["eid"]))
                 for group_eid in unique_eids:
-                    mask = d["eid"] == group_eid
-                    weight[mask] = self.mod_static_weight_dict[group_eid][None,:,None].expand(mask.sum(),-1,P)
+                    mask = [i for i, x in enumerate(d["eid"]) if x == group_eid]
+                    weight[mask] = self.mod_static_weight_dict[group_eid][None,:,None].expand(len(mask),-1,P)
                 y_mod = torch.sum(
                     y_mod.reshape(B,-1,P) * weight, 1
                 ).reshape(B,-1)
