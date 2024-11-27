@@ -113,7 +113,8 @@ class MultiModalTrainer():
             mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
             mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
             mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
-            mod_dict[mod]["eid"] = batch["eid"][0]  # Each batch is from the same EID now
+            # Each batch contains samples from different sessions
+            mod_dict[mod]["eid"] = batch["eid"]
             mod_dict[mod]["num_neuron"] = batch["spikes_data"].shape[-1]
             mod_dict[mod]["training_mode"] = training_mode
             
@@ -249,26 +250,34 @@ class MultiModalTrainer():
                     
                 if "spike" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
-                        num_neuron, eid = batch["spikes_data"].shape[-1], batch["eid"][0]
+                        eid = batch["eid"]
+                        space_attn_mask = batch["space_attn_mask"]
                         outputs = self._forward_model_inputs(batch, training_mode="encoding")
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
-                        session_results[eid]["spike"]["gt"].append(
-                            outputs.mod_targets["spike"][...,:num_neuron]
-                        )
-                        session_results[eid]["spike"]["preds"].append(
-                            outputs.mod_preds["spike"][...,:num_neuron]
-                        )
+                        for idx in range(len(eid)):
+                            num_neuron = sum(space_attn_mask[idx] != 0)
+                            session_results[eid[idx]]["spike"]["gt"].append(
+                                outputs.mod_targets["spike"][idx,:,:num_neuron].unsqueeze(0)
+                            )
+                            session_results[eid[idx]]["spike"]["preds"].append(
+                                outputs.mod_preds["spike"][idx,:,:num_neuron].unsqueeze(0)
+                            )
     
                 if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
-                        eid = batch["eid"][0]
+                        eid = batch["eid"]
                         outputs = self._forward_model_inputs(batch, training_mode="decoding")
                         eval_loss += outputs.loss.item()
                         for mod in self.avail_beh:
-                            mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]                       
-                            session_results[eid][mod]["gt"].append(outputs.mod_targets[mod].clone())
-                            session_results[eid][mod]["preds"].append(outputs.mod_preds[mod].clone())
+                            mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]     
+                            for idx in range(len(eid)):   
+                                session_results[eid[idx]][mod]["gt"].append(
+                                    outputs.mod_targets[mod][idx].unsqueeze(0)
+                                )
+                                session_results[eid[idx]][mod]["preds"].append(
+                                    outputs.mod_preds[mod][idx].unsqueeze(0)
+                                )
 
         return session_results, eval_loss, mod_loss_dict
     
@@ -375,8 +384,8 @@ class MultiModalTrainer():
                 dict_config = {
                     "epoch": epoch,
                     "model": self.model.module.state_dict(),
-                    "optimizer": self.optimizer.module.state_dict(),
-                    "lr_sched": self.lr_scheduler.module.state_dict(),
+                    "optimizer": self.optimizer.state_dict(),
+                    "lr_sched": self.lr_scheduler.state_dict(),
                 }
             else:
                 dict_config = {

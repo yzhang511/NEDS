@@ -123,7 +123,6 @@ class MultiModal(nn.Module):
         input_timestamp = torch.cat(input_timestamp, dim=1)
         encoder_mask = torch.cat(encoder_mask, dim=1)
         mod_mask = torch.cat(mod_mask, dim=1).to(torch.int16)
-
         return encoder_tokens, encoder_emb, input_timestamp, encoder_mask, mod_mask
 
     
@@ -170,6 +169,8 @@ class MultiModal(nn.Module):
 
             mod_type = self.mod_type[mod]
             if mod_type != "static":
+                pad_mask = targets != -1.
+                targets_mask = torch.mul(targets_mask, pad_mask)
                 n_examples = targets_mask.sum()
                 if n_examples != 0:
                     assert preds.shape == targets.shape == targets_mask.shape, \
@@ -185,7 +186,7 @@ class MultiModal(nn.Module):
                     mod_loss[mod], mod_n_examples[mod], mod_preds[mod], mod_targets[mod] = \
                     0., n_examples, preds, targets
                     continue                
-                static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1)    
+                static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1)   
                 targets = F.one_hot(
                     targets.to(torch.int64), num_classes=self.num_class[mod]
                 ).squeeze(1)               

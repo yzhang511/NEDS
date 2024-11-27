@@ -150,7 +150,6 @@ def load_model_data_local(**kwargs):
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        use_nemo=False, 
         shuffle=False,
         seed=config.seed,
         stitching=False,
@@ -187,10 +186,7 @@ def co_smoothing_eval(
     target_regions = kwargs["target_regions"]
     T = kwargs["n_time_steps"]
 
-    if sum(batch["space_attn_mask"][0] == 0) == 0:
-        N = batch["space_attn_mask"].size()[-1]
-    else:
-        N = (batch["space_attn_mask"][0] == 0).nonzero().min().item() 
+    N = sum(batch["space_attn_mask"][0] != 0)
         
     uuids_list = np.array(test_dataset["cluster_uuids"][0])[:N]
     region_list = np.array(test_dataset["cluster_regions"])[0][:N]
@@ -263,8 +259,9 @@ def co_smoothing_eval(
                         mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
                         mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
                         mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
-                        mod_dict[mod]["eid"] = batch["eid"][0]  # Each batch is from the same EID now
-                        mod_dict[mod]["num_neuron"] = batch["spikes_data"].shape[-1]
+                        # Each batch contains samples from different sessions
+                        mod_dict[mod]["eid"] = batch["eid"]
+                        mod_dict[mod]["num_neuron"] = N
                         mod_dict[mod]["training_mode"] = "encoding"
 
                         if mod == "spike":
@@ -365,8 +362,9 @@ def co_smoothing_eval(
                         mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
                         mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
                         mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
-                        mod_dict[mod]["eid"] = batch["eid"][0]
-                        mod_dict[mod]["num_neuron"] = batch["spikes_data"].shape[-1]
+                        # Each batch contains samples from different sessions
+                        mod_dict[mod]["eid"] = batch["eid"]
+                        mod_dict[mod]["num_neuron"] = N
                         mod_dict[mod]['training_mode'] = "decoding"
 
                         if mod == "spike":

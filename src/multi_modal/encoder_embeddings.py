@@ -72,9 +72,10 @@ class EncoderEmbeddingLayer(nn.Module):
 
         if self.pos:
             x_embed += self.pos_embed(inputs_timestamp)
-        
-        session_idx = torch.tensor(self.eid_to_indx[eid]).to(inputs.device, torch.int64)
-        x_embed += self.session_emb(session_idx)[None,None,:].expand(B,N,-1).clone()
+
+        for idx in range(len(eid)):
+            session_idx = torch.tensor(self.eid_to_indx[eid[idx]]).to(x.device, torch.int64)
+            x_embed[idx] += self.session_emb(session_idx)[None,:].expand(N,-1)
 
         return self.dropout(x), x_embed
 
@@ -132,9 +133,14 @@ class EncoderEmbedding(nn.Module):
         
         if hasattr(self, "mod_stitcher_proj_dict"):
             if hasattr(self, "mod_static_weight_dict"):
+                weight = []
+                for idx in range(B):
+                    weight.append(
+                        self.mod_static_weight_dict[d["eid"][idx]][None,:,None].expand(1,-1,P)
+                    )
+                weight = torch.cat(weight, dim=0).to(y.device)
                 y_mod = torch.sum(
-                    y_mod.reshape(B,-1,P) * \
-                    self.mod_static_weight_dict[d["eid"]][None,:,None].expand(B,-1,P), 1
+                    y_mod.reshape(B,-1,P) * weight, 1
                 ).reshape(B,-1)
             preds = self.mod_stitcher_proj_dict(y_mod, d["eid"])
             d["preds"] = preds.reshape((B,-1,preds.size()[-1])) \

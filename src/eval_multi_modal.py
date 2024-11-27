@@ -145,7 +145,7 @@ if args.wandb:
 if args.model_mode == "mm":
     best_ckpt_path = [
         "model_best_avg.pt", 
-        #"model_best_spike.pt",
+        # "model_best_spike.pt",
         #"model_best_wheel.pt", 
         #"model_best_whisker.pt",
         #"model_best_choice.pt",

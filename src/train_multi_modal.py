@@ -32,6 +32,7 @@ from loader.make_loader import make_loader
 from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
 from multi_modal.mm import MultiModal
+from torch_optimizer import Lamb
 from torch.optim.lr_scheduler import OneCycleLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
@@ -142,6 +143,8 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     seed=config.seed
 )
 
+max_space_length = max(list(meta_data["eid_list"].values()))
+
 train_dataloader = make_loader(
     train_dataset, 
     target=[mod for mod in modality if mod in dynamic_acronyms],
@@ -150,7 +153,7 @@ train_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
@@ -167,7 +170,7 @@ val_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
@@ -184,7 +187,7 @@ test_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
@@ -272,13 +275,14 @@ model = model_class(
 if args.multi_gpu and args.num_sessions > 1:
     # Be careful with optimizer using momentum for multi-device training
     # Only update the momentum of non-zero grad
-    optimizer = torch.optim.SparseAdam(
+    optimizer = torch.optim.AdamW(
         model.parameters(), 
         lr=config.optimizer.lr, 
-        eps=config.optimizer.eps,
+        weight_decay=config.optimizer.wd, 
+        eps=config.optimizer.eps
     )
 else:
-    optimizer = torch.optim.AdamW(
+    optimizer = Lamb(
         model.parameters(), 
         lr=config.optimizer.lr, 
         weight_decay=config.optimizer.wd, 

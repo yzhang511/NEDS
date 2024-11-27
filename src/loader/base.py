@@ -354,7 +354,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self,
         dataset,
         target=None,
-        pad_value = 0.,
+        pad_value = -1.,
         max_time_length = 5000,
         max_space_length = 1000,
         bin_size = 0.05,
@@ -366,8 +366,8 @@ class BaseDataset(torch.utils.data.Dataset):
         brain_region = 'all',
         dataset_name = "ibl",
         stitching = False,
-        use_nemo = False,
     ) -> None:
+
         self.dataset = dataset
         self.target = target
         self.pad_value = pad_value
@@ -382,7 +382,6 @@ class BaseDataset(torch.utils.data.Dataset):
         self.load_meta = load_meta
         self.dataset_name = dataset_name
         self.stitching = stitching
-        self.use_nemo = use_nemo
 
     def _preprocess_h5_data(self, data, idx):
         spike_data, rates, _, _ = data
@@ -402,173 +401,126 @@ class BaseDataset(torch.utils.data.Dataset):
                 "attention_mask": attention_mask}
 
     def _preprocess_ibl_data(self, data):
-        spikes_sparse_data_list = [data['spikes_sparse_data']]
-        spikes_sparse_indices_list = [data['spikes_sparse_indices']]
-        spikes_sparse_indptr_list = [data['spikes_sparse_indptr']]
-        spikes_sparse_shape_list = [data['spikes_sparse_shape']]
 
-        # [bs, n_bin, n_spikes]
-        binned_spikes_data = get_binned_spikes_from_sparse(spikes_sparse_data_list, 
-                                                           spikes_sparse_indices_list, 
-                                                           spikes_sparse_indptr_list, 
-                                                           spikes_sparse_shape_list)
-        if self.target is not None:
-            target_behavior = []
-            target_behavior_dict = {}
-            for beh_name in self.target:
-                beh = np.array(data[beh_name]).astype(np.float32)
-                target_behavior.append(beh)
-                target_behavior_dict[beh_name.split('-')[0]] = beh
-            target_behavior = np.array(target_behavior).T
+        # Get sparse data and spike indices
+        spikes_sparse_data = [data['spikes_sparse_data']]
+        spikes_sparse_indices = [data['spikes_sparse_indices']]
+        spikes_sparse_indptr = [data['spikes_sparse_indptr']]
+        spikes_sparse_shape = [data['spikes_sparse_shape']]
+
+        # Get binned spikes data from sparse representation
+        binned_spikes_data = get_binned_spikes_from_sparse(
+            spikes_sparse_data, spikes_sparse_indices, spikes_sparse_indptr, spikes_sparse_shape
+        )[0]
+
+        # Prepare target behavior
+        if self.target:
+            target_behavior, target_behavior_dict = self._prepare_target_behavior(data)
         else:
             target_behavior = np.array([np.nan])
 
-        choice = np.array(data['choice']).astype(np.float32)
-        block = np.array(data['block']).astype(np.float32)
-        reward = np.array(data['reward']).astype(np.float32)
+        # Prepare choice, block, and reward data
+        static_vars = ['choice', 'block', 'reward']
+        choice, block, reward = map(self._prepare_column_data, static_vars, [data] * len(static_vars))
 
-        #####
-        # select the first idx value of the target_behavior
+        # Prepare lookup dictionaries
         choice_lookup = {'-1.0': 0, '1.0': 1}
         block_lookup = {'0.2': 0, '0.5': 1, '0.8': 2}
-        T,_ = target_behavior.shape
-        _choice = np.array(
-           T * [choice_lookup[str(x)] for x in choice]
-        ).reshape(-1,1)
-        _block = np.array(
-           T * [block_lookup[str(x)] for x in block]
-        ).reshape(-1,1)
-        choice = np.array([choice_lookup[str(x)] for x in choice]).astype(np.float32)
-        block = np.array([block_lookup[str(x)] for x in block]).astype(np.float32)
-        
-        target_behavior = np.concatenate(
-            (target_behavior, _choice, _block), axis=1
-        ).astype(np.float32)
-        #####
+
+        # Create lookup arrays for choice and block
+        _choice, _block = self._apply_lookups(choice, block, choice_lookup, block_lookup, target_behavior.shape[0])
+        choice, block = np.float32(_choice[0]), np.float32(_block[0])
+    
+        # Combine target_behavior with choice and block
+        target_behavior = np.concatenate([target_behavior, _choice, _block], axis=1).astype(np.float32)
+
+        # Adjust neuron IDs
+        include_neuron_ids = np.arange(binned_spikes_data.shape[-1]).astype(np.int64)
+        binned_spikes_data = binned_spikes_data[:, include_neuron_ids].squeeze()
+
+        # Process metadata if `load_meta` is set
+        neuron_depths, neuron_regions = self._load_neuron_metadata(
+            data, include_neuron_ids
+        ) if self.load_meta else (np.array([np.nan]), np.array([np.nan]))
+
+        # Sort data if specified
+        binned_spikes_data, neuron_depths, neuron_regions = self._sort_data_by_depth_or_region(
+            binned_spikes_data, neuron_depths, neuron_regions
+        )
             
-        binned_spikes_data = binned_spikes_data[0]
+        # Pad along time and space dimensions
+        binned_spikes_data, pad_time_length = self._pad_data(binned_spikes_data, self.max_time_length, axis=0)
+        binned_spikes_data, pad_space_length = self._pad_data(binned_spikes_data, self.max_space_length, axis=1)
 
-        if self.use_nemo:
-            neuron_uuids = np.array(data['cluster_uuids']).astype('str')
-            with open('data/MtM_unit_embed.pkl','rb') as file:
-                nemo_data = pickle.load(file)
-            nemo_uuids = nemo_data['uuids']
-            nemo_rep = np.concatenate((nemo_data['wvf_rep'], nemo_data['acg_rep']), axis=1)
-            include_uuids = np.intersect1d(neuron_uuids, nemo_uuids)
-            nemo_rep = nemo_rep[np.argwhere(np.array([1 if uuid in include_uuids else 0 for uuid in nemo_uuids]).flatten() == 1).astype(np.int64)].squeeze()
-            include_neuron_ids = np.argwhere(np.array([1 if uuid in include_uuids else 0 for uuid in neuron_uuids]).flatten() == 1).astype(np.int64)
-            self.max_space_length = len(include_neuron_ids)
-        else:
-            include_neuron_ids = np.arange(binned_spikes_data.shape[-1]).flatten().astype(np.int64)
-            nemo_rep = np.array([np.nan])
-        
-        binned_spikes_data = binned_spikes_data[:,include_neuron_ids].squeeze()
-
-        if self.load_meta:
-            if 'cluster_depths' in data:
-                neuron_depths = np.array(data['cluster_depths']).astype(np.float32)
-                neuron_depths = neuron_depths[include_neuron_ids].squeeze()
-            else:
-                neuron_depths = np.array([np.nan])
-            neuron_regions = np.array(data['cluster_regions']).astype('str')
-            neuron_regions = neuron_regions[include_neuron_ids].squeeze()
-        else:
-            neuron_depths = neuron_regions = np.array([np.nan])
-            
-        if self.load_meta & (self.brain_region != 'all'):
-            region_idxs = np.argwhere(neuron_regions == self.brain_region)
-            binned_spikes_data = binned_spikes_data[:,region_idxs].squeeze()
-            neuron_regions = neuron_regions[region_idxs]
-            if self.sort_by_depth:
-                neuron_depths = neuron_depths[region_idxs]   
-            if self.use_nemo:
-                nemo_rep = nemo_rep[region_idxs]
-
-        pad_time_length, pad_space_length = 0, 0
-
-        num_time_steps, num_neurons = binned_spikes_data.shape
-
-        if self.load_meta:
-            neuron_idxs = np.arange(num_neurons)
-            assert (self.sort_by_depth and self.sort_by_region) == False, "Can only sort either by depth or neuron."
-            if self.sort_by_depth:
-                sorted_neuron_idxs = [x for _, x in sorted(zip(neuron_depths, neuron_idxs))]
-            elif self.sort_by_region:
-                sorted_neuron_idxs = [x for _, x in sorted(zip(neuron_regions, neuron_idxs))]
-            else:
-                sorted_neuron_idxs = neuron_idxs.copy()
-            binned_spikes_data = binned_spikes_data[:,sorted_neuron_idxs]
-            neuron_depths = neuron_depths[sorted_neuron_idxs]
-            neuron_regions = neuron_regions[sorted_neuron_idxs]
-            if self.use_nemo:
-                nemo_rep = nemo_rep[sorted_neuron_idxs]
-
-        neuron_regions = list(neuron_regions)
-        
-        # pad along time dimension
-        if num_time_steps > self.max_time_length:
-            binned_spikes_data = binned_spikes_data[:self.max_time_length]
-        else: 
-            if self.pad_to_right:
-                pad_time_length = self.max_time_length - num_time_steps
-                binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-            else:
-                pad_time_length = num_time_steps - self.max_time_length
-                binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-
-        if not self.stitching:
-            # pad along space dimension
-            if num_neurons > self.max_space_length:
-                binned_spikes_data = binned_spikes_data[:,:self.max_space_length]
-                neuron_depths = neuron_depths[:self.max_space_length]
-                neuron_regions = neuron_regions[:self.max_space_length]
-                if self.use_nemo:
-                    nemo_rep = nemo_rep[:self.max_space_length]
-            else: 
-                if self.pad_to_right:
-                    pad_space_length = self.max_space_length - num_neurons
-                    binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-                    # binned_spikes_data = _wrap_pad_neuron_up_to_n(binned_spikes_data, self.max_space_length).T
-                    neuron_depths = _pad_seq_right_to_n(neuron_depths, self.max_space_length, np.nan)
-                    neuron_regions = _pad_seq_right_to_n(neuron_regions, self.max_space_length, np.nan)
-                    if self.use_nemo:
-                        nemo_rep = _pad_seq_right_to_n(nemo_rep, self.max_space_length, np.nan)
-                else:
-                    pad_space_length = num_neurons - self.max_space_length
-                    binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-                    neuron_depths = _pad_seq_left_to_n(neuron_depths, self.max_space_length, np.nan)
-                    neuron_regions = _pad_seq_left_to_n(neuron_regions, self.max_space_length, np.nan)
-                    if self.use_nemo:
-                        nemo_rep = _pad_seq_left_to_n(nemo_rep, self.max_space_length, np.nan)
-                binned_spikes_data = binned_spikes_data.T
-            spikes_spacestamps = np.arange(self.max_space_length).astype(np.int64)
-            space_attn_mask = _attention_mask(self.max_space_length, pad_space_length).astype(np.int64)
-        else:
-            spikes_spacestamps = np.arange(num_neurons).astype(np.int64)
-            space_attn_mask = _attention_mask(num_neurons, 0).astype(np.int64)
-                
-        spikes_timestamps = np.arange(self.max_time_length).astype(np.int64)
-        
-        # add attention mask
+        # Prepare the attention masks
         time_attn_mask = _attention_mask(self.max_time_length, pad_time_length).astype(np.int64)
-        binned_spikes_data = binned_spikes_data.astype(np.float32)
+        space_attn_mask = _attention_mask(self.max_space_length, pad_space_length).astype(np.int64)
+
+        # Generate spike timestamps and spacestamps
+        spikes_timestamps = np.arange(self.max_time_length).astype(np.int64)
+        spikes_spacestamps = np.arange(self.max_space_length).astype(np.int64)
 
         return {
-            "spikes_data": binned_spikes_data,
+            "spikes_data": binned_spikes_data.astype(np.float32),
             "time_attn_mask": time_attn_mask,
             "space_attn_mask": space_attn_mask,
             "spikes_timestamps": spikes_timestamps,
             "spikes_spacestamps": spikes_spacestamps,
             "target": target_behavior,
-            "neuron_depths": neuron_depths, 
+            "neuron_depths": neuron_depths,
             "neuron_regions": list(neuron_regions),
             "eid": data['eid'],
-            "nemo_rep": nemo_rep,
             "choice": choice,
             "block": block,
             "reward": reward,
-            **target_behavior_dict
+            **target_behavior_dict,
         }
+
+    def _prepare_target_behavior(self, data):
+        target_behavior = []
+        target_behavior_dict = {}
+        for beh_name in self.target:
+            beh = np.array(data[beh_name], dtype=np.float32)
+            target_behavior.append(beh)
+            target_behavior_dict[beh_name.split('-')[0]] = beh
+        return np.array(target_behavior).T, target_behavior_dict
+
+    def _prepare_column_data(self, col_name, data):
+        return np.array(data[col_name], dtype=np.float32)
+
+    def _apply_lookups(self, choice, block, choice_lookup, block_lookup, target_len):
+        _choice = np.array([choice_lookup[str(x)] for x in choice] * target_len).reshape(-1, 1)
+        _block = np.array([block_lookup[str(x)] for x in block] * target_len).reshape(-1, 1)
+        return _choice, _block
+
+    def _load_neuron_metadata(self, data, include_neuron_ids):
+        neuron_depths = np.array(data['cluster_depths'], dtype=np.float32)[include_neuron_ids].squeeze()
+        neuron_regions = np.array(data['cluster_regions'], dtype='str')[include_neuron_ids].squeeze()
+        return neuron_depths, neuron_regions
+
+    def _sort_data_by_depth_or_region(self, binned_spikes_data, neuron_depths, neuron_regions):
+        if self.sort_by_depth:
+            sorted_idxs = np.argsort(neuron_depths)
+        elif self.sort_by_region:
+            sorted_idxs = np.argsort(neuron_regions)
+        else:
+            sorted_idxs = np.arange(len(neuron_depths))
+
+        binned_spikes_data = binned_spikes_data[:, sorted_idxs]
+        neuron_depths = neuron_depths[sorted_idxs]
+        neuron_regions = neuron_regions[sorted_idxs]
+
+        return binned_spikes_data, neuron_depths, neuron_regions
+
+    def _pad_data(self, data, max_len, axis):
+        data_len = data.shape[axis]
+        pad_len = max_len - data_len
+        if pad_len > 0:
+            if axis == 0:
+                data = _pad_seq_right_to_n(data, max_len, self.pad_value)
+            else:
+                data = _pad_seq_right_to_n(data.T, max_len, self.pad_value).T
+        return data, pad_len
     
     def __len__(self):
         if "ibl" in self.dataset_name:
