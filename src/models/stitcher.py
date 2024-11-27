@@ -16,9 +16,11 @@ class StitchEncoder(nn.Module):
         super().__init__()
 
         self.mod = mod
+        self.P = n_channels
+        self.N = max(list(eid_list.values()))
         stitcher_dict, project_dict = {}, {}
         for key, val in eid_list.items():
-            val = 1 if mod in STATIC_VARS + DYNAMIC_VARS else val
+            val = 1 if mod in STATIC_VARS + DYNAMIC_VARS else self.N
             mult = max_F if mod in STATIC_VARS else 1
             # token embedding layer
             stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2 * mult)
@@ -29,13 +31,15 @@ class StitchEncoder(nn.Module):
         self.scale = scale
         self.act = nn.Softsign()
 
-    def forward(self, x, block_idx):
-        x = self.stitcher_dict[block_idx](x)
-        if self.mod in STATIC_VARS:
-            x = x.reshape(x.shape[0], -1, 2)
-        x = self.act(x) * self.scale
-        x = self.project_dict[block_idx](x)
-        return x
+    def forward(self, x, eid):
+        out = []
+        for idx in range(len(x)):
+            tmp = self.stitcher_dict[eid[idx]](x[idx].unsqueeze(0))
+            if self.mod in STATIC_VARS:
+                tmp = tmp.reshape(1, -1, 2)
+            tmp = self.act(tmp) * self.scale
+            out.append(self.project_dict[eid[idx]](tmp))
+        return torch.cat(out, dim=0).to(x.device)
 
 
 class StitchDecoder(nn.Module):
@@ -49,6 +53,8 @@ class StitchDecoder(nn.Module):
         
         self.mod = mod
         self.max_F = max_F
+        self.P = n_channels
+        self.N = max(list(eid_list.values()))
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
             if mod in STATIC_VARS:
@@ -56,10 +62,14 @@ class StitchDecoder(nn.Module):
             elif mod in DYNAMIC_VARS:
                 val, mult = OUTPUT_DIM[mod], 1
             else:
-                mult = 1
+                val, mult = self.N, 1
             stitch_decoder_dict[str(key)] = nn.Linear(n_channels * mult, val)
         self.stitch_decoder_dict = nn.ModuleDict(stitch_decoder_dict)
 
-    def forward(self, x, block_idx):
-        return self.stitch_decoder_dict[block_idx](x)
+    def forward(self, x, eid):
+        x = x.reshape(len(eid), -1, self.P)
+        out = []
+        for idx in range(len(x)):
+            out.append(self.stitch_decoder_dict[eid[idx]](x[idx]))
+        return torch.cat(out, dim=0).to(x.device)
 

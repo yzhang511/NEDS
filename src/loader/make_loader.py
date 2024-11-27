@@ -36,7 +36,6 @@ def make_loader(
     bin_size = 0.05,
     brain_region = 'all',
     load_meta=False,
-    use_nemo=False,
     dataset_name = "ibl",
     stitching = False,
     seed=42,
@@ -56,7 +55,6 @@ def make_loader(
                           sort_by_region = sort_by_region,
                           brain_region = brain_region,
                           load_meta=load_meta,
-                          use_nemo=use_nemo,
                           stitching=stitching
             )
     
@@ -65,34 +63,19 @@ def make_loader(
     generator = torch.Generator()
     generator.manual_seed(seed)
 
-    if stitching:
-        if weighted_sampler:
-            assert weighted_sampler == False, "Weighted sampler not seeded yet."
-            sampler = WeightedSessionSampler(dataset=dataset, shuffle=shuffle, seed=seed) 
-        else:
-            sampler = SessionSampler(dataset=dataset, generator=generator, shuffle=shuffle, seed=seed)
-
+    if weighted_sampler:
+        # Weight samples according to choice
+        labels = [x["target"][0][0] for x in dataset]
+        weights = torch.from_numpy(calculate_weights(labels)).double()
+        sampler = WeightedRandomSampler(weights, num_samples=len(weights), generator=generator)
         dataloader = torch.utils.data.DataLoader(
-            dataset,
-            sampler=sampler, 
-            batch_size=batch_size,
-            worker_init_fn=seed_worker,
-            generator=generator,
-            pin_memory=True,
+            dataset, sampler=sampler, batch_size=batch_size, 
+            worker_init_fn=seed_worker, generator=generator, pin_memory=True,
         )
     else:
-        if weighted_sampler:
-            labels = [x["target"][0][-1] for x in dataset]   # weight samples according to block
-            weights = torch.from_numpy(calculate_weights(labels)).double()
-            sampler = WeightedRandomSampler(weights, num_samples=len(weights), generator=generator)
-            dataloader = torch.utils.data.DataLoader(
-                dataset, sampler=sampler, batch_size=batch_size, 
-                worker_init_fn=seed_worker, generator=generator, pin_memory=True,
-            )
-        else:
-            dataloader = torch.utils.data.DataLoader(
-                dataset, batch_size=batch_size, shuffle=shuffle, 
-                worker_init_fn=seed_worker, generator=generator, pin_memory=True,
-            )
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=shuffle, 
+            worker_init_fn=seed_worker, generator=generator, pin_memory=True,
+        )
 
     return dataloader
