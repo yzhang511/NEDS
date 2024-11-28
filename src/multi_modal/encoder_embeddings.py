@@ -73,9 +73,12 @@ class EncoderEmbeddingLayer(nn.Module):
         if self.pos:
             x_embed += self.pos_embed(inputs_timestamp)
 
-        for idx in range(len(eid)):
-            session_idx = torch.tensor(self.eid_to_indx[eid[idx]]).to(x.device, torch.int64)
-            x_embed[idx] += self.session_emb(session_idx)[None,:].expand(N,-1)
+        eid = np.array(eid)
+        unique_eids = np.unique(eid)
+        for group_eid in unique_eids:
+            mask = torch.tensor(np.argwhere(eid==group_eid), device=x.device).squeeze()
+            session_idx = torch.tensor(self.eid_to_indx[group_eid]).to(x.device, torch.int64)
+            x_embed[mask] += self.session_emb(session_idx)[None,None,:].expand(len(mask),N,-1)
 
         return self.dropout(x), x_embed
 
