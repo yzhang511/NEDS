@@ -250,15 +250,15 @@ class MultiModalTrainer():
                     
                 if "spike" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
-                        eid = batch["eid"]
+                        eid = np.array(batch["eid"])
                         space_attn_mask = batch["space_attn_mask"]
                         outputs = self._forward_model_inputs(batch, training_mode="encoding")
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
-                            mask = [i for i, x in enumerate(eid) if x == group_eid]
-                            num_neuron = sum(space_attn_mask[mask] != 0) if sum(mask) == 1 \
+                            mask = np.argwhere(eid == group_eid).squeeze()
+                            num_neuron = sum(space_attn_mask[mask] != 0) if len(mask) == 1 \
                                 else sum(space_attn_mask[mask][0] != 0)
                             _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
                             _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
@@ -270,14 +270,14 @@ class MultiModalTrainer():
     
                 if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
-                        eid = batch["eid"]
+                        eid = np.array(batch["eid"])
                         outputs = self._forward_model_inputs(batch, training_mode="decoding")
                         eval_loss += outputs.loss.item()
                         for mod in self.avail_beh:
                             mod_loss_dict[f"eval_{mod}_loss"] += outputs.mod_loss[mod]     
                             unique_eids = np.unique(eid)
                             for group_eid in unique_eids:
-                                mask = [i for i, x in enumerate(eid) if x == group_eid]
+                                mask = np.argwhere(eid == group_eid).squeeze()
                                 _gt = outputs.mod_targets[mod][mask]
                                 _pred = outputs.mod_preds[mod][mask]
                                 if sum(mask) == 1:
