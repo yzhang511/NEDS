@@ -275,14 +275,14 @@ model = model_class(
 if args.multi_gpu and args.num_sessions > 1:
     # Be careful with optimizer using momentum for multi-device training
     # Only update the momentum of non-zero grad
-    optimizer = torch.optim.AdamW(
+    optimizer = Lamb(
         model.parameters(), 
         lr=config.optimizer.lr, 
         weight_decay=config.optimizer.wd, 
         eps=config.optimizer.eps
     )
 else:
-    optimizer = Lamb(
+    optimizer = torch.optim.AdamW(
         model.parameters(), 
         lr=config.optimizer.lr, 
         weight_decay=config.optimizer.wd, 
