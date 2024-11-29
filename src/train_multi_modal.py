@@ -272,7 +272,7 @@ model = model_class(
     **config.method.model_kwargs, 
     **meta_data
 )
-if args.multi_gpu and args.num_sessions > 1:
+if config.training.train_batch_size > 64:
     # Be careful with optimizer using momentum for multi-device training
     # Only update the momentum of non-zero grad
     optimizer = Lamb(
