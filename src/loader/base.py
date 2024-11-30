@@ -460,6 +460,19 @@ class BaseDataset(torch.utils.data.Dataset):
         spikes_timestamps = np.arange(self.max_time_length).astype(np.int64)
         spikes_spacestamps = np.arange(self.max_space_length).astype(np.int64)
 
+        # Pad neuron_depths and neuron_regions to max_space_length
+        neuron_depths = np.pad(
+            neuron_depths, 
+            (0, max(0, self.max_space_length - neuron_depths.shape[0])),
+            constant_values=np.nan
+        )
+
+        neuron_regions = np.pad(
+            neuron_regions,
+            (0, max(0, self.max_space_length - neuron_regions.shape[0])),
+            constant_values=""
+        )
+
         return {
             "spikes_data": binned_spikes_data.astype(np.float32),
             "time_attn_mask": time_attn_mask,

@@ -144,6 +144,7 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
 )
 
 max_space_length = max(list(meta_data["eid_list"].values()))
+logging.info(f"MAX space length to pad spike data to: {max_space_length}")
 
 train_dataloader = make_loader(
     train_dataset, 
@@ -272,7 +273,7 @@ model = model_class(
     **config.method.model_kwargs, 
     **meta_data
 )
-if config.training.train_batch_size > 64:
+if args.multi_gpu:
     # Be careful with optimizer using momentum for multi-device training
     # Only update the momentum of non-zero grad
     optimizer = Lamb(
@@ -343,8 +344,23 @@ logging.info(f"Total batch: {n_batches} batch size: {batch_size}")
 total_tokens = n_mods*n_tokens_per_mod*n_batches*batch_size
 logging.info(f"Total tokens: {total_tokens}")
 
+trial_length = 2 # Seconds
+total_neurons = sum(list(meta_data["eid_list"].values()))
+total_hours = len(train_dataloader) * trial_length / 3_600
+neuron_hours = total_neurons * total_hours
+logging.info(f"Total neurons: {total_neurons}")
+logging.info(f"Total hours: {total_hours}")
+logging.info(f"Neuron hours: {neuron_hours}")
+
 total_params = sum(p.numel() for p in model.parameters())
 logging.info(f"Total parameters: {total_params}")
+
+total_capacity = sum(
+    p.numel() for name, p in model.named_parameters() 
+    if "stitch" not in name and "static_weight" not in name
+)
+logging.info(f"Total parameters (excluding stitcher): {total_capacity}")
+
 
 # -----
 # TRAIN
