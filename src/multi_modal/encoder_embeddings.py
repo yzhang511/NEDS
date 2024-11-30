@@ -77,8 +77,9 @@ class EncoderEmbeddingLayer(nn.Module):
         unique_eids = np.unique(eid)
         for group_eid in unique_eids:
             mask = torch.tensor(np.argwhere(eid==group_eid), device=x.device).squeeze()
-            session_idx = torch.tensor(self.eid_to_indx[group_eid]).to(x.device, torch.int64)
-            x_embed[mask] += self.session_emb(session_idx)[None,None,:].expand(len(mask),N,-1)
+            if mask.dim() > 0:
+                session_idx = torch.tensor(self.eid_to_indx[group_eid]).to(x.device, torch.int64)
+                x_embed[mask] += self.session_emb(session_idx)[None,None,:].expand(mask.size(0),N,-1)
 
         return self.dropout(x), x_embed
 
@@ -136,12 +137,13 @@ class EncoderEmbedding(nn.Module):
         
         if hasattr(self, "mod_stitcher_proj_dict"):
             if hasattr(self, "mod_static_weight_dict"):
-                weight = torch.empty_like(y_mod.reshape(B,-1,P), device=y.device) 
+                weight = torch.zeros_like(y_mod.reshape(B,-1,P), device=y.device) 
                 eid = np.array(d["eid"])
                 unique_eids = np.unique(eid)
                 for group_eid in unique_eids:
                     mask = torch.tensor(np.argwhere(eid==group_eid), device=y.device).squeeze()
-                    weight[mask] = self.mod_static_weight_dict[group_eid][None,:,None].expand(len(mask),-1,P)
+                    if mask.dim() > 0:
+                        weight[mask] = self.mod_static_weight_dict[group_eid][None,:,None].expand(mask.size(0),-1,P)
                 y_mod = torch.sum(
                     y_mod.reshape(B,-1,P) * weight, 1
                 ).reshape(B,-1)
