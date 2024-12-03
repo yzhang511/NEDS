@@ -246,8 +246,7 @@ def co_smoothing_eval(
                     )  
 
                     all_ones = torch.ones_like(
-                        batch["spikes_data"]).to(accelerator.device, torch.int64
-                    )
+                        batch["spikes_data"]).to(accelerator.device, torch.int64)
                     all_zeros = all_ones * 0.
 
                     mod_dict = {}
@@ -279,6 +278,11 @@ def co_smoothing_eval(
                 if is_multimodal:
                     for mod in model.mod_to_indx.keys():
                         mod_dict[mod]["eval_mask"] = all_ones if mod == "spike" else all_zeros
+
+                # Mask selected modalities for encoding
+                if "enc_task_var" in kwargs:
+                    for mod in model.mod_to_indx:
+                        mod_dict[mod]["inputs_token_mask"] = all_zeros if mod == kwargs["enc_task_var"] else all_ones
                     
                 outputs = model(mod_dict)
                     
@@ -307,13 +311,13 @@ def co_smoothing_eval(
                         X = behavior_set[:, target_t_i, :]  
                         _r2_psth, _r2_trial = viz_single_cell(
                             X, ys[...,target_n_i[i]], y_preds[...,target_n_i[i]],
-                              var_name2idx, var_tasklist, var_value2label, var_behlist,
-                              subtract_psth=kwargs["subtract"],
-                              aligned_tbins=[],
-                              neuron_idx=uuids_list[target_n_i[i]][:4],
-                              neuron_region=region_list[target_n_i[i]],
-                              method=method_name, save_path=kwargs["save_path"],
-                              save_plot=save_plot
+                            var_name2idx, var_tasklist, var_value2label, var_behlist,
+                            subtract_psth=kwargs["subtract"],
+                            aligned_tbins=[],
+                            neuron_idx=uuids_list[target_n_i[i]][:4],
+                            neuron_region=region_list[target_n_i[i]],
+                            method=method_name, save_path=kwargs["save_path"],
+                            save_plot=save_plot
                             )
                         r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
                     else:
@@ -453,6 +457,13 @@ def co_smoothing_eval(
     r2_all = np.array(r2_result_list)
     np.save(os.path.join(kwargs["save_path"], "bps.npy"), bps_all)
     np.save(os.path.join(kwargs["save_path"], "r2.npy"), r2_all)
+
+    # Mask selected modalities for encoding
+    if "enc_task_var" in kwargs:
+        if isinstance(kwargs["enc_task_var"], list):
+            mode = f"eval_spike_{'_'.join(kwargs['enc_task_var'])}"
+        else:
+            mode = f"eval_spike_{kwargs['enc_task_var']}"
 
     return {
         f"{mode}_mean_bps": bps_mean,

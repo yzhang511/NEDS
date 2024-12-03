@@ -294,7 +294,11 @@ class MultiModal(nn.Module):
                     mask_list.append(tmp.unsqueeze(0))
                 mask = torch.cat(mask_list, dim=0)
             
-            mod_dict[mod]["inputs_mask"] = mask
+            # Mask selected modalities for encoding
+            if "inputs_token_mask" in mod_dict[mod]:
+                mod_dict[mod]["inputs_mask"] = mod_dict[mod]["inputs_token_mask"][...,0]
+            else:
+                mod_dict[mod]["inputs_mask"] = mask
             mod_dict[mod]["targets_mask"] = mask
 
         encoder_mod_dict = {

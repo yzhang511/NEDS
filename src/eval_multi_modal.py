@@ -144,8 +144,8 @@ if args.wandb:
 
 if args.model_mode == "mm":
     best_ckpt_path = [
-        "model_best_avg.pt", 
-        # "model_best_spike.pt",
+        # "model_best_avg.pt", 
+        "model_best_spike.pt",
         #"model_best_wheel.pt", 
         #"model_best_whisker.pt",
         #"model_best_choice.pt",
@@ -255,5 +255,40 @@ if eval_behavior:
         wandb.log(results) if args.wandb else None
     else:
         logging.info("Skip evaluation for decoding since files exist or overwrite is False.")
+
+
+# Mask selected modalities for encoding
+if eval_spike:
+    for mod in static_mods + dynamic_mods:
+        eval_spike_bps_file = f"{save_path}/eval_spike_{mod}/bps.npy"
+        eval_spike_r2_file = f"{save_path}/eval_spike_{mod}/r2.npy"
+        if not os.path.exists(eval_spike_bps_file) or \
+            not os.path.exists(eval_spike_r2_file) or args.overwrite:
+            logging.info(f"Start evaluation for encoding using {mod}:")
+            co_smoothing_configs = {
+                "subtract": "task",
+                "onset_alignment": [40],
+                "method_name": mask_name, 
+                "save_path": f"{save_path}/eval_spike_{mod}",
+                "mode": "eval_spike",
+                "n_time_steps": config.model.encoder.embedder.max_F,  
+                "held_out_list": list(range(0, 100)),
+                "is_aligned": True,
+                "target_regions": None,
+                "enc_task_var": mod,
+            }
+            results = co_smoothing_eval(
+                model=model, 
+                accelerator=accelerator, 
+                test_dataloader=dataloader, 
+                test_dataset=dataset, 
+                is_multimodal=True if model_mode == "mm" else False,
+                save_plot=args.save_plot,
+                **co_smoothing_configs
+            )
+            logging.info(results)
+            wandb.log(results) if args.wandb else None
+        else:
+            logging.info("Skip evaluation for encoding since files exist or overwrite is False.")
 
 logging.info("Finish model evaluation")
