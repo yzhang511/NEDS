@@ -91,7 +91,7 @@ class MultiModalTrainer():
                 
         return mod_dict
     
-    def _forward_model_inputs(self, batch, training_mode):
+    def _forward_model_inputs(self, batch, training_mode, enc_task_var=None):
         
         is_unimodal = True if self.n_output_mods in [1, len(self.avail_beh)] else False
         is_multimodal = not is_unimodal
@@ -133,6 +133,11 @@ class MultiModalTrainer():
         if is_multimodal:
             self._prepare_multimodal_mask(mod_dict, training_mode, all_ones, all_zeros)
 
+        # Mask randomly selected modalities for encoding
+        if enc_task_var is not None and enc_task_var != "all":
+            for mod in self.mod_to_indx.keys():
+                mod_dict[mod]["inputs_token_mask"] = all_zeros if mod == enc_task_var else all_ones
+
         return self.model(mod_dict)
 
     def _plot_log_epoch(self, epoch, eval_epoch_results, n_viz=5):
@@ -161,6 +166,11 @@ class MultiModalTrainer():
         best_eval_metric = {
             f"eval_{mode}_metric": - MAX_VAL for mode in self.modal_filter["output"] + ["avg"]
         }
+
+        if "spike" in self.modal_filter["output"]:
+            best_eval_enc_metric = {
+                f"eval_enc_{enc_task_var}_metric": - MAX_VAL for enc_task_var in STATIC_VARS + DYNAMIC_VARS
+            }
         
         for epoch in range(self.config.training.num_epochs):
             
@@ -193,7 +203,21 @@ class MultiModalTrainer():
                         self.save_model(name="best", epoch=epoch)
                         self._plot_log_epoch(epoch, eval_epoch_results)
                         if self.config.wandb.use:
-                            wandb.log({"best_epoch": epoch})        
+                            wandb.log({"best_epoch": epoch})    
+
+                if "spike" in self.modal_filter["output"]:
+                    eval_enc_results = self.eval_enc_epoch() 
+
+                    for eval_name in best_eval_enc_metric.keys():
+                        enc_task_var = eval_name.split("_")[2]
+                        if eval_enc_results[eval_name] > best_eval_enc_metric[eval_name]:
+                            best_eval_enc_metric[eval_name] = eval_enc_results[eval_name]
+                            print(
+                                f"Epoch: {epoch} best val enc {enc_task_var} metric: {best_eval_enc_metric[eval_name]}"
+                            )
+                            self.save_model(name=f"best_enc_{enc_task_var}", epoch=epoch)
+                            if self.config.wandb.use:
+                                wandb.log(eval_enc_results) 
                         
                 if epoch % self.config.training.save_plot_every_n_epochs == 0:
                     self._plot_log_epoch(epoch, eval_epoch_results)
@@ -225,7 +249,12 @@ class MultiModalTrainer():
             if not self.mixed_training:
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
                 
-            outputs = self._forward_model_inputs(batch, self.training_mode)
+            if self.training_mode == "encoding":
+                enc_task_var = random.sample(STATIC_VARS+DYNAMIC_VARS+["all"], 1)[0]
+            else:
+                enc_task_var = None
+
+            outputs = self._forward_model_inputs(batch, self.training_mode, enc_task_var)
             loss = outputs.loss
             self.accelerator.backward(loss)
             self.optimizer.step()
@@ -252,7 +281,9 @@ class MultiModalTrainer():
                     for batch in self.eval_dataloader:
                         eid = np.array(batch["eid"])
                         space_attn_mask = batch["space_attn_mask"]
-                        outputs = self._forward_model_inputs(batch, training_mode="encoding")
+                        outputs = self._forward_model_inputs(
+                            batch, training_mode="encoding", enc_task_var="all"
+                        )
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
                         unique_eids = np.unique(eid)
@@ -287,6 +318,67 @@ class MultiModalTrainer():
                                 session_results[group_eid][mod]["preds"].append(_pred)
 
         return session_results, eval_loss, mod_loss_dict
+    
+
+    def _collect_enc_results(self, session_enc_results):
+        self.model.eval()
+        
+        if self.eval_dataloader:
+            with torch.no_grad(): 
+                for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+                    for batch in self.eval_dataloader:
+                        eid = np.array(batch["eid"])
+                        space_attn_mask = batch["space_attn_mask"]
+                        outputs = self._forward_model_inputs(
+                            batch, training_mode="encoding", enc_task_var=enc_task_var
+                        )
+                        unique_eids = np.unique(eid)
+                        for group_eid in unique_eids:
+                            mask = np.argwhere(eid == group_eid).squeeze()
+                            num_neuron = sum(space_attn_mask[mask] != 0) if len(mask) == 1 \
+                                else sum(space_attn_mask[mask][0] != 0)
+                            _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
+                            _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
+                            if sum(mask) == 1:
+                                _gt = _gt.unsqueeze(0)
+                                _pred = _pred.unsqueeze(0)
+                            session_enc_results[group_eid][enc_task_var]["gt"].append(_gt)
+                            session_enc_results[group_eid][enc_task_var]["preds"].append(_pred)
+
+        return session_enc_results
+    
+
+    def eval_enc_epoch(self):
+
+        session_enc_results = {}
+        for eid in self.eid_list:
+            session_enc_results[eid] = {}
+            for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+                session_enc_results[eid][enc_task_var] = {"gt": [], "preds": []}
+
+        session_enc_results = self._collect_enc_results(session_enc_results)
+
+        gt, preds, eval_metrics = {}, {}, {enc_task_var: [] for enc_task_var in STATIC_VARS + DYNAMIC_VARS}
+        for idx, eid in enumerate(self.eid_list):
+            gt[idx], preds[idx] = {}, {}
+            for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+                _gt = torch.cat(session_enc_results[eid][enc_task_var]["gt"], dim=0)
+                _preds = torch.cat(session_enc_results[eid][enc_task_var]["preds"], dim=0)
+                _preds = torch.exp(_preds)
+                gt[idx][enc_task_var], preds[idx][enc_task_var] = _gt, _preds
+
+                results = metrics_list(
+                    gt = gt[idx][enc_task_var].transpose(-1,0), 
+                    pred = preds[idx][enc_task_var].transpose(-1,0), 
+                    metrics=["bps"], device=self.accelerator.device
+                )
+                eval_metrics[enc_task_var].append(results["bps"])
+
+        enc_task_var_metric_dict = {}
+        for enc_task_var in eval_metrics.keys():
+            enc_task_var_metric_dict[f"eval_enc_{enc_task_var}_metric"] = np.nanmean(eval_metrics[enc_task_var])
+            
+        return enc_task_var_metric_dict
     
     
     def eval_epoch(self):
@@ -329,10 +421,10 @@ class MultiModalTrainer():
                     self.session_active_neurons[eid][mod] = [i for i in range(gt[idx][mod].size(-1))]
                     results = metrics_list(
                         gt = gt[idx][mod].unsqueeze(-1), pred = preds[idx][mod].unsqueeze(-1),
-                        metrics=["rsquared"], device=self.accelerator.device
+                        metrics=["behave_r2"], device=self.accelerator.device
                     )
-                    results["rsquared"] = np.nan if results["rsquared"] == -float("inf") else results["rsquared"]
-                    eval_metrics[mod].append(results["rsquared"])
+                    results["behave_r2"] = np.nan if results["behave_r2"] == -float("inf") else results["behave_r2"]
+                    eval_metrics[mod].append(results["behave_r2"])
                 
                 elif mod in STATIC_VARS:
                     acc = balanced_accuracy_score(

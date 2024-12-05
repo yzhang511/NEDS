@@ -144,8 +144,8 @@ if args.wandb:
 
 if args.model_mode == "mm":
     best_ckpt_path = [
-        # "model_best_avg.pt", 
-        "model_best_spike.pt",
+        "model_best_avg.pt", 
+        # "model_best_spike.pt",
         #"model_best_wheel.pt", 
         #"model_best_whisker.pt",
         #"model_best_choice.pt",
@@ -260,6 +260,24 @@ if eval_behavior:
 # Mask selected modalities for encoding
 if eval_spike:
     for mod in static_mods + dynamic_mods:
+
+        model_path = os.path.join(pretrain_path, f"model_best_enc_{mod}.pt")    
+        configs = {
+            "model_config": model_config,
+            "model_path": model_path,
+            "trainer_config": "src/configs/multi_modal/trainer_mm.yaml",
+            "dataset_path": None, 
+            "seed": 42,
+            "mask_name": mask_name,
+            "eid": eid,
+            "neural_mods": neural_mods,
+            "static_mods": static_mods,
+            "dynamic_mods": dynamic_mods,
+            "modal_filter": modal_filter,
+            "model_mode": model_mode,
+        }      
+        model, accelerator, dataset, dataloader = load_model_data_local(**configs)
+
         eval_spike_bps_file = f"{save_path}/eval_spike_{mod}/bps.npy"
         eval_spike_r2_file = f"{save_path}/eval_spike_{mod}/r2.npy"
         if not os.path.exists(eval_spike_bps_file) or \
@@ -292,3 +310,4 @@ if eval_spike:
             logging.info("Skip evaluation for encoding since files exist or overwrite is False.")
 
 logging.info("Finish model evaluation")
+

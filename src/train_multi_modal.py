@@ -33,7 +33,7 @@ from utils.utils import set_seed, dummy_load
 from utils.config_utils import config_from_kwargs, update_config
 from multi_modal.mm import MultiModal
 from torch_optimizer import Lamb
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import OneCycleLR, LinearLR
 from trainer.make import make_multimodal_trainer
 from multi_modal.encoder_embeddings import EncoderEmbedding
 
@@ -127,6 +127,19 @@ else:
 modal_filter = {"input": input_mods, "output": output_mods}
 
 
+if args.multi_gpu:
+    kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator = Accelerator(kwargs_handlers=[kwargs])
+else:
+    accelerator = Accelerator()
+
+max_lr = config.optimizer.lr
+batch_size = config.training.train_batch_size
+num_epochs = config.training.num_epochs
+if args.multi_gpu:
+    max_lr *= accelerator.num_processes
+    num_epochs *= accelerator.num_processes
+
 # ---------
 # LOAD DATA
 # ---------
@@ -139,7 +152,7 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     use_re=True,
     split_method="predefined",
     test_session_eid=[],
-    batch_size=config.training.train_batch_size,
+    batch_size=batch_size,
     seed=config.seed
 )
 
@@ -232,12 +245,6 @@ os.makedirs(log_dir, exist_ok=True)
 
 logging.info(f"Start model training:")
 
-if args.multi_gpu:
-    kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-    accelerator = Accelerator(kwargs_handlers=[kwargs])
-else:
-    accelerator = Accelerator()
-
 if config.wandb.use:
     if accelerator.is_main_process:
         wandb.init(
@@ -273,32 +280,31 @@ model = model_class(
     **config.method.model_kwargs, 
     **meta_data
 )
-if args.multi_gpu:
-    # Be careful with optimizer using momentum for multi-device training
-    # Only update the momentum of non-zero grad
-    optimizer = Lamb(
+
+optimizer = torch.optim.AdamW(
         model.parameters(), 
-        lr=config.optimizer.lr, 
-        weight_decay=config.optimizer.wd, 
-        eps=config.optimizer.eps
-    )
-else:
-    optimizer = torch.optim.AdamW(
-        model.parameters(), 
-        lr=config.optimizer.lr, 
+        lr=max_lr, 
         weight_decay=config.optimizer.wd, 
         eps=config.optimizer.eps
     )
 
 grad_accum_steps = config.optimizer.gradient_accumulation_steps
-
-lr_scheduler = OneCycleLR(
-    optimizer = optimizer,
-    total_steps = config.training.num_epochs*len(train_dataloader)//grad_accum_steps,
-    max_lr = config.optimizer.lr,
-    pct_start = config.optimizer.warmup_pct,
-    div_factor = config.optimizer.div_factor,
-)
+global_batch_size = batch_size * accelerator.num_processes
+total_steps=int(num_epochs*(len(train_dataset)//global_batch_size))//grad_accum_steps
+if config.optimizer.scheduler == "linear":
+    lr_scheduler = LinearLR(
+        optimizer, 
+        total_iters=total_steps
+    )
+elif config.optimizer.scheduler == "cosine":
+    lr_scheduler = OneCycleLR(
+        optimizer = optimizer,
+        total_steps = total_steps,
+        max_lr = config.optimizer.lr,
+        pct_start = config.optimizer.warmup_pct,
+        div_factor = config.optimizer.div_factor,
+        anneal_strategy="cos",
+    )
 
 if args.continue_pretrain:
 
@@ -336,12 +342,10 @@ model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
 
 n_mods = len(modal_filter["input"])
 n_tokens_per_mod = config.model.encoder.embedder.max_F
-n_batches = len(train_dataloader)
-batch_size = config.training.train_batch_size
 logging.info(f"Total modality: {n_mods} Total tokens per modality: {n_tokens_per_mod}")
-logging.info(f"Total batch: {n_batches} batch size: {batch_size}")
+logging.info(f"Total trials: {len(train_dataset)}")
 
-total_tokens = n_mods*n_tokens_per_mod*n_batches*batch_size
+total_tokens = n_mods*n_tokens_per_mod*len(train_dataset)
 logging.info(f"Total tokens: {total_tokens}")
 
 trial_length = 2 # Seconds
