@@ -54,6 +54,7 @@ ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mixed_training", action="store_true")
+ap.add_argument("--enc_task_var", type=str, default="all")
 ap.add_argument("--finetune", action="store_true")
 ap.add_argument(
     "--modality", nargs="+", 
@@ -110,7 +111,7 @@ else:
     eid_ = eid[:5]
 
 log_name = \
-"sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+"sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
         num_sessions,
         eid[:5], 
         "-".join(modal_filter["input"]),
@@ -118,7 +119,7 @@ log_name = \
         config.training.mask_type, 
         mask_mode,
         args.mask_ratio,
-        args.mixed_training,
+        args.enc_task_var,
 )
 
 save_path = os.path.join(base_path, "results", log_name)

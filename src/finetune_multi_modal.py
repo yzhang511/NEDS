@@ -58,6 +58,8 @@ ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mixed_training", action="store_true")
+ap.add_argument("--pretrain_task_var", type=str, default="all")
+ap.add_argument("--enc_task_var", type=str, default="all")
 ap.add_argument(
     "--modality", nargs="+", 
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
@@ -174,21 +176,22 @@ test_dataloader = make_loader(
 # SET PATH
 # --------
 num_sessions = args.num_sessions
+eid_ = "multi" if num_sessions > 1 else eid[:5]
 
 pretrain_path = \
-"sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+"sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
     num_sessions,
-    "multi", 
+    eid_, 
     "-".join(modal_filter["input"]),
     "-".join(modal_filter["output"]),
     config.training.mask_type, 
     args.mask_mode,
     args.mask_ratio,
-    args.mixed_training,
+    args.pretrain_task_var,
 )
 
 log_name = \
-"sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+"sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
     num_sessions,
     eid[:5], 
     "-".join(modal_filter["input"]),
@@ -196,7 +199,7 @@ log_name = \
     config.training.mask_type, 
     args.mask_mode,
     args.mask_ratio,
-    args.mixed_training,
+    args.enc_task_var,
 )
 
 log_dir = os.path.join(base_path, "results", log_name)
@@ -227,8 +230,8 @@ accelerator = Accelerator()
 
 if args.model_mode == "mm":
     best_ckpt_path = [
-        # "model_best_avg.pt", 
-        "model_best_spike.pt",
+        "model_best_avg.pt", 
+        # "model_best_spike.pt",
         # "model_best_wheel.pt", 
         # "model_best_whisker.pt",
         # "model_best_choice.pt",
@@ -274,25 +277,26 @@ logging.info(f"Reset mask ratio to {model.masker.ratio} for fine-tuning.")
 # ACCOMMODATE NEW SESSION
 # -----------------------
 
-encoder_embeddings = {}
+if num_sessions > 1:
+    encoder_embeddings = {}
 
-hidden_size = config.model.encoder.transformer.hidden_size
-for mod in modal_filter["input"]:
-    pos_embed = model.encoder_embeddings[mod].embedder.pos_embed.state_dict()
-    mod_emb = model.encoder_embeddings[mod].embedder.mod_emb.state_dict()
-    session_emb = model.encoder_embeddings[mod].embedder.session_emb.state_dict()
-    model.encoder_embeddings[mod] = EncoderEmbedding(
-        hidden_size = hidden_size,
-        n_channel = hidden_size,
-        output_channel = hidden_size,
-        stitching = True,
-        eid_list = meta_data["eid_list"],
-        mod = mod,
-        config = config.model.encoder,
-    )
-    model.encoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed)
-    model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb)
-    model.encoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb)
+    hidden_size = config.model.encoder.transformer.hidden_size
+    for mod in modal_filter["input"]:
+        pos_embed = model.encoder_embeddings[mod].embedder.pos_embed.state_dict()
+        mod_emb = model.encoder_embeddings[mod].embedder.mod_emb.state_dict()
+        session_emb = model.encoder_embeddings[mod].embedder.session_emb.state_dict()
+        model.encoder_embeddings[mod] = EncoderEmbedding(
+            hidden_size = hidden_size,
+            n_channel = hidden_size,
+            output_channel = hidden_size,
+            stitching = True,
+            eid_list = meta_data["eid_list"],
+            mod = mod,
+            config = config.model.encoder,
+        )
+        model.encoder_embeddings[mod].embedder.pos_embed.load_state_dict(pos_embed)
+        model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb)
+        model.encoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb)
 
 # -----------------------
 # TRACK MODEL & DATA SIZE
@@ -348,6 +352,7 @@ trainer_kwargs = {
     "avail_beh": static_mods + dynamic_mods,
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
+    "enc_task_var": args.enc_task_var,
     "config": config,
 }
 

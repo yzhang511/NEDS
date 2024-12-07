@@ -219,7 +219,7 @@ num_sessions = len(meta_data["eid_list"])
 eid_ = "multi" if num_sessions > 1 else eid[:5]
 
 log_name = \
-"sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+"sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
     num_sessions,
     eid_, 
     "-".join(modal_filter["input"]),
@@ -227,7 +227,7 @@ log_name = \
     config.training.mask_type, 
     args.mask_mode,
     args.mask_ratio,
-    args.mixed_training,
+    args.enc_task_var,
 )
 
 log_dir = os.path.join(base_path, "results", log_name)
@@ -311,7 +311,7 @@ if args.continue_pretrain:
 
     best_pretrain_ckpt = "model_best_spike.pt"
     pretrain_path = \
-    "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_mixedTraining-{}".format(
+    "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
         num_sessions,
         "multi", 
         "-".join(modal_filter["input"]),
@@ -319,7 +319,7 @@ if args.continue_pretrain:
         config.training.mask_type, 
         args.mask_mode,
         args.mask_ratio,
-        args.mixed_training,
+        args.enc_task_var,
     )
     pretrained_model_path = os.path.join(
         base_path, "results", pretrain_path, "pretrained", best_pretrain_ckpt
