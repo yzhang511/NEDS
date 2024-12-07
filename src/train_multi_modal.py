@@ -74,6 +74,7 @@ ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--mask_mode", type=str, default="temporal")
 ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mixed_training", action="store_true")
+ap.add_argument("--enc_task_var", type=str, default="all")
 ap.add_argument(
     "--modality", nargs="+", 
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
@@ -350,7 +351,7 @@ logging.info(f"Total tokens: {total_tokens}")
 
 trial_length = 2 # Seconds
 total_neurons = sum(list(meta_data["eid_list"].values()))
-total_hours = len(train_dataloader) * trial_length / 3_600
+total_hours = len(train_dataset) * trial_length / 3_600
 neuron_hours = total_neurons * total_hours
 logging.info(f"Total neurons: {total_neurons}")
 logging.info(f"Total hours: {total_hours}")
@@ -378,6 +379,7 @@ trainer_kwargs = {
     "avail_beh": static_mods + dynamic_mods,
     "modal_filter": modal_filter,
     "mixed_training": args.mixed_training,
+    "enc_task_var": args.enc_task_var,
     "config": config,
     "multi_gpu": args.multi_gpu,
 }

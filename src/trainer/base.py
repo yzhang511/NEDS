@@ -61,6 +61,8 @@ class MultiModalTrainer():
                 "random_token"
             ]
 
+        self.enc_task_var = kwargs.get("enc_task_var", False)
+
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
@@ -167,7 +169,7 @@ class MultiModalTrainer():
             f"eval_{mode}_metric": - MAX_VAL for mode in self.modal_filter["output"] + ["avg"]
         }
 
-        if "spike" in self.modal_filter["output"]:
+        if "spike" in self.modal_filter["output"] and self.enc_task_var == "random":
             best_eval_enc_metric = {
                 f"eval_enc_{enc_task_var}_metric": - MAX_VAL for enc_task_var in STATIC_VARS + DYNAMIC_VARS
             }
@@ -205,7 +207,7 @@ class MultiModalTrainer():
                         if self.config.wandb.use:
                             wandb.log({"best_epoch": epoch})    
 
-                if "spike" in self.modal_filter["output"]:
+                if "spike" in self.modal_filter["output"] and self.enc_task_var == "random":
                     eval_enc_results = self.eval_enc_epoch() 
 
                     for eval_name in best_eval_enc_metric.keys():
@@ -250,7 +252,10 @@ class MultiModalTrainer():
                 self.training_mode = random.sample(self.training_schemes, 1)[0]
                 
             if self.training_mode == "encoding":
-                enc_task_var = random.sample(STATIC_VARS+DYNAMIC_VARS+["all"], 1)[0]
+                if self.enc_task_var == "random":
+                    enc_task_var = random.sample(STATIC_VARS+DYNAMIC_VARS+["all"], 1)[0]
+                else:
+                    enc_task_var = self.enc_task_var
             else:
                 enc_task_var = None
 
@@ -281,8 +286,9 @@ class MultiModalTrainer():
                     for batch in self.eval_dataloader:
                         eid = np.array(batch["eid"])
                         space_attn_mask = batch["space_attn_mask"]
+                        enc_task_var = "all" if self.enc_task_var in ["all", "random"] else self.enc_task_var
                         outputs = self._forward_model_inputs(
-                            batch, training_mode="encoding", enc_task_var="all"
+                            batch, training_mode="encoding", enc_task_var=enc_task_var
                         )
                         eval_loss += outputs.loss.item()
                         mod_loss_dict["eval_spike_loss"] += outputs.mod_loss["spike"]
