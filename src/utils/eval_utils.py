@@ -281,8 +281,9 @@ def co_smoothing_eval(
 
                 # Mask selected modalities for encoding
                 if "enc_task_var" in kwargs:
-                    for mod in model.mod_to_indx:
-                        mod_dict[mod]["inputs_token_mask"] = all_zeros if mod == kwargs["enc_task_var"] else all_ones
+                    if kwargs["enc_task_var"] not in ["all", "random"]:
+                        for mod in model.mod_to_indx:
+                            mod_dict[mod]["inputs_token_mask"] = all_zeros if mod == kwargs["enc_task_var"] else all_ones
                     
                 outputs = model(mod_dict)
                     
