@@ -173,7 +173,7 @@ def get_user_datasets(user_or_org_name):
     return user_datasets
 
 def load_ibl_dataset(cache_dir,
-                     user_or_org_name='neurofm123',
+                     user_or_org_name='ibl-repro-ephys',
                      aligned_data_dir=None,
                      train_aligned=True,
                      eid=None, # specify 1 session for training, random_split will be used
