@@ -295,18 +295,14 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            if mask.size == 0:  
+                            if mask.size == 0 or mask.ndim == 0:  
                                 num_neuron = 0
-                            elif mask.ndim == 0:
-                                num_neuron = 0
-                            elif mask.ndim == 1:
-                                num_neuron = np.sum(space_attn_mask[mask] != 0)
-                            else:  # mask.ndim > 1
-                                num_neuron = np.sum(space_attn_mask[mask][0] != 0)
+                            else:  
+                                num_neuron = torch.sum(space_attn_mask[mask][0] != 0).item()
                             if num_neuron > 0:
                                 _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
                                 _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
-                                if sum(mask) == 1:
+                                if len(mask) == 1:
                                     _gt = _gt.unsqueeze(0)
                                     _pred = _pred.unsqueeze(0)
                                 session_results[group_eid]["spike"]["gt"].append(_gt)
@@ -322,13 +318,16 @@ class MultiModalTrainer():
                             unique_eids = np.unique(eid)
                             for group_eid in unique_eids:
                                 mask = np.argwhere(eid == group_eid).squeeze()
-                                _gt = outputs.mod_targets[mod][mask]
-                                _pred = outputs.mod_preds[mod][mask]
-                                if sum(mask) == 1:
-                                    _gt = _gt.unsqueeze(0)
-                                    _pred = _pred.unsqueeze(0)
-                                session_results[group_eid][mod]["gt"].append(_gt)
-                                session_results[group_eid][mod]["preds"].append(_pred)
+                                if mask.size == 0 or mask.ndim == 0:  
+                                    continue
+                                else: 
+                                    _gt = outputs.mod_targets[mod][mask]
+                                    _pred = outputs.mod_preds[mod][mask]
+                                    if len(mask) == 1:
+                                        _gt = _gt.unsqueeze(0)
+                                        _pred = _pred.unsqueeze(0)
+                                    session_results[group_eid][mod]["gt"].append(_gt)
+                                    session_results[group_eid][mod]["preds"].append(_pred)
 
         return session_results, eval_loss, mod_loss_dict
     
@@ -348,18 +347,17 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            if mask.size == 0:  
+                            if mask.size == 0 or mask.ndim == 0:  
                                 num_neuron = 0
-                            elif mask.ndim == 0:
-                                num_neuron = 0
-                            elif mask.ndim == 1:
-                                num_neuron = np.sum(space_attn_mask[mask] != 0)
-                            else:  # mask.ndim > 1
-                                num_neuron = np.sum(space_attn_mask[mask][0] != 0)
+                            else:  
+                                if len(self.eid_list) == 1:
+                                    num_neuron = np.sum(space_attn_mask[mask] != 0)
+                                else:
+                                    num_neuron = np.sum(space_attn_mask[mask][0] != 0)
                             if num_neuron > 0:
                                 _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
                                 _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
-                                if sum(mask) == 1:
+                                if len(unique_eids) == 1:
                                     _gt = _gt.unsqueeze(0)
                                     _pred = _pred.unsqueeze(0)
                                 session_enc_results[group_eid][enc_task_var]["gt"].append(_gt)
@@ -419,8 +417,11 @@ class MultiModalTrainer():
         for idx, eid in enumerate(self.eid_list):
             gt[idx], preds[idx] = {}, {}
             for mod in self.modal_filter["output"]:
-                _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
-                _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                try:
+                    _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                    _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                except:
+                    print(f"Missing EID {idx}: {eid} Modality: {mod}")
                 if mod == "spike" and "spike" in self.modal_filter["output"]:
                     _preds = torch.exp(_preds)
                 gt[idx][mod], preds[idx][mod] = _gt, _preds

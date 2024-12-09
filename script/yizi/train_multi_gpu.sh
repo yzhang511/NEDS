@@ -4,12 +4,12 @@
 #SBATCH --partition=gpuA40x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
-#SBATCH --nodes=2
-#SBATCH --ntasks=2
+#SBATCH --nodes=16
+#SBATCH --ntasks=16
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem 100000
-#SBATCH -t 1-10
+#SBATCH --mem 100000   
+#SBATCH -t 2-00
 #SBATCH --export=ALL
 
 . ~/.bashrc
