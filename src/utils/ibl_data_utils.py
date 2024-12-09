@@ -602,7 +602,7 @@ def prepare_data(one, eid, params, n_workers=os.cpu_count()):
         "good_clusters": list((clusters["label"] >= 1).astype(int)),
         "cluster_depths": list(clusters["depths"]),
         "uuids":  list(clusters["uuids"]),
-        "cluster_qc": {k: np.asarray(v) for k, v in clusters.to_dict("list").items()},
+        # "cluster_qc": {k: np.asarray(v) for k, v in clusters.to_dict("list").items()},
     }
 
     trials_data = {
@@ -643,7 +643,7 @@ def align_data(
         "body-motion-energy",
     ], 
     trials_mask=None,
-    nan_thresh=0.2,
+    nan_thresh=0.3,
 ):
     num_trials = len(binned_spikes)
     

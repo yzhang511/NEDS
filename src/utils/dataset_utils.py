@@ -83,7 +83,7 @@ def create_dataset(
             'cluster_depths': [meta_data['cluster_depths']] * len(sparse_binned_spikes),
             'good_clusters': [meta_data['good_clusters']] * len(sparse_binned_spikes),
             'cluster_uuids': [meta_data['uuids']] * len(sparse_binned_spikes),
-            'cluster_qc': [meta_data['cluster_qc']] * len(sparse_binned_spikes),
+            # 'cluster_qc': [meta_data['cluster_qc']] * len(sparse_binned_spikes),
         }
         data_dict.update(meta_dict)
 
@@ -186,6 +186,7 @@ def load_ibl_dataset(cache_dir,
                      batch_size=16,
                      use_re=False,
                      seed=42):
+
     if aligned_data_dir:
         dataset = load_from_disk(aligned_data_dir)
         # if dataset does not have a 'train' key, it is a single session dataset
@@ -268,10 +269,12 @@ def load_ibl_dataset(cache_dir,
                 train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] in target_eids]
                 # # remove the test_re_eids from the train_session_eid_dir
                 train_session_eid_dir = [eid for eid in train_session_eid_dir if eid.split('_')[0].split('/')[1] not in test_re_eids]
+        
+        eid_tracker = []
         for dataset_eid in tqdm(train_session_eid_dir[:num_sessions]):
             try:
-                # print("Loading dataset: ", dataset_eid)
                 session_dataset = load_dataset(dataset_eid)
+
                 train_trials = len(session_dataset["train"]["spikes_sparse_data"])
                 session_train_datasets.append(session_dataset["train"].select(list(range(train_trials))))
 
@@ -292,10 +295,11 @@ def load_ibl_dataset(cache_dir,
                 eids_set.add(eid_prefix)
                 assert eid_prefix not in eid_list, f"Duplicate eid found: {eid_prefix}"
                 eid_list[eid_prefix] = binned_spikes_data.shape[2]
+                eid_tracker.append(eid_prefix)
             except Exception as e:
                 print("Error loading dataset: ", dataset_eid)
                 print(e)
-                continue
+                continue     
 
         print("session eid used: ", eids_set)
         print("Total number of session: ", len(eids_set))

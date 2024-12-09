@@ -295,8 +295,8 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            num_neuron = sum(space_attn_mask[mask] != 0) if len(mask) == 1 \
-                                else sum(space_attn_mask[mask][0] != 0)
+                            num_neuron = sum(space_attn_mask[mask][0] != 0) if mask.dim() > 0 \
+                                else sum(space_attn_mask[mask] != 0)
                             _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
                             _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
                             if sum(mask) == 1:
@@ -341,8 +341,8 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            num_neuron = sum(space_attn_mask[mask] != 0) if len(mask) == 1 \
-                                else sum(space_attn_mask[mask][0] != 0)
+                            num_neuron = sum(space_attn_mask[mask][0] != 0) if mask.dim() > 0 \
+                                else sum(space_attn_mask[mask] != 0) 
                             _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
                             _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
                             if sum(mask) == 1:

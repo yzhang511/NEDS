@@ -69,7 +69,7 @@ beh_names = [
     "block",
     "wheel-speed", 
     "whisker-motion-energy", 
-    "body-motion-energy", 
+    # "body-motion-energy", 
 ]
 
 DYNAMIC_VARS = list(filter(lambda x: x not in ["choice", "reward", "block"], beh_names))
@@ -85,6 +85,7 @@ one = ONE(
     cache_dir=args.base_path
 )
 
+final_eids = []
 for eid_idx, eid in enumerate(eids):
     
     logging.info(f"EID {eid}")
@@ -119,9 +120,9 @@ for eid_idx, eid in enumerate(eids):
     meta_dict["cluster_depths"] = [meta_dict["cluster_depths"][idx] for idx in keep_unit_idxs]
     meta_dict["good_clusters"] = [meta_dict["good_clusters"][idx] for idx in keep_unit_idxs]
     meta_dict["uuids"] = [meta_dict["uuids"][idx] for idx in keep_unit_idxs]
-    meta_dict["cluster_qc"] = {
-        k: np.asarray(v)[keep_unit_idxs].tolist() for k, v in meta_dict["cluster_qc"].items()
-    }
+    # meta_dict["cluster_qc"] = {
+    #     k: np.asarray(v)[keep_unit_idxs].tolist() for k, v in meta_dict["cluster_qc"].items()
+    # }
 
     bin_beh, beh_mask = bin_behaviors(
         one, 
@@ -156,6 +157,10 @@ for eid_idx, eid in enumerate(eids):
         )
     except ValueError as e:
         logging.info(f"Skip EID {eid} due to error: {e}")
+        continue
+
+    if "whisker-motion-energy" not in align_bin_beh:
+        logging.info(f"Skip EID {eid} due to missing whisker data.")
         continue
 
     # Data partition (train: 0.7 val: 0.1 test: 0.2)
@@ -205,3 +210,10 @@ for eid_idx, eid in enumerate(eids):
 
     logging.info(f"Uploaded EID: {eid}")
     logging.info(f"Progress: {eid_idx+1} / {len(eids)} Sessions Uploaded")
+
+    final_eids.append(eid)
+
+
+logging.info(f"Successfully uploaded EIDs: ")
+for eid in final_eids:
+    print(eid)
