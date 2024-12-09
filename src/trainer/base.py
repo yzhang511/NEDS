@@ -295,15 +295,22 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            num_neuron = sum(space_attn_mask[mask][0] != 0) if mask.dim() > 0 \
-                                else sum(space_attn_mask[mask] != 0)
-                            _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
-                            _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
-                            if sum(mask) == 1:
-                                _gt = _gt.unsqueeze(0)
-                                _pred = _pred.unsqueeze(0)
-                            session_results[group_eid]["spike"]["gt"].append(_gt)
-                            session_results[group_eid]["spike"]["preds"].append(_pred)
+                            if mask.size == 0:  
+                                num_neuron = 0
+                            elif mask.ndim == 0:
+                                num_neuron = 0
+                            elif mask.ndim == 1:
+                                num_neuron = np.sum(space_attn_mask[mask] != 0)
+                            else:  # mask.ndim > 1
+                                num_neuron = np.sum(space_attn_mask[mask][0] != 0)
+                            if num_neuron > 0:
+                                _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
+                                _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
+                                if sum(mask) == 1:
+                                    _gt = _gt.unsqueeze(0)
+                                    _pred = _pred.unsqueeze(0)
+                                session_results[group_eid]["spike"]["gt"].append(_gt)
+                                session_results[group_eid]["spike"]["preds"].append(_pred)
     
                 if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
@@ -341,15 +348,22 @@ class MultiModalTrainer():
                         unique_eids = np.unique(eid)
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
-                            num_neuron = sum(space_attn_mask[mask][0] != 0) if mask.dim() > 0 \
-                                else sum(space_attn_mask[mask] != 0) 
-                            _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
-                            _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
-                            if sum(mask) == 1:
-                                _gt = _gt.unsqueeze(0)
-                                _pred = _pred.unsqueeze(0)
-                            session_enc_results[group_eid][enc_task_var]["gt"].append(_gt)
-                            session_enc_results[group_eid][enc_task_var]["preds"].append(_pred)
+                            if mask.size == 0:  
+                                num_neuron = 0
+                            elif mask.ndim == 0:
+                                num_neuron = 0
+                            elif mask.ndim == 1:
+                                num_neuron = np.sum(space_attn_mask[mask] != 0)
+                            else:  # mask.ndim > 1
+                                num_neuron = np.sum(space_attn_mask[mask][0] != 0)
+                            if num_neuron > 0:
+                                _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
+                                _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
+                                if sum(mask) == 1:
+                                    _gt = _gt.unsqueeze(0)
+                                    _pred = _pred.unsqueeze(0)
+                                session_enc_results[group_eid][enc_task_var]["gt"].append(_gt)
+                                session_enc_results[group_eid][enc_task_var]["preds"].append(_pred)
 
         return session_enc_results
     
