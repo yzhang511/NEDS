@@ -160,7 +160,10 @@ train_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=True
+    shuffle=True,
+    data_dir='./data/ibl_mm',
+    mode='train',
+    eids=list(meta_data["eids"])
 )
 
 val_dataloader = make_loader(
@@ -177,7 +180,10 @@ val_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=False
+    shuffle=False,
+    data_dir='./data/ibl_mm',
+    mode='val',
+    eids=list(meta_data["eids"])
 )
 
 test_dataloader = make_loader(
@@ -194,7 +200,10 @@ test_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=False
+    shuffle=False,
+    data_dir='./data/ibl_mm',
+    mode='test',
+    eids=list(meta_data["eids"])
 )
 
 # --------
