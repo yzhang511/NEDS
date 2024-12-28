@@ -41,6 +41,9 @@ def make_loader(
     seed=42,
     shuffle = True,
     weighted_sampler=False,
+    data_dir = None,
+    mode='train',
+    eids=None,
 ):
     
     dataset = BaseDataset(dataset=dataset, 
@@ -55,7 +58,10 @@ def make_loader(
                           sort_by_region = sort_by_region,
                           brain_region = brain_region,
                           load_meta=load_meta,
-                          stitching=stitching
+                          stitching=stitching,
+                          data_dir = data_dir,
+                          mode=mode,
+                          eids=eids,
             )
     
     print(f"len(dataset): {len(dataset)}")
@@ -64,6 +70,7 @@ def make_loader(
     generator.manual_seed(seed)
 
     if weighted_sampler:
+        print(f'Using weighted sampler')
         # Weight samples according to choice
         labels = [x["target"][0][0] for x in dataset]
         weights = torch.from_numpy(calculate_weights(labels)).double()
@@ -73,6 +80,7 @@ def make_loader(
             worker_init_fn=seed_worker, generator=generator, pin_memory=True,
         )
     else:
+        print(f'Using regular sampler')
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=shuffle, 
             worker_init_fn=seed_worker, generator=generator, pin_memory=True,
