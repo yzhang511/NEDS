@@ -17,6 +17,7 @@ num_sessions=${1}
 eid=${2}
 model_mode=${3}
 mask_rartio=${4}
+task_var=${5}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -29,13 +30,13 @@ if [ $model_mode = "mm" ]; then
                                 --eid ${eid} \
                                 --seed 42 \
                                 --base_path ./ \
-                                --save_plot \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
-                				--finetune \
-            			        --overwrite	
+                                --finetune \ 
+            			        --overwrite	\
+                                --enc_task_var $task_var
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \
@@ -43,11 +44,10 @@ then
                                 --eid ${eid} \
                                 --seed 42 \
                                 --base_path ./ \
-                                --save_plot \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
-				--overwrite
+				                --overwrite
 else
     echo "model_mode: $model_mode not supported"
 fi

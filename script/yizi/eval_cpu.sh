@@ -28,12 +28,12 @@ if [ $model_mode = "mm" ]; then
                                 --eid ${eid} \
                                 --seed 42 \
                                 --base_path ./ \
-                                --save_plot \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
-            			        --overwrite	
+                                --finetune \
+                                --overwrite	
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \
@@ -41,7 +41,6 @@ then
                                 --eid ${eid} \
                                 --seed 42 \
                                 --base_path ./ \
-                                --save_plot \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \

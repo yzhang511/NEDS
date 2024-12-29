@@ -13,5 +13,5 @@ echo $TMPDIR
 
 cd ../..
 conda activate ibl-mm
-python src/prepare_data.py --base_path /scratch/bcxj/yzhang39/Downloads --n_sessions 200
+python src/prepare_data.py --base_path /scratch/bcxj/yzhang39/datasets --n_sessions 200
 
