@@ -20,6 +20,7 @@ from models.masker import Masker
 from multi_modal.encoder_embeddings import EncoderLayer
 from models.stitcher import StitchDecoder
 from models.model_output import ModelOutput
+from multi_modal.mm_utils import create_context_mask
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
@@ -54,6 +55,7 @@ class MultiModal(nn.Module):
         self.model_mode = model_mode
         self.eid_list = kwargs["eid_list"]
         self.mod_to_indx = {r: i for i, r in enumerate(self.avail_mod)}
+        self.n_mod = len(self.avail_mod)
 
         self.n_layers = config.encoder.transformer.n_layers
         self.hidden_size = config.encoder.transformer.hidden_size
@@ -62,9 +64,12 @@ class MultiModal(nn.Module):
         self.encoder_modalities = set(encoder_embeddings.keys())
         self.encoder_embeddings = nn.ModuleDict(encoder_embeddings)
 
+        context_mask = create_context_mask(config.context.forward, config.context.backward, self.max_F)
+        self.register_buffer("context_mask", context_mask, persistent=False)
+
         self.mask = config.masker.force_active
         if self.mask:
-            assert config.masker.mode in ["temporal"], "only allow temporal token masking."
+            assert config.masker.mode in ["temporal", "causal"], "only allow temporal / causal token masking."
             self.masker = Masker(config.masker)
 
         self.encoder = nn.ModuleList(
@@ -100,11 +105,18 @@ class MultiModal(nn.Module):
         else:
             mod_list, _eid_list, n_channels = self.avail_beh, self.eid_list, self.hidden_size
             
-        self.mod_stitcher_proj_dict = {}
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self.mod_stitcher_proj_dict, self.mod_static_weight_dict = {}, {}
         for mod in mod_list:
             self.mod_stitcher_proj_dict[mod] = StitchDecoder(
                 eid_list = _eid_list, n_channels = n_channels, mod = mod,
-            ).cuda()
+            ).to(device)
+            if mod in STATIC_VARS:
+                tmp_dict = {}
+                for key, val in _eid_list.items():
+                    tmp_dict[str(key)] = nn.Parameter(torch.rand(self.max_F))
+                self.mod_static_weight_dict[mod] = nn.ParameterDict(tmp_dict).to(device)
                 
     
     def cat_encoder_tensors(self, mod_dict: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor]:
@@ -135,7 +147,7 @@ class MultiModal(nn.Module):
 
         encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
         
-        encoder_tokens[:,encoder_mask_ids,:] = 0.
+        encoder_tokens[:,encoder_mask_ids,:] = 0.        
 
         return encoder_tokens, encoder_emb, input_timestamp, encoder_mask, mod_mask
 
@@ -146,8 +158,14 @@ class MultiModal(nn.Module):
         input_timestamp: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
         
+        B, N, _ = x.size()
+
+        context_mask = self.context_mask.repeat(N//self.max_F, N//self.max_F).unsqueeze(0).expand(B,N,N)
+        
         for layer in self.encoder:
-            x = layer(x, timestamp=input_timestamp)
+            x = layer(
+                x, mask=context_mask, timestamp=input_timestamp
+            )
 
         x = self.encoder_norm(x)
 
@@ -177,20 +195,21 @@ class MultiModal(nn.Module):
                     f"shape mismatch in computing loss: preds ({preds.shape}) vs. targets ({targets.shape})."
                     loss = (self.mod_loss[mod_type](preds, targets)*targets_mask).sum()/n_examples
                 else:
-                    loss = 0.
+                    loss = torch.zeros(1, device=targets.device, requires_grad=True).squeeze()
             else:
                 preds, targets = preds.squeeze(1), targets.squeeze(1)
                 targets_mask = targets_mask.squeeze(1)
                 n_examples = targets_mask.sum()
                 if n_examples == 0:
                     mod_loss[mod], mod_n_examples[mod], mod_preds[mod], mod_targets[mod] = \
-                    0., n_examples, preds, targets
+                    torch.zeros(1, device=targets.device, requires_grad=True).squeeze(), \
+                    n_examples, preds, targets
                     continue                
                 static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1)   
                 targets = F.one_hot(
                     targets.to(torch.int64), num_classes=self.num_class[mod]
                 ).squeeze(1)               
-                loss = self.mod_loss[mod_type](preds, targets.float()).sum() / n_examples
+                loss = self.mod_loss[mod_type](preds.float(), targets.float()).sum() / n_examples
                 preds, targets = preds.argmax(-1), targets.argmax(-1)
             
             mod_loss[mod] = loss
@@ -210,28 +229,39 @@ class MultiModal(nn.Module):
         # Can we improve this in the future?
         output_mod_dict = {}
         eid = mod_dict["spike"]["eid"]
+
         if self.model_mode == "encoding":
             mod_list = ["spike"]
         else:
             mod_list = self.avail_beh
 
+        B, N, P = y.size()
+
         for mod in mod_list:
+
             output_mod_dict[mod] = {}
-            if self.mod_type[mod] == "static":
-                y = y.reshape(-1, self.max_F * self.hidden_size)
-            elif self.mod_type[mod] == "spike":
-                y = y.reshape(-1, (len(self.avail_beh) * self.max_F) * self.hidden_size)
-            preds = self.mod_stitcher_proj_dict[mod](y, eid)
-            if self.model_mode == "decoding":
-                output_mod_dict[mod]["preds"] = preds
-            else: 
-                output_mod_dict[mod]["preds"] = preds.reshape(
-                    preds.size()[0], self.max_F, preds.size()[-1]//self.max_F
-                )
+            if hasattr(self, "mod_stitcher_proj_dict"):
+                y_mod = y.clone()
+                if hasattr(self, "mod_static_weight_dict") and (mod in STATIC_VARS):
+                    weight = torch.zeros_like(y, device=y.device) 
+                    eid = np.array(eid)
+                    unique_eids = np.unique(eid)
+                    for group_eid in unique_eids:
+                        mask = torch.tensor(np.argwhere(eid==group_eid), device=y.device).squeeze()
+                        if mask.dim() > 0:
+                            weight[mask] = self.mod_static_weight_dict[mod][group_eid][None,:,None].expand(mask.size(0),N,P)
+                    y_mod = torch.sum(
+                        y.reshape(B,N,P) * weight, 1
+                    ).reshape(B,-1)
+                preds = self.mod_stitcher_proj_dict[mod](y_mod, eid)
+                output_mod_dict[mod]["preds"] = preds.reshape((B,-1,preds.size()[-1])) \
+                    if not hasattr(self, "mod_static_weight_dict") else preds
+
             output_mod_dict[mod]["targets_mask"] = mod_dict[mod]["targets_mask"]
             output_mod_dict[mod]["gt"] = mod_dict[mod]["targets"]
         
         return output_mod_dict
+
 
     def _prepare_mixed_masking(self, mod_dict):
                     
@@ -252,16 +282,16 @@ class MultiModal(nn.Module):
                 mask_map[mod] = {
                     "encoding": all_ones,
                     "decoding": all_zeros,
-                    "self-spike": self.masker(tmp, None)[1],
+                    "self-spike": self.masker(tmp, None, "temporal")[1],
                     "self-behavior": all_zeros,
-                    "random_token": self.masker(tmp, None)[1],
+                    "random_token": self.masker(tmp, None, "temporal")[1],
                 }
-            elif mod in DYNAMIC_VARS + STATIC_VARS:
+            elif mod in DYNAMIC_VARS+STATIC_VARS:
                 mask_map[mod] = {
                     "encoding": 1 - mask_map["spike"]["encoding"],
                     "decoding": 1 - mask_map["spike"]["decoding"],
                     "self-spike": all_zeros,
-                    "self-behavior": self.masker(tmp, None)[1],
+                    "self-behavior": self.masker(tmp, None, "temporal")[1],
                     "random_token": mask_map["spike"]["random_token"],
                 }
         return mask_map, selected_schemes
@@ -269,7 +299,7 @@ class MultiModal(nn.Module):
     
     def forward(self, mod_dict: Dict[str, Dict[str, torch.Tensor]]) -> MultiModalOutput:
 
-        if mod_dict["spike"]["training_mode"] == "mixed":
+        if self.model_mode == "mm" and mod_dict["spike"]["training_mode"] == "mixed":
             mask_map, selected_schemes = self._prepare_mixed_masking(mod_dict)
 
         for mod, d in mod_dict.items():
@@ -321,7 +351,7 @@ class MultiModal(nn.Module):
                 for mod, d in encoder_mod_dict.items() if mod in self.encoder_embeddings
             }
         else:
-            output_mod_dict = self.forward_unimodal_output(mod_dict, y)
+            output_mod_dict = self.forward_unimodal_output(mod_dict, x)
             
         loss, mod_loss, mod_n_examples, mod_preds, mod_targets, static_targets, static_preds = \
         self.forward_loss(output_mod_dict)

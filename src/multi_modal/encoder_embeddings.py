@@ -186,7 +186,7 @@ class EncoderLayer(nn.Module):
         timestamp: Optional[torch.LongTensor] = None,  
     ) -> torch.FloatTensor :                           
         
-        x = x + self.attn(self.ln1(x), timestamp=timestamp)
+        x = x + self.attn(self.ln1(x), mask=mask, timestamp=timestamp)
 
         x = x + self.mlp(self.ln2(x))
 

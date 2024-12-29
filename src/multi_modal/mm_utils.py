@@ -147,6 +147,8 @@ class Attention(nn.Module):
 
         B, T, _  = x.size()    
 
+        mask = mask.unsqueeze(1).expand(B,self.n_heads,T,T).bool()
+
         # Compute query, key, value for attention
         q = self.query(x).view(B, T, self.n_heads, self.head_size).transpose(1, 2)      
         k = self.key(x).view(B, T, self.n_heads, self.head_size).transpose(1, 2)        
@@ -157,7 +159,7 @@ class Attention(nn.Module):
             q, k = apply_rotary_pos_emb(q, k, timestamp, self.cos, self.sin, 1)  # (B,n_heads,T,head_size)
 
         out = F.scaled_dot_product_attention(
-            q, k, v, dropout_p=(self.attn_dropout if self.training else 0.0), is_causal=False
+            q, k, v, attn_mask=mask, dropout_p=(self.attn_dropout if self.training else 0.0), is_causal=False
         )
         out = out.transpose(1, 2).contiguous().view(B, T, self.hidden_size) 
 
@@ -204,6 +206,8 @@ class CrossAttention(nn.Module):
     ):
         B, T, _ = x.size()
         _, M, _ = context.size()
+
+        mask = mask.unsqueeze(1).expand(B,self.n_heads,T,M).bool()
         
         q = self.query(x).view(B, T, self.n_heads, self.head_size).transpose(1, 2)      
         k = self.key(context).view(B, M, self.n_heads, self.head_size).transpose(1, 2)        
@@ -213,7 +217,9 @@ class CrossAttention(nn.Module):
         if self.use_rope:
             q, k = apply_rotary_pos_emb(q, k, timestamp, self.cos, self.sin, 1)  # (B,n_heads,T,head_size)
 
-        out = F.scaled_dot_product_attention(q, k, v, dropout_p=(self.attn_dropout if self.training else 0.0), is_causal=False)
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, dropout_p=(self.attn_dropout if self.training else 0.0), is_causal=False
+        )
         out = out.transpose(1, 2).contiguous().view(B, T, self.hidden_size) 
 
         return self.out_proj(self.dropout(out)) 

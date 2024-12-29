@@ -72,6 +72,11 @@ def load_model_data_local(**kwargs):
     neural_mods = kwargs["neural_mods"]
     static_mods = kwargs["static_mods"]
     dynamic_mods = kwargs["dynamic_mods"]
+    if "num_sessions" in kwargs:
+        num_sessions = kwargs["num_sessions"]
+    else:
+        num_sessions = 1
+
     avail_mod = neural_mods + static_mods + dynamic_mods
     avail_beh = static_mods + dynamic_mods
 
@@ -84,8 +89,8 @@ def load_model_data_local(**kwargs):
     _, _, dataset, meta_data = load_ibl_dataset(
         config.dirs.dataset_cache_dir, 
         config.dirs.huggingface_org,
-        num_sessions=1,
-        eid = eid,
+        num_sessions=num_sessions,
+        eid = eid if num_sessions == 1 else None,
         use_re=True,
         split_method="predefined",
         test_session_eid=[],
@@ -94,11 +99,6 @@ def load_model_data_local(**kwargs):
     )
 
     logger.info(meta_data)
-    
-    n_neurons = meta_data["eid_list"][eid]
-    n_behaviors = len(avail_beh)
-
-    logger.info(f"Load test data with {n_neurons} neurons.")
 
     encoder_embeddings = {}
 
@@ -140,6 +140,21 @@ def load_model_data_local(**kwargs):
 
     accelerator = Accelerator()
     model = accelerator.prepare(model)
+
+    _, _, dataset, meta_data = load_ibl_dataset(
+        config.dirs.dataset_cache_dir, 
+        config.dirs.huggingface_org,
+        num_sessions=1,
+        eid = eid,
+        use_re=True,
+        split_method="predefined",
+        test_session_eid=[],
+        batch_size=config.training.train_batch_size,
+        seed=config.seed
+    )
+
+    n_neurons = max(list(meta_data["eid_list"].values()))
+    logger.info(f"Load test data with {n_neurons} neurons.")
     
     dataloader = make_loader(
         dataset, 

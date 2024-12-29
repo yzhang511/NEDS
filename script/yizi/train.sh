@@ -1,16 +1,16 @@
 #!/bin/bash
 
 #SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA100x4
+#SBATCH --partition=gpuA40x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem 200000
+#SBATCH --mem 100000
 #SBATCH --gpus=1
-#SBATCH -t 2-00
+#SBATCH -t 0-15
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -20,6 +20,7 @@ eid=${2}
 model_mode=${3}
 dummy_size=${4}
 mask_ratio=${5}
+task_var=${6}
 echo $TMPDIR
 
 conda activate ibl-mm
@@ -33,7 +34,8 @@ if [ $model_mode = "mm" ]; then
                                     --mixed_training \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
-                                    --model_mode $model_mode
+                                    --model_mode $model_mode \
+                                    --enc_task_var $task_var
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/train_multi_modal.py --eid $eid \
@@ -41,7 +43,8 @@ then
                                     --mask_ratio $mask_ratio \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
-                                    --model_mode $model_mode
+                                    --model_mode $model_mode \
+                                    --enc_task_var $task_var
 else
     echo "model_mode: $model_mode not supported"
 fi

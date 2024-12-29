@@ -4,8 +4,8 @@
 #SBATCH --output="data.%j.out"
 #SBATCH --partition=cpu
 #SBATCH -c 4
-#SBATCH --mem 150000
-#SBATCH -t 2-00
+#SBATCH --mem 100000
+#SBATCH -t 0-10
 #SBATCH --export=ALL
 
 . ~/.bashrc

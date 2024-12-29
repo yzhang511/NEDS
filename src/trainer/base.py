@@ -178,7 +178,9 @@ class MultiModalTrainer():
             
             train_epoch_results = self.train_epoch(epoch)
 
-            if self.accelerator.is_main_process:
+            eval_every = self.config.training.eval_every
+
+            if self.accelerator.is_main_process and epoch % eval_every == 0:
 
                 eval_epoch_results = self.eval_epoch()
                 print(f"Epoch: {epoch} train loss: {train_epoch_results['train_loss']}")
@@ -348,16 +350,11 @@ class MultiModalTrainer():
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
                             if mask.size == 0 or mask.ndim == 0:  
-                                num_neuron = 0
-                            else:  
-                                if len(self.eid_list) == 1:
-                                    num_neuron = np.sum(space_attn_mask[mask] != 0)
-                                else:
-                                    num_neuron = np.sum(space_attn_mask[mask][0] != 0)
-                            if num_neuron > 0:
-                                _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
-                                _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
-                                if len(unique_eids) == 1:
+                                    continue
+                            else: 
+                                _gt = outputs.mod_targets[enc_task_var][mask]
+                                _pred = outputs.mod_preds[enc_task_var][mask]
+                                if len(mask) == 1:
                                     _gt = _gt.unsqueeze(0)
                                     _pred = _pred.unsqueeze(0)
                                 session_enc_results[group_eid][enc_task_var]["gt"].append(_gt)
@@ -383,12 +380,15 @@ class MultiModalTrainer():
                 _gt = torch.cat(session_enc_results[eid][enc_task_var]["gt"], dim=0)
                 _preds = torch.cat(session_enc_results[eid][enc_task_var]["preds"], dim=0)
                 _preds = torch.exp(_preds)
+                if _gt.ndim == 2 and _preds.ndim == 2:
+                    _gt, _preds = _gt.unsqueeze(0), _preds.unsqueeze(0)
                 gt[idx][enc_task_var], preds[idx][enc_task_var] = _gt, _preds
 
                 results = metrics_list(
                     gt = gt[idx][enc_task_var].transpose(-1,0), 
                     pred = preds[idx][enc_task_var].transpose(-1,0), 
-                    metrics=["bps"], device=self.accelerator.device
+                    metrics=["bps"], 
+                    device=self.accelerator.device
                 )
                 eval_metrics[enc_task_var].append(results["bps"])
 

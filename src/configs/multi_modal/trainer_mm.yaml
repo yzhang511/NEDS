@@ -35,7 +35,7 @@ training:
 
   save_plot_every_n_epochs: 20  # Plot the model output every n epochs
   save_every: 100  # Save checkpoint
-  eval_every: null  # Eval model
+  eval_every: 1  # Eval model (5)
 
   use_mtm: false
   mask_type: embd # embd/input
