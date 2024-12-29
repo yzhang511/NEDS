@@ -176,7 +176,7 @@ train_dataloader = make_loader(
     stitching=True,
     seed=config.seed,
     data_dir=f"{args.data_path}/ibl_mm",
-    mode="test",
+    mode="train",
     eids=list(meta_data["eids"]),
     shuffle=True
 )
@@ -196,7 +196,7 @@ val_dataloader = make_loader(
     stitching=True,
     seed=config.seed,
     data_dir=f"{args.data_path}/ibl_mm",
-    mode="test",
+    mode="val",
     eids=list(meta_data["eids"]),
     shuffle=False
 )

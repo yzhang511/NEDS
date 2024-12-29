@@ -147,7 +147,8 @@ class Attention(nn.Module):
 
         B, T, _  = x.size()    
 
-        mask = mask.unsqueeze(1).expand(B,self.n_heads,T,T).bool()
+        if mask is not None:
+            mask = mask.unsqueeze(1).expand(B,self.n_heads,T,T).bool()
 
         # Compute query, key, value for attention
         q = self.query(x).view(B, T, self.n_heads, self.head_size).transpose(1, 2)      
@@ -207,7 +208,8 @@ class CrossAttention(nn.Module):
         B, T, _ = x.size()
         _, M, _ = context.size()
 
-        mask = mask.unsqueeze(1).expand(B,self.n_heads,T,M).bool()
+        if mask is not None:
+            mask = mask.unsqueeze(1).expand(B,self.n_heads,T,M).bool()
         
         q = self.query(x).view(B, T, self.n_heads, self.head_size).transpose(1, 2)      
         k = self.key(context).view(B, M, self.n_heads, self.head_size).transpose(1, 2)        

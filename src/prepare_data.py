@@ -87,6 +87,11 @@ one = ONE(
 
 final_eids = []
 for eid_idx, eid in enumerate(eids):
+
+
+    if os.path.exists(f"{args.base_path}/{eid}_aligned"):
+        logging.info(f"The dataset {eid}_aligned already exists.")
+        continue
     
     logging.info(f"EID {eid}")
 
@@ -207,7 +212,7 @@ for eid_idx, eid in enumerate(eids):
     logging.info(dataset)
 
     # upload_dataset(dataset, org=args.huggingface_org, eid=f"{eid}_aligned")
-    dataset.save_to_disk(f'{args.base_path}/{eid}_aligned')
+    dataset.save_to_disk(f"{args.base_path}/{eid}_aligned")
 
     logging.info(f"Uploaded EID: {eid}")
     logging.info(f"Progress: {eid_idx+1} / {len(eids)} Sessions Uploaded")

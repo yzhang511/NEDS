@@ -64,8 +64,8 @@ class MultiModal(nn.Module):
         self.encoder_modalities = set(encoder_embeddings.keys())
         self.encoder_embeddings = nn.ModuleDict(encoder_embeddings)
 
-        context_mask = create_context_mask(config.context.forward, config.context.backward, self.max_F)
-        self.register_buffer("context_mask", context_mask, persistent=False)
+        # context_mask = create_context_mask(config.context.forward, config.context.backward, self.max_F)
+        # self.register_buffer("context_mask", context_mask, persistent=False)
 
         self.mask = config.masker.force_active
         if self.mask:
@@ -160,11 +160,11 @@ class MultiModal(nn.Module):
         
         B, N, _ = x.size()
 
-        context_mask = self.context_mask.repeat(N//self.max_F, N//self.max_F).unsqueeze(0).expand(B,N,N)
+        # context_mask = self.context_mask.repeat(N//self.max_F, N//self.max_F).unsqueeze(0).expand(B,N,N)
         
         for layer in self.encoder:
             x = layer(
-                x, mask=context_mask, timestamp=input_timestamp
+                x, mask=None, timestamp=input_timestamp
             )
 
         x = self.encoder_norm(x)
