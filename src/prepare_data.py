@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from one.api import ONE
-from datasets import DatasetDict
+from datasets import DatasetDict, DatasetInfo
 from utils.ibl_data_utils import (
     prepare_data,
     select_brain_regions,
@@ -206,7 +206,8 @@ for eid_idx, eid in enumerate(eids):
     )
     logging.info(dataset)
 
-    upload_dataset(dataset, org=args.huggingface_org, eid=f"{eid}_aligned")
+    # upload_dataset(dataset, org=args.huggingface_org, eid=f"{eid}_aligned")
+    dataset.save_to_disk(f'{args.base_path}/{eid}_aligned')
 
     logging.info(f"Uploaded EID: {eid}")
     logging.info(f"Progress: {eid_idx+1} / {len(eids)} Sessions Uploaded")

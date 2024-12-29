@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.sparse import csr_array
-from datasets import Dataset, DatasetInfo, list_datasets, load_dataset, concatenate_datasets,DatasetDict, load_from_disk
+from datasets import (
+    Dataset, DatasetInfo, list_datasets, load_dataset, concatenate_datasets, DatasetDict, load_from_disk,
+)
 # import h5py
 import os
 import torch
@@ -199,7 +201,7 @@ def load_ibl_dataset(cache_dir,
     
     user_datasets = get_user_datasets(user_or_org_name)
     print("Total session-wise datasets found: ", len(user_datasets))
-    cache_dir = os.path.join(cache_dir, "ibl", user_or_org_name)
+    # cache_dir = os.path.join(cache_dir, "ibl", user_or_org_name)
     test_session_eid_dir = []
     train_session_eid_dir = []
     if eid is not None:
@@ -253,6 +255,7 @@ def load_ibl_dataset(cache_dir,
         dataset = all_sessions_datasets.train_test_split(test_size=split_size, seed=seed)
         train_dataset = dataset["train"]
         test_dataset = dataset["test"]
+
     elif split_method == 'predefined':
         print("Loading train dataset sessions for predefined train/val/test split...")
         session_train_datasets = []
@@ -273,7 +276,10 @@ def load_ibl_dataset(cache_dir,
         eid_tracker = []
         for dataset_eid in tqdm(train_session_eid_dir[:num_sessions]):
             try:
-                session_dataset = load_dataset(dataset_eid)
+                eid_prefix = dataset_eid.split('_')[0] if train_aligned else dataset_eid
+                eid_prefix = eid_prefix.split('/')[1]
+                # session_dataset = load_dataset(dataset_eid)
+                session_dataset = load_from_disk(f"{cache_dir}/{eid_prefix}_aligned")
 
                 train_trials = len(session_dataset["train"]["spikes_sparse_data"])
                 session_train_datasets.append(session_dataset["train"].select(list(range(train_trials))))
@@ -290,8 +296,7 @@ def load_ibl_dataset(cache_dir,
                                                                     [session_dataset["train"]["spikes_sparse_shape"][0]])
 
                 num_neuron_set.add(binned_spikes_data.shape[2])
-                eid_prefix = dataset_eid.split('_')[0] if train_aligned else dataset_eid
-                eid_prefix = eid_prefix.split('/')[1]
+        
                 eids_set.add(eid_prefix)
                 assert eid_prefix not in eid_list, f"Duplicate eid found: {eid_prefix}"
                 eid_list[eid_prefix] = binned_spikes_data.shape[2]

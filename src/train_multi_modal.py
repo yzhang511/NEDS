@@ -69,6 +69,7 @@ best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--mask_mode", type=str, default="temporal")
@@ -174,6 +175,9 @@ train_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
+    data_dir=f"{args.data_path}/ibl_mm",
+    mode="test",
+    eids=list(meta_data["eids"]),
     shuffle=True
 )
 
@@ -191,6 +195,9 @@ val_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
+    data_dir=f"{args.data_path}/ibl_mm",
+    mode="test",
+    eids=list(meta_data["eids"]),
     shuffle=False
 )
 
@@ -208,6 +215,9 @@ test_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
+    data_dir=f"{args.data_path}/ibl_mm",
+    mode="test",
+    eids=list(meta_data["eids"]),
     shuffle=False
 )
 

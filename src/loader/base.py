@@ -1,3 +1,4 @@
+import os
 import torch
 import pickle
 import numpy as np
@@ -348,6 +349,18 @@ class LengthStitchGroupedSampler(Sampler):
         return iter(indices)
 
 
+def get_npy_files(data_dir, mode, eids):
+    assert type(eids) == list
+    # get all the npy files in the data directory
+    data_dir = os.path.join(data_dir, mode)
+    data_paths = [os.path.join(data_dir, f) for f in os.listdir(data_dir)]
+    # only remain files with .npy extension
+    data_paths = [f for f in data_paths if f.endswith('.npy')]
+    # filter by eid
+    # the path contains one of the eids
+    data_paths = [f for f in data_paths if any([eid in f for eid in eids])]
+    return data_paths
+
 
 class BaseDataset(torch.utils.data.Dataset):
     def __init__(
@@ -366,22 +379,29 @@ class BaseDataset(torch.utils.data.Dataset):
         brain_region = 'all',
         dataset_name = "ibl",
         stitching = False,
+        data_dir = None,
+        mode = "train",
+        eids = None
     ) -> None:
 
-        self.dataset = dataset
-        self.target = target
-        self.pad_value = pad_value
-        self.sort_by_depth = sort_by_depth
-        self.sort_by_region = sort_by_region
-        self.max_time_length = max_time_length
-        self.max_space_length = max_space_length
-        self.bin_size = bin_size
-        self.pad_to_right = pad_to_right
-        self.mask_ratio = mask_ratio
-        self.brain_region = brain_region
-        self.load_meta = load_meta
-        self.dataset_name = dataset_name
-        self.stitching = stitching
+        if data_dir is not None:
+            self.data_paths = get_npy_files(data_dir, mode, eids)
+        else:
+            self.data_paths = None
+            self.dataset = dataset
+            self.target = target
+            self.pad_value = pad_value
+            self.sort_by_depth = sort_by_depth
+            self.sort_by_region = sort_by_region
+            self.max_time_length = max_time_length
+            self.max_space_length = max_space_length
+            self.bin_size = bin_size
+            self.pad_to_right = pad_to_right
+            self.mask_ratio = mask_ratio
+            self.brain_region = brain_region
+            self.load_meta = load_meta
+            self.dataset_name = dataset_name
+            self.stitching = stitching
 
     def _preprocess_h5_data(self, data, idx):
         spike_data, rates, _, _ = data
@@ -536,14 +556,19 @@ class BaseDataset(torch.utils.data.Dataset):
         return data, pad_len
     
     def __len__(self):
-        if "ibl" in self.dataset_name:
-            return len(self.dataset)
+        if self.data_paths is not None:
+            return len(self.data_paths)
+        elif "ibl" in self.dataset_name:
+                return len(self.dataset)
         else:
             # get the length of the first tuple in the dataset
             return len(self.dataset[0])
     
     def __getitem__(self, idx):
-        if "ibl" in self.dataset_name:
+        if self.data_paths is not None:
+            data = np.load(self.data_paths[idx], allow_pickle=True).item()
+            return data
+        elif "ibl" in self.dataset_name:
             return self._preprocess_ibl_data(self.dataset[idx])
         else:
             return self._preprocess_h5_data(self.dataset, idx)  
