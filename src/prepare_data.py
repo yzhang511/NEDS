@@ -153,7 +153,7 @@ for eid_idx, eid in enumerate(eids):
         bin_lfp = None
 
     try:
-        align_bin_spikes, align_bin_beh, align_bin_lfp, _, _ = align_data(
+        align_bin_spikes, align_bin_beh, align_bin_lfp, _, bad_trial_idxs = align_data(
             bin_spikes, 
             bin_beh, 
             bin_lfp, 

@@ -49,6 +49,7 @@ best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--model_mode", type=str, default="mm")
 ap.add_argument("--mask_mode", type=str, default="temporal")
@@ -174,6 +175,7 @@ for ckpt_path in best_ckpt_path:
         "dynamic_mods": dynamic_mods,
         "modal_filter": modal_filter,
         "model_mode": model_mode,
+        "data_path": args.data_path,
     }      
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
     model_state_dict = model.state_dict()
