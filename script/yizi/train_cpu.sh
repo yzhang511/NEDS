@@ -33,7 +33,7 @@ if [ $model_mode = "mm" ]; then
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
                                     --model_mode $model_mode \
-                                    --data_path /scratch/bcxj/yzhang39/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/train_multi_modal.py --eid $eid \
@@ -42,7 +42,7 @@ then
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
                                     --model_mode $model_mode \
-                                    --data_path /scratch/bcxj/yzhang39/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 else
     echo "model_mode: $model_mode not supported"
 fi

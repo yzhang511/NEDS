@@ -52,7 +52,7 @@ if [ $model_mode = "mm" ]; then
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --data_path /scratch/bcxj/yzhang39/datasets/
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
@@ -64,7 +64,7 @@ then
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --data_path /scratch/bcxj/yzhang39/datasets/
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 else
     echo "model_mode: $model_mode not supported"

@@ -36,7 +36,7 @@ if [ $model_mode = "mm" ]; then
                                     --model_mode $model_mode \
                                     --pretrain_task_var all \
                                     --enc_task_var $task_var \
-                                    --data_path /scratch/bcxj/yzhang39/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/finetune_multi_modal.py --eid $eid \
@@ -47,7 +47,7 @@ then
                                     --model_mode $model_mode \
                                     --pretrain_task_var all \
                                     --enc_task_var $task_var \
-                                    --data_path /scratch/bcxj/yzhang39/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 else
     echo "model_mode: $model_mode not supported"
 fi

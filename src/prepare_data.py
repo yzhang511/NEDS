@@ -88,7 +88,6 @@ one = ONE(
 final_eids = []
 for eid_idx, eid in enumerate(eids):
 
-
     if os.path.exists(f"{args.base_path}/{eid}_aligned"):
         logging.info(f"The dataset {eid}_aligned already exists.")
         continue

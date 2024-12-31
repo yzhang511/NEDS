@@ -350,10 +350,12 @@ class MultiModalTrainer():
                         for group_eid in unique_eids:
                             mask = np.argwhere(eid == group_eid).squeeze()
                             if mask.size == 0 or mask.ndim == 0:  
-                                    continue
-                            else: 
-                                _gt = outputs.mod_targets[enc_task_var][mask]
-                                _pred = outputs.mod_preds[enc_task_var][mask]
+                                num_neuron = 0
+                            else:  
+                                num_neuron = torch.sum(space_attn_mask[mask][0] != 0).item()
+                            if num_neuron > 0:
+                                _gt = outputs.mod_targets["spike"][mask,:,:num_neuron]
+                                _pred = outputs.mod_preds["spike"][mask,:,:num_neuron]
                                 if len(mask) == 1:
                                     _gt = _gt.unsqueeze(0)
                                     _pred = _pred.unsqueeze(0)

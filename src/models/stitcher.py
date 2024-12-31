@@ -74,7 +74,7 @@ class StitchDecoder(nn.Module):
         self.N = max_num_neuron if mod == "spike" else val
 
     def forward(self, x, eid):
-        x = x.reshape(len(eid), -1, self.P)
+        x = x.reshape((len(eid), -1, self.P))
         B, T, _ = x.size()
         eid = np.array(eid)
         unique_eids = np.unique(eid)

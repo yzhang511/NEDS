@@ -34,7 +34,7 @@ if [ $model_mode = "mm" ]; then
                                 --wandb \
                                 --finetune \
                                 --overwrite	\
-                                --data_path /scratch/bcxj/yzhang39/datasets/
+                                --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \
@@ -47,7 +47,7 @@ then
                                 --wandb \
                                 --finetune \
                                 --overwrite	\
-                                --data_path /scratch/bcxj/yzhang39/datasets/
+                                --data_path /scratch/bdtg/yzhang39/datasets/
 				--overwrite
 else
     echo "model_mode: $model_mode not supported"

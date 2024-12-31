@@ -28,7 +28,7 @@ python src/create_dataset.py --eid $eid \
                                 --num_sessions 1 \
                                 --dummy_size $dummy_size \
                                 --model_mode $model_mode \
-                                --data_path /scratch/bcxj/yzhang39/datasets/
+                                --data_path /scratch/bdtg/yzhang39/datasets/
 
 cd script/yizi/
 

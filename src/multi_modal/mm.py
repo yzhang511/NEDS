@@ -101,7 +101,7 @@ class MultiModal(nn.Module):
         if self.model_mode == "encoding":
             mod_list = ["spike"]
             _eid_list = {k: v * self.max_F for k, v in self.eid_list.items()}
-            n_channels = self.hidden_size * (self.max_F * len(self.avail_beh))
+            n_channels = self.hidden_size * self.max_F
         else:
             mod_list, _eid_list, n_channels = self.avail_beh, self.eid_list, self.hidden_size
             
@@ -190,7 +190,7 @@ class MultiModal(nn.Module):
                 pad_mask = targets != -1.
                 targets_mask = torch.mul(targets_mask, pad_mask)
                 n_examples = targets_mask.sum()
-                if n_examples != 0:
+                if n_examples != 0:                        
                     assert preds.shape == targets.shape == targets_mask.shape, \
                     f"shape mismatch in computing loss: preds ({preds.shape}) vs. targets ({targets.shape})."
                     loss = (self.mod_loss[mod_type](preds, targets)*targets_mask).sum()/n_examples
@@ -235,6 +235,14 @@ class MultiModal(nn.Module):
         else:
             mod_list = self.avail_beh
 
+        # Rank variable for encoding
+        for idx, (mod, _) in enumerate(mod_dict.items()):
+            if "inputs_token_mask" in mod_dict[mod]:
+                if mod_dict[mod]["inputs_token_mask"].sum().item() == 0:
+                    mod_idx = idx - 1 # Skip 'spike' modality
+            else:
+                mod_idx = None
+
         B, N, P = y.size()
 
         for mod in mod_list:
@@ -250,12 +258,21 @@ class MultiModal(nn.Module):
                         mask = torch.tensor(np.argwhere(eid==group_eid), device=y.device).squeeze()
                         if mask.dim() > 0:
                             weight[mask] = self.mod_static_weight_dict[mod][group_eid][None,:,None].expand(mask.size(0),N,P)
-                    y_mod = torch.sum(
-                        y.reshape(B,N,P) * weight, 1
-                    ).reshape(B,-1)
-                preds = self.mod_stitcher_proj_dict[mod](y_mod, eid)
-                output_mod_dict[mod]["preds"] = preds.reshape((B,-1,preds.size()[-1])) \
-                    if not hasattr(self, "mod_static_weight_dict") else preds
+                    y_mod = torch.sum(y.reshape(B,N,P) * weight, 1).reshape(B,-1)
+                if self.model_mode == "encoding":
+                    # Rank variable for encoding
+                    if mod_idx is None:
+                        chunks = []
+                        for beh_idx in range(len(self.avail_beh)): 
+                            start_idx = beh_idx * self.max_F
+                            end_idx = start_idx + (self.max_F // len(self.avail_beh))
+                            chunks.append(y_mod[:, start_idx:end_idx])
+                        y_mod = torch.cat(chunks, dim=1).flatten(1)
+                    else:
+                        y_mod = y_mod[:,self.max_F*mod_idx:self.max_F*(mod_idx+1)].flatten(1)
+                preds = self.mod_stitcher_proj_dict[mod](y_mod, eid)   
+                output_mod_dict[mod]["preds"] = preds.reshape((B,self.max_F,-1)) \
+                    if mod not in STATIC_VARS else preds
 
             output_mod_dict[mod]["targets_mask"] = mod_dict[mod]["targets_mask"]
             output_mod_dict[mod]["gt"] = mod_dict[mod]["targets"]
