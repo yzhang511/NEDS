@@ -135,7 +135,7 @@ if args.multi_gpu:
 else:
     accelerator = Accelerator()
 
-max_lr = config.optimizer.lr
+max_lr = config.optimizer.lr if model_mode != "encoding" else 5e-4
 batch_size = config.training.train_batch_size
 num_epochs = config.training.num_epochs
 if args.multi_gpu:
