@@ -400,7 +400,7 @@ def co_smoothing_eval(
                            raise Exception(f"Modality {mod} not implemented.")
 
                         mod_dict[mod]["eval_mask"] = all_ones \
-                            if not is_multimodal and mod in model.modal_filter["output"] else all_zeros
+                            if not is_multimodal and mod in STATIC_VARS + DYNAMIC_VARS else all_zeros
 
                 if is_multimodal:
                     for mod in model.mod_to_indx.keys():

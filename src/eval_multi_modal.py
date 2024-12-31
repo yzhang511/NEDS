@@ -282,6 +282,7 @@ if eval_spike and args.enc_task_var == "random":
             "dynamic_mods": dynamic_mods,
             "modal_filter": modal_filter,
             "model_mode": model_mode,
+            "data_path": args.data_path,
         }      
         model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 
