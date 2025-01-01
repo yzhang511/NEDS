@@ -8,7 +8,7 @@
 #SBATCH --ntasks=16
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem 200000   
+#SBATCH --mem 100000   
 #SBATCH -t 2-00
 #SBATCH --export=ALL
 
