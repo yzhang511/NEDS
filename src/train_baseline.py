@@ -16,13 +16,25 @@ from utils.config_utils import config_from_kwargs, update_config
 from trainer.make import make_baseline_trainer
 from models.baseline_encoder import BaselineEncoder, ReducedRankEncoder
 from models.baseline_decoder import BaselineDecoder, ReducedRankDecoder
-
-from torch.cuda.amp import GradScaler
+from torch.optim.lr_scheduler import OneCycleLR
 
 logging.basicConfig(level=logging.INFO) 
 
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel-speed", "whisker-motion-energy"]
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
+ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--model_mode", type=str, default="decoding")
+ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
+ap.add_argument("--rank", type=int, default=4)
+ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
+ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
+ap.add_argument("--num_sessions", type=int, default=1)
+ap.add_argument("--overwrite", action="store_true")
+args = ap.parse_args()
 
 kwargs = {"model": "include:src/configs/baseline.yaml"}
 config = config_from_kwargs(kwargs)
@@ -37,19 +49,6 @@ best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 # ------ 
 # SET UP
 # ------ 
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
-ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
-ap.add_argument("--model_mode", type=str, default="decoding")
-ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
-ap.add_argument("--rank", type=int, default=4)
-ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
-ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
-ap.add_argument("--num_sessions", type=int, default=1)
-ap.add_argument("--overwrite", action="store_true")
-args = ap.parse_args()
-
 
 eid = args.eid
 base_path = args.base_path
@@ -100,7 +99,10 @@ train_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=True
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="train",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    shuffle=True,
 )
 
 val_dataloader = make_loader(
@@ -117,6 +119,9 @@ val_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="val",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=False
 )
 
@@ -134,6 +139,9 @@ test_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="test",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=False
 )
 
@@ -223,10 +231,15 @@ model = model_class(
 
 model = accelerator.prepare(model)
 
+if (model_mode == "decoding") and ("choice" not in avail_beh) and ("block" not in avail_beh):
+    wd = 0.01
+else:
+    wd = config.optimizer.wd
+
 optimizer = torch.optim.AdamW(
     model.parameters(), 
     lr=config.optimizer.lr, 
-    weight_decay=config.optimizer.wd, 
+    weight_decay=wd, 
     eps=config.optimizer.eps
 )
 
@@ -240,8 +253,6 @@ lr_scheduler = OneCycleLR(
     div_factor=config.optimizer.div_factor,
 )
 
-scaler = GradScaler()
-
 # -----
 # TRAIN
 # -----
@@ -249,7 +260,6 @@ trainer_kwargs = {
     "log_dir": log_dir,
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
-    "scaler": scaler,
     "avail_mod": avail_mod,
     "modal_filter": modal_filter,
     "config": config,

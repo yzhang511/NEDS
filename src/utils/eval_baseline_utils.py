@@ -86,7 +86,10 @@ def load_model_data_local(**kwargs):
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        use_nemo=False, shuffle=False,
+        data_dir=f"{kwargs['data_path']}/ibl_mm",
+        mode="test",
+        eids=list(meta_data["eids"]),
+        shuffle=False,
     )
 
     return model, accelerator, dataset, dataloader

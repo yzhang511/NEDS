@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=bcxj-delta-cpu
+#SBATCH --account=bdtg-delta-cpu
 #SBATCH --partition=cpu
 #SBATCH --job-name="eval-cpu"
 #SBATCH --output="eval-cpu.%j.out"
@@ -16,6 +16,7 @@ num_sessions=${1}
 eid=${2}
 model_mode=${3}
 mask_rartio=${4}
+task_var=${5}
 
 . ~/.bashrc
 echo $TMPDIR
@@ -32,6 +33,7 @@ if [ $model_mode = "mm" ]; then
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
+                                --enc_task_var $task_var \
                                 --finetune \
                                 --overwrite	\
                                 --data_path /scratch/bdtg/yzhang39/datasets/
@@ -45,6 +47,7 @@ then
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
+                                --enc_task_var $task_var \
                                 --finetune \
                                 --overwrite	\
                                 --data_path /scratch/bdtg/yzhang39/datasets/

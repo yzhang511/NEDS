@@ -22,21 +22,10 @@ logging.basicConfig(level=logging.INFO)
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel-speed", "whisker-motion-energy"]
 
-model_config = "src/configs/baseline.yaml"
-if args.model_mode == "decoding":
-    trainer_config = update_config("src/configs/trainer_decoder.yaml", model_config)
-elif args.model_mode == "encoding":
-    trainer_config = update_config("src/configs/trainer_encoder.yaml", model_config)
-set_seed(args.seed)
-
-best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
-
-# ------
-# SET UP
-# ------
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
 ap.add_argument("--model_mode", type=str, default="decoding")
 ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
 ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
@@ -49,6 +38,18 @@ ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
 args = ap.parse_args()
 
+model_config = "src/configs/baseline.yaml"
+if args.model_mode == "decoding":
+    trainer_config = update_config("src/configs/trainer_decoder.yaml", model_config)
+elif args.model_mode == "encoding":
+    trainer_config = update_config("src/configs/trainer_encoder.yaml", model_config)
+set_seed(args.seed)
+
+best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
+
+# ------
+# SET UP
+# ------
 eid = args.eid
 base_path = args.base_path
 avail_beh = args.behavior 
@@ -116,6 +117,7 @@ configs = {
     "eid": eid,
     "avail_mod": avail_mod,
     "avail_beh": avail_beh,
+    "data_path": args.data_path,
 }  
 model, accelerator, dataset, dataloader = load_model_data_local(**configs)
 

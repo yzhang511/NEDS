@@ -1,11 +1,11 @@
 #!/bin/bash
 
-#SBATCH --account=bcxj-delta-gpu
+#SBATCH --account=bdtg-delta-gpu
 #SBATCH --partition=gpuA40x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
-#SBATCH --nodes=16
-#SBATCH --ntasks=16
+#SBATCH --nodes=96
+#SBATCH --ntasks=96
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem 100000   

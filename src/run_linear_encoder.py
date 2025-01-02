@@ -36,6 +36,7 @@ set_seed(config.seed)
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
 ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
 ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion-energy"])
 ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
@@ -96,7 +97,7 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     split_method="predefined",
     test_session_eid=[],
     batch_size=config.training.train_batch_size,
-    seed=config.seed
+    seed=config.seed,
 )
 
 n_neurons = meta_data["eid_list"][eid]
@@ -115,7 +116,10 @@ train_dataloader = make_loader(
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
-    shuffle=True
+    shuffle=True,
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="train",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
 )
 
 val_dataloader = make_loader(
@@ -130,7 +134,10 @@ val_dataloader = make_loader(
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
-    shuffle=False
+    shuffle=False,
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="val",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
 )
 
 test_dataloader = make_loader(
@@ -145,7 +152,10 @@ test_dataloader = make_loader(
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
-    shuffle=False
+    shuffle=False,
+    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    mode="test",
+    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
 )
 
 # ---------------

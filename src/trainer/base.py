@@ -561,12 +561,12 @@ class BaselineTrainer():
             data_dict["targets"] = batch["spikes_data"]
         else:
             data_dict["inputs"] = batch["spikes_data"]
-            if self.target_to_decode == DYNAMIC_VARS:
-                data_dict["targets"] = batch["target"][..., :len(DYNAMIC_VARS)]
-            elif self.target_to_decode[0] == "choice":
+            if self.target_to_decode[0] == "choice":
                 data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)]
             elif self.target_to_decode[0] == "block":
                 data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)+1]
+            else:
+                data_dict["targets"] = batch["target"][..., :len(DYNAMIC_VARS)]
         data_dict["eid"] = batch["eid"][0] 
         data_dict["num_neuron"] = batch["spikes_data"].shape[-1]
         return self.model(data_dict)

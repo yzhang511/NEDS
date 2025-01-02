@@ -1,16 +1,15 @@
 #!/bin/bash
 
-#SBATCH --account=bdtg-delta-gpu
-#SBATCH --partition=gpuA40x4
-#SBATCH --job-name="finetune"
-#SBATCH --output="finetune.%j.out"
+#SBATCH --account=bcxj-delta-cpu
+#SBATCH --partition=cpu
+#SBATCH --job-name="mm-cpu"
+#SBATCH --output="mm-cpu.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 100000
-#SBATCH --gpus=1
-#SBATCH -t 0-05
+#SBATCH -t 0-01
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -55,3 +54,4 @@ fi
 cd script/yizi
 
 conda deactivate
+
