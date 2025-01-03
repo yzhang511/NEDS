@@ -34,7 +34,6 @@ if [ $model_mode = "mm" ]; then
                                 --model_mode ${model_mode} \
                                 --wandb \
                                 --enc_task_var $task_var \
-                                --finetune \
                                 --overwrite	\
                                 --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
@@ -48,7 +47,6 @@ then
                                 --model_mode ${model_mode} \
                                 --wandb \
                                 --enc_task_var $task_var \
-                                --finetune \
                                 --overwrite	\
                                 --data_path /scratch/bdtg/yzhang39/datasets/
 				--overwrite

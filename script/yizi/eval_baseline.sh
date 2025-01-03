@@ -1,33 +1,51 @@
 #!/bin/bash
   
-#SBATCH --account=col169
-#SBATCH --partition=gpu-shared
-#SBATCH --job-name="baseline"
-#SBATCH --output="baseline.%j.out"
+#SBATCH --account=bcxj-delta-cpu
+#SBATCH --partition=cpu
+#SBATCH --job-name="eval-rrr"
+#SBATCH --output="eval-rrr.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
-#SBATCH -c 8
+#SBATCH -c 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --mem 150000
-#SBATCH --gpus=1
+#SBATCH --mem 100000
 #SBATCH -t 0-01
 #SBATCH --export=ALL
-module load gpu
-module load slurm
 
 . ~/.bashrc
 echo $TMPDIR
+
+eid=${1}
+model_mode=${2}
+behavior=${3}
 
 conda activate ibl-mm
 
 cd ../..
 
-python src/eval_baseline.py --eid 824cf03d-4012-4ab1-b499-c83a92c5589e \
-                            --seed 42 \
-                            --base_path ./ \
-                            --save_plot \
-                            --overwrite \
-                            --wandb
+if [ $behavior = "continuous" ]; then
+    python src/eval_baseline.py --eid $eid \
+                                --seed 42 \
+                                --base_path ./ \
+                                --data_path /scratch/bdtg/yzhang39/datasets/ \
+                                --model_mode $model_mode \
+                                --save_plot \
+                                --overwrite \
+                                --wandb
+elif [ $behavior = "choice" ] || [ $behavior = "block" ];
+then
+    python src/eval_baseline.py --eid $eid \
+                                --seed 42 \
+                                --base_path ./ \
+                                --data_path /scratch/bdtg/yzhang39/datasets/ \
+                                --model_mode $model_mode \
+                                --behavior $behavior \
+                                --save_plot \
+                                --overwrite \
+                                --wandb
+else
+    echo "behavior: $behavior not supported"
+fi
 
 conda deactivate
-cd script/ppwang
+cd script/yizi

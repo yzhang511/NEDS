@@ -231,15 +231,10 @@ model = model_class(
 
 model = accelerator.prepare(model)
 
-if (model_mode == "decoding") and ("choice" not in avail_beh) and ("block" not in avail_beh):
-    wd = 0.01
-else:
-    wd = config.optimizer.wd
-
 optimizer = torch.optim.AdamW(
     model.parameters(), 
     lr=config.optimizer.lr, 
-    weight_decay=wd, 
+    weight_decay=config.optimizer.wd, 
     eps=config.optimizer.eps
 )
 

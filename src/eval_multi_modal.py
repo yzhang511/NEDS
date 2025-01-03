@@ -34,18 +34,6 @@ dynamic_acronyms = {
     "whisker-motion-energy": "whisker",
 }
 
-model_config = "src/configs/multi_modal/mm.yaml"
-kwargs = {"model": f"include:{model_config}"}
-config = config_from_kwargs(kwargs)
-config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
-set_seed(config.seed)
-
-best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
-
-# ------ 
-# SET UP
-# ------
-
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
@@ -67,6 +55,20 @@ ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
 args = ap.parse_args()
 
+if args.num_sessions == 1:
+    model_config = "src/configs/multi_modal/mm_single_session.yaml"
+else:
+    model_config = "src/configs/multi_modal/mm.yaml"
+kwargs = {"model": f"include:{model_config}"}
+config = config_from_kwargs(kwargs)
+config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
+set_seed(config.seed)
+
+best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
+
+# ------ 
+# SET UP
+# ------
 eid = args.eid
 base_path = args.base_path
 model_mode = args.model_mode

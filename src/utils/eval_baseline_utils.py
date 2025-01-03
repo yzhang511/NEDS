@@ -5,6 +5,7 @@ from tqdm import tqdm
 from math import ceil
 from pathlib import Path
 import torch
+from accelerate import Accelerator
 from loader.make_loader import make_loader
 from utils.dataset_utils import load_ibl_dataset
 from datasets import (

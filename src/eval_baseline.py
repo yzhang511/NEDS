@@ -38,7 +38,9 @@ ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
 args = ap.parse_args()
 
+
 model_config = "src/configs/baseline.yaml"
+config = config_from_kwargs({"model": f"include:{model_config}"})
 if args.model_mode == "decoding":
     trainer_config = update_config("src/configs/trainer_decoder.yaml", model_config)
 elif args.model_mode == "encoding":
@@ -58,6 +60,7 @@ model_mode = args.model_mode
 model_class = args.model
 n_beh = len(avail_beh)
 num_sessions = args.num_sessions
+n_time_steps = 100
 
 if args.model_mode == "decoding":
     input_modal = ["ap"]
@@ -80,7 +83,7 @@ if num_sessions > 1:
 else:
     eid_ = eid[:5]
 
-log_name = "sesNum-{}_ses-{}_set-eval_inModal-{}_outModal{}-model-{}".format(
+log_name = "sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_model-{}".format(
     num_sessions,
     eid[:5], 
     "-".join(modal_filter["input"]),
@@ -108,9 +111,12 @@ if args.wandb:
 # ----------
 # LOAD MODEL
 # ----------
+
+model_path = os.path.join(pretrain_path, "model_best.pt") 
+
 configs = {
     "model_config": model_config,
-    "model_path": pretrain_path,
+    "model_path": model_path,
     "trainer_config": trainer_config,
     "dataset_path": None, 
     "seed": args.seed,
@@ -137,9 +143,9 @@ if modal_spike:
             "subtract": "task",
             "onset_alignment": [40],
             "save_path": f"{save_path}/eval_spike",
-            "mode": "eval_spike",
-            "n_time_steps": config.model.encoder.embedder.max_F,  
-            "held_out_list": list(range(0, 100)),
+            "mode": "modal_spike",
+            "n_time_steps": n_time_steps,  
+            "held_out_list": list(range(0, n_time_steps)),
             "is_aligned": True,
             "target_regions": None,
             "modal_filter": modal_filter,
@@ -167,13 +173,14 @@ if modal_behavior:
             "subtract": "task",
             "onset_alignment": [40],
             "save_path": f"{save_path}/eval_behavior",
-            "mode": "eval_behavior",
-            "n_time_steps": config.model.encoder.embedder.max_F,  
-            "held_out_list": list(range(0, 100)),
+            "mode": "modal_behavior",
+            "n_time_steps": n_time_steps,  
+            "held_out_list": list(range(0, n_time_steps)),
             "is_aligned": True,
             "target_regions": None,
             "modal_filter": modal_filter,
             "target_to_decode": avail_beh, 
+            "avail_beh": avail_beh,
         }
         results = co_smoothing_eval(
             model=model, 

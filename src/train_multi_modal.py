@@ -83,6 +83,8 @@ else:
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
 config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
+if args.model_mode == "encoding":
+    config["training"]["num_epochs"] = 4000
 set_seed(config.seed)
 
 best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
