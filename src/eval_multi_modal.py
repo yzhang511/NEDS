@@ -152,12 +152,12 @@ if args.model_mode == "mm":
             "model_best_avg.pt", 
             # "model_best_spike.pt",
             #"model_best_wheel.pt", 
-            #"model_best_whisker.pt",
+            # "model_best_whisker.pt",
             #"model_best_choice.pt",
             #"model_best_block.pt"
         ]
     else:
-        best_ckpt_path = ["model_best_spike.pt"]
+        best_ckpt_path = ["model_best_avg.pt"]
 else:
     best_ckpt_path = ["model_best_avg.pt"]
 

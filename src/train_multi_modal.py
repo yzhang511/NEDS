@@ -80,6 +80,7 @@ if args.num_sessions == 1:
     model_config = "src/configs/multi_modal/mm_single_session.yaml"
 else:
     model_config = "src/configs/multi_modal/mm.yaml"
+
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
 config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
@@ -180,9 +181,9 @@ train_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
-    mode="train",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    # data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    # mode="train",
+    # eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=True
 )
 
@@ -200,9 +201,9 @@ val_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
-    mode="val",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    # data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    # mode="val",
+    # eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=False
 )
 
@@ -220,9 +221,9 @@ test_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
-    mode="test",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    # data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    # mode="test",
+    # eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=False
 )
 

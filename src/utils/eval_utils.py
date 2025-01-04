@@ -167,9 +167,9 @@ def load_model_data_local(**kwargs):
         load_meta=config.data.load_meta,
         shuffle=False,
         seed=config.seed,
-        data_dir=f"{kwargs['data_path']}/ibl_mm",
-        mode="test",
-        eids=list(meta_data["eids"]),
+        # data_dir=f"{kwargs['data_path']}/ibl_mm",
+        # mode="test",
+        # eids=list(meta_data["eids"]),
         stitching=False,
     )
 
@@ -454,6 +454,15 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
                     behav_results[f"{beh_name}_r2_psth"] = _r2_psth
                     behav_results[f"{beh_name}_r2_trial"] = _r2_trial
+                    if beh_name == "whisker":
+                        y = ys[...,target_n_i[i]].squeeze()
+                        y_pred = y_preds[...,target_n_i[i]].squeeze()
+                        y = y.mean(0)
+                        y_pred = y_pred.mean(0)
+                        plt.plot(y, label="gt")
+                        plt.plot(y_pred, label="pred")
+                        plt.legend()
+                        plt.savefig(f'{kwargs["save_path"]}/{beh_name}.png')
                 else:
                     raise ValueError("Unaligned data not supported.")
                     
