@@ -164,7 +164,7 @@ train_dataloader = make_loader(
     shuffle=True
 )
 base_path = args.data_path
-dataset_name = 'ibl_mm'
+dataset_name = 'ibl_mm' if args.num_sessions == 1 else f'ibl_mm_{args.num_sessions}'
 import time
 start = time.time()
 train_save_dir = os.path.join(base_path, dataset_name, 'train')

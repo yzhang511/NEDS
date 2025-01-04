@@ -167,9 +167,9 @@ def load_model_data_local(**kwargs):
         load_meta=config.data.load_meta,
         shuffle=False,
         seed=config.seed,
-        # data_dir=f"{kwargs['data_path']}/ibl_mm",
-        # mode="test",
-        # eids=list(meta_data["eids"]),
+        data_dir=f"{kwargs['data_path']}/ibl_mm",
+        mode="test",
+        eids=list(meta_data["eids"]),
         stitching=False,
     )
 
