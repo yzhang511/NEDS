@@ -12,7 +12,8 @@
 
 
 . ~/.bashrc
-eid=${1}
+num_sessions=${1}
+eid=${2}
 model_mode=mm
 dummy_size=0
 mask_ratio=0.1
@@ -25,7 +26,7 @@ python src/create_dataset.py --eid $eid \
                                 --base_path ./\
                                 --mask_ratio $mask_ratio \
                                 --mixed_training \
-                                --num_sessions 1 \
+                                --num_sessions $num_sessions \
                                 --dummy_size $dummy_size \
                                 --model_mode $model_mode \
                                 --data_path /scratch/bdtg/yzhang39/datasets/

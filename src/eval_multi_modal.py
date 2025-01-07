@@ -55,10 +55,11 @@ ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
 args = ap.parse_args()
 
-if args.num_sessions == 1:
+if args.num_sessions <= 10:
     model_config = "src/configs/multi_modal/mm_single_session.yaml"
 else:
     model_config = "src/configs/multi_modal/mm.yaml"
+
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
 config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
@@ -152,12 +153,12 @@ if args.model_mode == "mm":
             "model_best_avg.pt", 
             # "model_best_spike.pt",
             #"model_best_wheel.pt", 
-            #"model_best_whisker.pt",
+            # "model_best_whisker.pt",
             #"model_best_choice.pt",
             #"model_best_block.pt"
         ]
     else:
-        best_ckpt_path = ["model_best_spike.pt"]
+        best_ckpt_path = ["model_best_avg.pt"]
 else:
     best_ckpt_path = ["model_best_avg.pt"]
 

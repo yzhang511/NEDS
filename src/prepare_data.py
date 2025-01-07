@@ -17,6 +17,7 @@ from utils.ibl_data_utils import (
 )
 from utils.dataset_utils import create_dataset, upload_dataset
 from utils.preprocess_lfp import prepare_lfp, featurize_lfp
+import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO) 
 np.random.seed(42)
@@ -41,7 +42,7 @@ args = ap.parse_args()
 bwm_df = pd.read_csv("data/bwm_release.csv", index_col=0)
 
 if args.eid is not None:
-    include_eids = [args.eid]
+    eids = [args.eid]
 else:
     if args.datasets == "brain-wide-map":
         n_sub = args.n_sessions

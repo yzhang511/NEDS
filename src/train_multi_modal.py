@@ -76,10 +76,11 @@ ap.add_argument("--dummy_load", action="store_true")
 ap.add_argument("--dummy_size", type=int, default=50000)
 args = ap.parse_args()
 
-if args.num_sessions == 1:
+if args.num_sessions <= 10:
     model_config = "src/configs/multi_modal/mm_single_session.yaml"
 else:
     model_config = "src/configs/multi_modal/mm.yaml"
+
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
 config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
@@ -133,19 +134,27 @@ else:
 
 modal_filter = {"input": input_mods, "output": output_mods}
 
-
 if args.multi_gpu:
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(kwargs_handlers=[kwargs])
 else:
     accelerator = Accelerator()
 
-max_lr = config.optimizer.lr if model_mode != "encoding" else 5e-4
+max_num_processes = 30
+
 batch_size = config.training.train_batch_size
-num_epochs = config.training.num_epochs if model_mode != "encoding" else 4_000
+global_batch_size = batch_size
+num_epochs = 4_000 if model_mode == "encoding" else config.training.num_epochs
+max_lr = 5e-4 if model_mode == "encoding" else config.optimizer.lr
+
 if args.multi_gpu:
-    max_lr *= accelerator.num_processes
     num_epochs *= accelerator.num_processes
+    if accelerator.num_processes > max_num_processes:
+        max_lr *= max_num_processes / 2
+        global_batch_size = 512
+    else:
+        max_lr *= accelerator.num_processes
+        global_batch_size *= accelerator.num_processes 
 
 # ---------
 # LOAD DATA
@@ -166,6 +175,8 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
 max_space_length = max(list(meta_data["eid_list"].values()))
 logging.info(f"MAX space length to pad spike data to: {max_space_length}")
 
+local_data_dir = "ibl_mm" if args.num_sessions == 1 else f"ibl_mm_{args.num_sessions}"
+
 train_dataloader = make_loader(
     train_dataset, 
     target=[mod for mod in modality if mod in dynamic_acronyms],
@@ -180,9 +191,9 @@ train_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}",
     mode="train",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    eids=list(meta_data["eids"]),
     shuffle=True
 )
 
@@ -200,9 +211,9 @@ val_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}",
     mode="val",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    eids=list(meta_data["eids"]),
     shuffle=False
 )
 
@@ -220,9 +231,9 @@ test_dataloader = make_loader(
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}",
     mode="test",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    eids=list(meta_data["eids"]),
     shuffle=False
 )
 
@@ -305,7 +316,6 @@ optimizer = torch.optim.AdamW(
     )
 
 grad_accum_steps = config.optimizer.gradient_accumulation_steps
-global_batch_size = batch_size * accelerator.num_processes
 total_steps=int(num_epochs*(len(train_dataset)//global_batch_size))//grad_accum_steps
 if config.optimizer.scheduler == "linear":
     lr_scheduler = LinearLR(
