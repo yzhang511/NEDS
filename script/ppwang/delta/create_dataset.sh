@@ -2,8 +2,8 @@
 
 #!/bin/bash
 #SBATCH -A bcxj-delta-cpu 
-#SBATCH --job-name="create_data"
-#SBATCH --output="create_data.%j.out"
+#SBATCH --job-name="create_dataset"
+#SBATCH --output="create_dataset.%j.out"
 #SBATCH --partition=cpu
 #SBATCH -c 4
 #SBATCH --mem 100000

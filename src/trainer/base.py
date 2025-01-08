@@ -240,7 +240,8 @@ class MultiModalTrainer():
         if self.config.wandb.use:
             if self.accelerator.is_main_process:
                 wandb.log({"best_eval_loss": best_eval_loss, **best_eval_metric})
-
+        return best_eval_metric
+    
     
     def train_epoch(self, epoch):
         train_loss = 0.

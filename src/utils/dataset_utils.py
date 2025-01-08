@@ -15,8 +15,9 @@ class DATASET_MODES:
     trainval = "trainval"
 
 DATA_COLUMNS = ['spikes_sparse_data', 'spikes_sparse_indices', 'spikes_sparse_indptr', 'spikes_sparse_shape','cluster_depths']
-TARGET_EIDS="data/train_eids.txt"
-TEST_RE_EIDS="data/test_eids.txt"
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TARGET_EIDS=f"{PROJ_DIR}/data/train_eids.txt"
+TEST_RE_EIDS=f"{PROJ_DIR}/data/test_eids.txt"
 
 def get_train_eids():
     with open(TARGET_EIDS) as file:

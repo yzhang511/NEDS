@@ -12,10 +12,11 @@ from multi_modal.mm_utils import ScaleNorm, MLP, Attention
 from models.stitcher import StitchEncoder, StitchDecoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
-
-with open("data/train_eids.txt") as file:
+# /u/ywang74/Dev/multi_modal_foundation_model
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+with open(f"{PROJ_DIR}/data/train_eids.txt") as file:
     INCLUDE_EIDS = [line.rstrip() for line in file]
-with open("data/test_eids.txt") as file:
+with open(f"{PROJ_DIR}/data/test_eids.txt") as file:
     INCLUDE_EIDS += [line.rstrip() for line in file]
 
 STATIC_VARS = ["choice", "block"]
