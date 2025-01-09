@@ -431,7 +431,9 @@ if __name__ == "__main__":
     ap.add_argument("--dummy_load", action="store_true")
     ap.add_argument("--dummy_size", type=int, default=50000)
     ap.add_argument("--search", action="store_true")
+    ap.add_argument("--num_tune_sample", type=int, default=50)
     ap.add_argument("--config_dir", type=str, default="configs")
+    
     args = ap.parse_args()
     if args.debug:
         # Debug using deterministic mode
@@ -440,8 +442,9 @@ if __name__ == "__main__":
         torch.backends.cudnn.deterministic = True
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
         logging.info("Deterministic mode is activated. This will negatively impact performance.")
+        
     if args.search:
-        ray.init(ignore_reinit_error=True)  # Explicitly initialize Ray        
+        ray.init(address="auto")  
         search_space = {
             "learning_rate": tune.loguniform(1e-4, 1e-3),
             "weight_decay": tune.loguniform(0.001, 0.1),
@@ -450,26 +453,24 @@ if __name__ == "__main__":
             "inter_size": tune.choice([256, 512, 1024]),
             "n_layers": tune.choice([5, 6]),
         }
-        max_t = 10 # 3 epochs
-        current_path = os.path.dirname(os.path.realpath(__file__))
-        ray_path = os.path.join(current_path, "../ray_results")
+        ray_path = os.path.join(args.base_path, "ray_results")
         scheduler = ASHAScheduler(
             metric="eval_avg_metric",
             mode="max",
-            max_t=max_t,
             grace_period=1,
             reduction_factor=2
         )
         print("Starting hyperparameter search")
         print(f"saving to {ray_path}")
+        
         analysis = tune.run(
             main,
             resources_per_trial={
-                "cpu": 16,
-                "gpu": 1  # Allocate 1 GPU per trial
+                "cpu": 1,
+                "gpu": 1  
             },
             config=search_space,
-            num_samples=50,
+            num_samples=args.num_tune_sample,
             scheduler=scheduler,
             storage_path=ray_path,
             name="tune_ibl",
