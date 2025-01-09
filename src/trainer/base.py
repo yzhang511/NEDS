@@ -451,11 +451,13 @@ class MultiModalTrainer():
                     eval_metrics[mod].append(results["behave_r2"])
                 
                 elif mod in STATIC_VARS:
-                    acc = balanced_accuracy_score(
-                        gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
-                    )
-                    for mod in STATIC_VARS:
-                        eval_metrics[mod].append(acc)
+                    try:
+                        acc = balanced_accuracy_score(
+                            gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
+                        )
+                    except ValueError:
+                        acc = np.nan
+                    eval_metrics[mod].append(acc)
 
         for key in mod_loss_dict.keys():
             mod_loss_dict[key] /= len(self.eval_dataloader)
