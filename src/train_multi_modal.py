@@ -49,16 +49,22 @@ def main(tune_config=None):
     model_mode = args.model_mode
     modality = args.modality
     if args.search:
+        config["wandb"]["use"] = False
         mask_ratio = tune_config["mask_ratio"]
         lr = tune_config["learning_rate"]
         wd = tune_config["weight_decay"]
-        config['wandb']['use'] = False
+        hidden_size = tune_config["hidden_size"]
+        inter_size = tune_config["inter_size"]
+        n_layers = tune_config["n_layers"]
+        config["model"]["encoder"]["transformer"]["hidden_size"] = hidden_size
+        config["model"]["encoder"]["transformer"]["inter_size"] = inter_size
+        config["model"]["encoder"]["transformer"]["n_layers"] = n_layers
     else:
         mask_ratio = args.mask_ratio
         lr = config.optimizer.lr
         wd = config.optimizer.wd
-    config["model"]["masker"]["mode"] = args.mask_mode
-    config["model"]["masker"]["ratio"] = mask_ratio
+        hidden_size = config.model.encoder.transformer.hidden_size
+        inter_size = config.model.encoder.transformer.inter_size
 
     logging.info(f"EID: {eid} model mode: {args.model_mode} mask ratio: {mask_ratio}")
     logging.info(f"Available modality: {modality}")
@@ -206,11 +212,16 @@ def main(tune_config=None):
         mask_ratio,
         args.enc_task_var,
     )
-
-    log_dir = os.path.join(base_path, "results", log_name)
+    if args.search:
+        # get ray tune trial name
+        trial_dir = train.get_context().get_trial_dir()
+        # get the trial name
+        trial_name = os.path.basename(trial_dir)
+        log_dir = os.path.join(ray_path, 'tune_ibl', trial_name)
+    else: 
+        log_dir = os.path.join(base_path, "results", log_name)
 
     logging.info(f"Save model to {log_dir}")
-
     final_checkpoint = os.path.join(log_dir, last_ckpt_path)
     assert not os.path.exists(final_checkpoint) or args.overwrite, \
         "Last checkpoint exists and overwrite is False"
@@ -432,9 +443,12 @@ if __name__ == "__main__":
     if args.search:
         ray.init(ignore_reinit_error=True)  # Explicitly initialize Ray        
         search_space = {
-            "learning_rate": tune.loguniform(1e-4, 5e-4),
+            "learning_rate": tune.loguniform(1e-4, 1e-3),
             "weight_decay": tune.loguniform(0.001, 0.1),
-            "mask_ratio": tune.uniform(0.1, 0.4)
+            "mask_ratio": tune.uniform(0.1, 0.4),
+            "hidden_size": tune.choice([128, 256, 512]),
+            "inter_size": tune.choice([256, 512, 1024]),
+            "n_layers": tune.choice([5, 6]),
         }
         max_t = 10 # 3 epochs
         current_path = os.path.dirname(os.path.realpath(__file__))
