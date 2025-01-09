@@ -52,6 +52,7 @@ def main(tune_config=None):
         mask_ratio = tune_config["mask_ratio"]
         lr = tune_config["learning_rate"]
         wd = tune_config["weight_decay"]
+        config['wandb']['use'] = False
     else:
         mask_ratio = args.mask_ratio
         lr = config.optimizer.lr
@@ -222,7 +223,7 @@ def main(tune_config=None):
 
     logging.info(f"Start model training:")
 
-    if config.wandb.use and not args.search:
+    if config.wandb.use:
         if accelerator.is_main_process:
             wandb.init(
                 project=config.wandb.project, 
@@ -431,9 +432,9 @@ if __name__ == "__main__":
     if args.search:
         ray.init(ignore_reinit_error=True)  # Explicitly initialize Ray        
         search_space = {
-            "learning_rate": tune.loguniform(1e-4, 3e-4),
-            "weight_decay": tune.loguniform(0.01, 0.1),
-            "mask_ratio": tune.uniform(0.0, 0.3)
+            "learning_rate": tune.loguniform(1e-4, 5e-4),
+            "weight_decay": tune.loguniform(0.001, 0.1),
+            "mask_ratio": tune.uniform(0.1, 0.4)
         }
         max_t = 10 # 3 epochs
         current_path = os.path.dirname(os.path.realpath(__file__))
@@ -454,7 +455,7 @@ if __name__ == "__main__":
                 "gpu": 1  # Allocate 1 GPU per trial
             },
             config=search_space,
-            num_samples=40,
+            num_samples=50,
             scheduler=scheduler,
             storage_path=ray_path,
             name="tune_ibl",
