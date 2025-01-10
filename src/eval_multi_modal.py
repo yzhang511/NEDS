@@ -45,6 +45,7 @@ ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mixed_training", action="store_true")
 ap.add_argument("--enc_task_var", type=str, default="all")
 ap.add_argument("--finetune", action="store_true")
+ap.add_argument("--param_search", action="store_true")
 ap.add_argument(
     "--modality", nargs="+", 
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
@@ -132,6 +133,25 @@ if args.finetune:
     pretrain_path = save_path.replace("eval", "finetune")
 else:
     pretrain_path = save_path.replace("eval", "train")
+
+if args.param_search:
+    log_name = f"{eid_}_{model_mode}"
+    save_path = os.path.join(base_path, "results", log_name)
+    tune_path = args.data_path.replace("datasets", f"tune/ray_results/{log_name}")
+    if not os.path.exists(tune_path):
+        tune_path = args.data_path.replace("datasets", f"ray_results/{log_name}")
+    pretrain_path = [
+        f for f in os.listdir(tune_path) if os.path.isdir(os.path.join(tune_path, f))
+    ][0]
+    pretrain_path = os.path.join(tune_path, pretrain_path)
+    logging.info(f"Load best hyperparams model from {pretrain_path}.")
+    import pickle
+    with open(f"{pretrain_path}/params.pkl", "rb") as file:
+        params = pickle.load(file)
+    config["model"]["encoder"]["transformer"]["hidden_size"] = params["hidden_size"]
+    config["model"]["encoder"]["transformer"]["inter_size"] = params["inter_size"]
+    config["model"]["encoder"]["transformer"]["n_layers"] = params["n_layers"]
+    model_config = config
 
 logging.info(f"Save results to {save_path}")
 
