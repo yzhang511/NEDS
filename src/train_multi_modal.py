@@ -213,15 +213,9 @@ def main(tune_config=None):
         args.enc_task_var,
     )
     if args.search:
-        log_path = "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}".format(
-            num_sessions,
-            eid_, 
-            "-".join(modal_filter["input"]),
-            "-".join(modal_filter["output"]),
-        )
         trial_dir = train.get_context().get_trial_dir()
         trial_name = os.path.basename(trial_dir)
-        log_dir = os.path.join(ray_path, log_path, trial_name)
+        log_dir = os.path.join(ray_path, f"{eid_}_{model_mode}", trial_name)
     else: 
         log_dir = os.path.join(base_path, "results", log_name)
 
@@ -466,6 +460,8 @@ if __name__ == "__main__":
         )
         print("Starting hyperparameter search")
         print(f"saving to {ray_path}")
+
+        eid_ = "multi" if args.num_sessions > 1 else args.eid[:5]
         
         analysis = tune.run(
             main,
@@ -477,7 +473,7 @@ if __name__ == "__main__":
             num_samples=args.num_tune_sample,
             scheduler=scheduler,
             storage_path=ray_path,
-            name="tune_ibl",
+            name=f"{eid_}_{args.model_mode}",
             log_to_file=True,
             verbose=2
         )
