@@ -213,11 +213,15 @@ def main(tune_config=None):
         args.enc_task_var,
     )
     if args.search:
-        # get ray tune trial name
+        log_path = "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}".format(
+            num_sessions,
+            eid_, 
+            "-".join(modal_filter["input"]),
+            "-".join(modal_filter["output"]),
+        )
         trial_dir = train.get_context().get_trial_dir()
-        # get the trial name
         trial_name = os.path.basename(trial_dir)
-        log_dir = os.path.join(ray_path, 'tune_ibl', trial_name)
+        log_dir = os.path.join(ray_path, log_path, trial_name)
     else: 
         log_dir = os.path.join(base_path, "results", log_name)
 
