@@ -82,9 +82,12 @@ def load_model_data_local(**kwargs):
 
     set_seed(seed)
 
-    config = config_from_kwargs({"model": f"include:{model_config}"})
-    config = update_config(model_config, config)
-    config = update_config(trainer_config, config)
+    if isinstance(model_config, str):
+        config = config_from_kwargs({"model": f"include:{model_config}"})
+        config = update_config(model_config, config)
+        config = update_config(trainer_config, config)
+    elif isinstance(model_config, dict):
+        config = model_config
 
     _, _, dataset, meta_data = load_ibl_dataset(
         config.dirs.dataset_cache_dir, 
