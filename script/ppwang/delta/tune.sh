@@ -35,7 +35,7 @@ else
     search=""
 fi
 
-cd ../..
+cd ../../..
 user_name=$(whoami)
 
 # Getting the node names
@@ -96,12 +96,12 @@ if [ $model_mode = "mm" ]; then
                                     $search \
                                     --num_tune_sample 40 \
                                     --config_dir $config_dir \
-                                    --data_path /scratch/bdtg/$user_name/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     echo "Training $model_mode model:"
     python src/train_multi_modal.py --eid $eid \
-                                    --base_path /scratch/bdtg/$user_name/tune/ \
+                                    --base_path /scratch/bdtg/yzhang39/tune/ \
                                     --mask_ratio $mask_ratio \
                                     --num_sessions $num_sessions \
                                     --dummy_size $dummy_size \
@@ -110,7 +110,7 @@ then
                                     $search \
                                     --num_tune_sample 40 \
                                     --config_dir $config_dir \
-                                    --data_path /scratch/bdtg/$user_name/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 else
     echo "model_mode: $model_mode not supported"
 fi

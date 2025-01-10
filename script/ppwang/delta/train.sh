@@ -49,7 +49,7 @@ if [ $model_mode = "mm" ]; then
                                     --enc_task_var $task_var \
                                     $search \
                                     --config_dir $config_dir \
-                                    --data_path /scratch/bdtg/$user_name/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     echo "Training $model_mode model"
@@ -61,7 +61,7 @@ then
                                     --model_mode $model_mode \
                                     --enc_task_var $task_var \
                                     $search \
-                                    --data_path /scratch/bdtg/$user_name/datasets/
+                                    --data_path /scratch/bdtg/yzhang39/datasets/
 else
     echo "model_mode: $model_mode not supported"
 fi

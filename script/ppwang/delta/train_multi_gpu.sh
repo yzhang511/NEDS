@@ -4,8 +4,8 @@
 #SBATCH --partition=gpuA40x4
 #SBATCH --job-name="mm"
 #SBATCH --output="mm.%j.out"
-#SBATCH --nodes=96
-#SBATCH --ntasks=96
+#SBATCH --nodes=40
+#SBATCH --ntasks=40
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem 100000   
@@ -23,11 +23,13 @@ echo $TMPDIR
 user_name=$(whoami)
 conda activate ibl-mm
 cd ../../..
-
+config_dir=$(pwd)/src/configs
+echo Config dir: $config_dir
 nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
 nodes_array=($nodes)
 head_node=${nodes_array[0]}
 head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+
 
 echo Node IP: $head_node_ip
 export LOGLEVEL=INFO
@@ -51,7 +53,8 @@ if [ $model_mode = "mm" ]; then
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --data_path /scratch/bdtg/${user_name}/datasets/
+            --config_dir $config_dir \
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
@@ -63,7 +66,8 @@ then
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --data_path /scratch/bdtg/${user_name}/datasets/
+            --config_dir $config_dir \
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 else
     echo "model_mode: $model_mode not supported"
