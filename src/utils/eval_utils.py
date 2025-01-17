@@ -332,20 +332,25 @@ def co_smoothing_eval(
                     if is_aligned:
                         X = behavior_set[:, target_t_i, :]  
                         _r2_psth, _r2_trial = viz_single_cell(
-                            X, ys[...,target_n_i[i]], y_preds[...,target_n_i[i]],
-                            var_name2idx, var_tasklist, var_value2label, var_behlist,
+                            X, 
+                            ys[...,target_n_i[i]], 
+                            y_preds[...,target_n_i[i]],
+                            var_name2idx, 
+                            var_tasklist, 
+                            var_value2label, 
+                            var_behlist,
                             subtract_psth=kwargs["subtract"],
                             aligned_tbins=[],
                             neuron_idx=uuids_list[target_n_i[i]][:4],
                             neuron_region=region_list[target_n_i[i]],
-                            method=method_name, save_path=kwargs["save_path"],
+                            method=method_name, 
+                            save_path=kwargs["save_path"],
                             save_plot=save_plot
-                            )
+                        )
                         r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
                     else:
                         raise ValueError("Unaligned data not supported.")
-                
-    
+                    
     elif mode == "eval_behavior":
 
         N = len(DYNAMIC_VARS)
@@ -445,13 +450,19 @@ def co_smoothing_eval(
                 if is_aligned:
                     X = behavior_set[:,target_t_i,:]  
                     _r2_psth, _r2_trial = viz_single_cell(
-                        X, ys[...,target_n_i[i]], y_preds[...,target_n_i[i]],
-                        var_name2idx, var_tasklist, var_value2label, var_behlist,
+                        X, 
+                        ys[...,target_n_i[i]], 
+                        y_preds[...,target_n_i[i]],
+                        var_name2idx, 
+                        var_tasklist, 
+                        var_value2label, 
+                        var_behlist,
                         subtract_psth=kwargs["subtract"],
                         aligned_tbins=[],
                         neuron_idx=uuids_list[target_n_i[i]][:4],
                         neuron_region=region_list[target_n_i[i]],
-                        method=method_name, save_path=kwargs["save_path"],
+                        method=method_name, 
+                        save_path=kwargs["save_path"],
                         save_plot=save_plot
                     )
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
@@ -488,6 +499,18 @@ def co_smoothing_eval(
     r2_all = np.array(r2_result_list)
     np.save(os.path.join(kwargs["save_path"], "bps.npy"), bps_all)
     np.save(os.path.join(kwargs["save_path"], "r2.npy"), r2_all)
+
+    # save gt_held_out and pred_held_out
+    save_dict = {
+        "gt": gt_held_out,
+        "pred": pred_held_out,
+        "behav": behavior_set,
+        "var_name2idx": var_name2idx,
+        "var_tasklist": var_tasklist,
+        "var_value2label": var_value2label,
+        "var_behlist": var_behlist,
+    }
+    np.save(os.path.join(kwargs["save_path"], "data.npy"), save_dict)
 
     # Mask selected modalities for encoding
     if "enc_task_var" in kwargs:
