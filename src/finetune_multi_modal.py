@@ -2,12 +2,10 @@ import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import wandb
-import pickle
 import logging
 import argparse
 import threading
 import numpy as np
-from math import ceil
 import torch
 from utils.dataset_utils import load_ibl_dataset
 from accelerate import Accelerator
@@ -191,7 +189,12 @@ def main(tune_config=None):
         args.enc_task_var,
     )
 
-    log_dir = os.path.join(base_path, "results", log_name)
+    if args.search:
+        trial_dir = train.get_context().get_trial_dir()
+        trial_name = os.path.basename(trial_dir)
+        log_dir = os.path.join(ray_path, f"{eid_}_{model_mode}", trial_name)
+    else: 
+        log_dir = os.path.join(base_path, "results", log_name)
 
     logging.info(f"Save model to {log_dir}")
 
