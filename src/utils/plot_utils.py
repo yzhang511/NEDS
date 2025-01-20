@@ -100,6 +100,13 @@ def plot_neuron_raster(
         n_clus=8,
         n_neighbors=5,
         ax=None,
+        show_colorbar=True,
+        show_info=True,
+        show_xticks=True,
+        show_model_name=True,
+        text_size=16,
+        num_trials=16,
+        line_width=3,
     ):
     """
     Plot a raster plot of neuron metrics for two models.
@@ -115,7 +122,7 @@ def plot_neuron_raster(
     y_name : str, optional
         The name of the new model for the y-axis.
     """
-    gt, x_pred, y_pred = x_dict['gt'], x_dict['pred'], y_dict['pred']
+    gt, x_pred, y_pred = x_dict['gt'][:num_trials], x_dict['pred'][:num_trials], y_dict['pred'][:num_trials]
     N = len(gt)
     if neuron_idx is None:
         # select the most active neurons
@@ -156,26 +163,115 @@ def plot_neuron_raster(
         axes = ax
     norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     # plot ground truth
-    # axes[0].set_title(f"Neuron {neuron_idx} {x_name} R2: {x_r2:.2f} {y_name} R2: {y_r2:.2f}")
-    axes[0].imshow(gt, aspect='auto', cmap='bwr', origin='lower', norm=norm)
-    axes[0].set_title("Ground Truth")
-    axes[0].set_xlabel("Time")
+    im1 = axes[0].imshow(gt, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[0].set_title("Ground Truth") if show_model_name else None
+    axes[0].set_xlabel("Time (s)") if show_xticks else None
     axes[0].set_ylabel("GT \n"
                        f"subtract_psth: {subtract}\n"
-                       "Trial")
-    fig.colorbar(axes[0].imshow(gt, aspect='auto', cmap='bwr', origin='lower'), ax=axes[0])
+                       "Trial") if show_info else None
+    # set yticks
+    # set 0 point be N, and end point be 0
+    axes[0].set_yticks([0, N-1])
+    axes[0].set_yticklabels([N-1, 0])
+    # set xticks else no xticks
+    axes[0].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[0].set_xticks([])
+    axes[0].set_xticklabels([0,'',2.0]) if show_xticks else axes[0].set_xticklabels([])
+    fig.colorbar(im1, ax=axes[0]) if show_colorbar else None
     
     # plot x_pred
-    axes[1].imshow(x_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
-    axes[1].set_title(f"{x_name}")
-    axes[1].set_xlabel("Time")
-    fig.colorbar(axes[1].imshow(x_pred, aspect='auto', cmap='bwr', origin='lower'), ax=axes[1])
+    im2 = axes[1].imshow(x_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[1].set_title(f"{x_name}") if show_model_name else None
+    axes[1].set_xlabel("Time (s)") if show_xticks else None
+    axes[1].set_yticks([])
+    axes[1].set_yticklabels([])
+    # set xticks
+    axes[1].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[1].set_xticks([])
+    axes[1].set_xticklabels([0,'',2.0]) if show_xticks else axes[1].set_xticklabels([])    
+    fig.colorbar(im2, ax=axes[1]) if show_colorbar else None
+    
+    # plot y_pred
+    im3 = axes[2].imshow(y_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[2].set_title(f"{y_name}") if show_model_name else None
+    axes[2].set_xlabel("Time (s)") if show_xticks else None
+    axes[2].set_yticks([])
+    axes[2].set_yticklabels([])
+    # set xticks
+    axes[2].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[2].set_xticks([])
+    axes[2].set_xticklabels([0,'',2.0]) if show_xticks else axes[2].set_xticklabels([])
+    fig.colorbar(im3, ax=axes[2]) if show_colorbar else None
+    # set parameters for all axes
+    for ax in axes:
+        ax.set_title(ax.get_title(), pad=10, size=text_size)
+        ax.set_xlabel(ax.get_xlabel(), labelpad=-15, size=text_size)
+        ax.set_ylabel(ax.get_ylabel(), labelpad=10, size=text_size)
+        ax.xaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+        ax.yaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+        # change all spines
+        for axis in ['top','bottom','left','right']:
+            ax.spines[axis].set_linewidth(line_width)
+    # # set title for the figure
+    fig.suptitle(f"Neuron {neuron_idx} {x_name} R2: {x_r2:.2f} {y_name} R2: {y_r2:.2f}") if show_info else None
 
-    axes[2].imshow(y_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
-    axes[2].set_title(f"{y_name}")
-    axes[2].set_xlabel("Time")
-    fig.colorbar(axes[2].imshow(y_pred, aspect='auto', cmap='bwr', origin='lower'), ax=axes[2])
     plt.tight_layout()
+    return fig, axes
+
+def plot_multi_neuron_raster(
+        x_dict,
+        y_dict,
+        x_name='Base Model',
+        y_name='New Model',
+        neuron_list=None,
+        subtract='global',
+        n_clus=8,
+        n_neighbors=5,
+        title="Neuron Raster Plot",
+        text_size=16,
+        num_trials=16,
+    ):
+    """
+    Plot a raster plot of neuron metrics for two models.
+    """
+    if neuron_list is None:
+        # select the most active neurons
+        fr = np.mean(x_dict['gt'], axis=(0, 1))
+        neuron_list = np.argsort(fr)[::-1][:5]
+    neuron_list = np.array(neuron_list)
+    num_neurons = len(neuron_list)
+    # call plot_neuron_raster for each neuron
+    fig, axes = plt.subplots(num_neurons, 3, figsize=(18, 2*num_neurons))
+    for i, neuron_idx in enumerate(neuron_list):
+        fig_neuron, ax_neuron = plot_neuron_raster(
+            x_dict, 
+            y_dict, 
+            x_name=x_name, 
+            y_name=y_name, 
+            neuron_idx=neuron_idx, 
+            subtract=subtract,
+            n_clus=n_clus,
+            n_neighbors=n_neighbors,
+            ax=axes[i],
+            show_colorbar=False,
+            show_info=False,
+            show_xticks=True if i == num_neurons - 1 else False,
+            show_model_name=True if i == 0 else False,
+            text_size=text_size,
+            num_trials=num_trials,
+        )
+        # move the ax to the right side of the figure
+        ax_neuron[-1].yaxis.set_label_position("right")
+        # ax label becomes neuron idx
+        ax_neuron[-1].set_ylabel(f"Neuron {i}", size=text_size)
+    # set overall y label for the figure
+    fig.text(
+        0.015, 
+        0.5, 
+        'Trial Index', 
+        ha='center', 
+        va='center', 
+        rotation='vertical',
+        size=text_size
+    )
+    fig.subplots_adjust(wspace=0.15, left=0.06)
     return fig, axes
 
 def plot_psth(
@@ -185,6 +281,12 @@ def plot_psth(
         y_name='New Model',
         neuron_idx=None,
         ax=None,
+        show_info=True,
+        show_xticks=True,
+        show_yticks=True,
+        text_size=16,
+        num_trials=16,
+        line_width=3,
     ):
     """
     Plot a PSTH plot of neuron metrics for two models.
@@ -207,7 +309,7 @@ def plot_psth(
         fr = np.mean(gt, axis=(0, 1))
         neuron_idx = np.argmax(fr)
 
-    gt, x_pred, y_pred = gt[:, :, neuron_idx], x_pred[:, :, neuron_idx], y_pred[:, :, neuron_idx]
+    gt, x_pred, y_pred = gt[:num_trials, :, neuron_idx], x_pred[:num_trials, :, neuron_idx], y_pred[:num_trials, :, neuron_idx]
     num_trials, num_time = gt.shape
     # compute psth
     gt_psth = compute_psth(gt)
@@ -223,22 +325,158 @@ def plot_psth(
     y_r2 = r2_score(gt_psth, y_pred_psth)
     # plot psth
     if ax is None:
-        fig, ax = plt.subplots(figsize=(4, 4))
+        fig, ax = plt.subplots(figsize=(4, 4), sharex=True)
     else:
         fig = ax.get_figure()
-    ax.plot(gt_psth, label='GT')
+    ax.plot(gt_psth, label='GT', color='black')
     ax.plot(x_pred_psth, label=x_name)
-    ax.plot(y_pred_psth, label=y_name)
+    ax.plot(y_pred_psth, label=y_name, linestyle='--')
     ax.set_title(f"PSTH Neuron {neuron_idx}")
-    ax.set_xlabel("Time")
+    ax.set_xlabel("Time") if show_info else None
     ax.set_ylabel(
         f"{x_name} PSTH R2: {x_r2:.2f} \n"
         f"{y_name} PSTH R2: {y_r2:.2f} \n"
         f"Normalized Firing Rate"
-    )
-    ax.legend()
+    ) if show_info else None
+    # x ticks
+    ax.set_xticks([0, num_time-1]) if show_xticks else ax.set_xticks([])
+    ax.set_xticklabels([0, 2.0]) if show_xticks else ax.set_xticklabels([])
+    # y ticks
+    ax.set_yticks([0, 1]) if show_yticks else ax.set_yticks([])
+    ax.set_yticklabels([0, 1]) if show_yticks else ax.set_yticklabels([])
+    ax.legend() if show_info else None
+    # set top spine invisible
+    ax.spines['top'].set_visible(False)
+    # set right spine invisible
+    ax.spines['right'].set_visible(False)
+    # set left spine invisible
+    ax.spines['left'].set_visible(show_yticks)
+    # set bottom spine invisible
+    ax.spines['bottom'].set_visible(show_xticks)
+    # set line width for all lines
+    ax.spines['left'].set_linewidth(line_width)
+    ax.spines['bottom'].set_linewidth(line_width)
+    # set plot line width
+    for line in ax.lines:
+        line.set_linewidth(line_width)
+    # set size for all labels
+    ax.set_title(ax.get_title(), size=text_size)
+    ax.set_xlabel(ax.get_xlabel(), size=text_size)
+    ax.set_ylabel(ax.get_ylabel(), size=text_size)
+    ax.xaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+    ax.yaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
     plt.tight_layout()
     return fig, ax    
+
+def plot_multi_neuron_psth(
+        x_dict,
+        y_dict,
+        x_name='Base Model',
+        y_name='New Model',
+        neuron_list=None,
+        title="Neuron PSTH Plot",
+        text_size=16,
+        num_columns=3,
+        num_rows=2,
+        num_trials=16,
+    ):
+    """
+    Plot a PSTH plot of neuron metrics for two models.
+    """
+    if neuron_list is None:
+        # select the most active neurons
+        fr = np.mean(x_dict['gt'], axis=(0, 1))
+        neuron_list = np.argsort(fr)[::-1][:5]
+    neuron_list = np.array(neuron_list)
+    num_neurons = len(neuron_list)
+    # call plot_psth for each neuron
+    fig, axes = plt.subplots(
+        num_rows, 
+        num_columns, 
+        figsize=(4*num_columns, 3*num_rows), 
+        # sharex=True,
+        # sharey=False
+    )
+    for i, neuron_idx in enumerate(neuron_list):
+        row_idx = i // num_columns
+        col_idx = i % num_columns
+        # print(f"Neuron {i} at row {row_idx} col {col_idx}")
+        ax = axes[row_idx, col_idx]
+        fig_neuron, ax_neuron = plot_psth(
+            x_dict, 
+            y_dict, 
+            x_name=x_name, 
+            y_name=y_name, 
+            neuron_idx=neuron_idx, 
+            ax=ax,
+            show_info=False,
+            text_size=text_size,
+            num_trials=num_trials,
+            show_xticks=True if row_idx == num_rows - 1 else False,
+            show_yticks=True if col_idx == 0 else False,
+        )
+        ax_neuron.set_title(f"Neuron {i+1}", size=text_size)
+    # set overall y label for the figure
+    fig.text(
+        0.015, 
+        0.5, 
+        'Normalized Firing Rate', 
+        ha='center', 
+        va='center', 
+        rotation='vertical',
+        size=text_size
+    )
+    # set legend label Ground Truth, x_name, y_name; in color black, blue, red
+    fig.text(
+        0.5, 
+        0.015, 
+        'Time (s)', 
+        ha='center', 
+        va='center',
+        size=text_size
+    )
+    # get the default color for three different lines
+    gt_color = axes[0, 0].lines[0].get_color()
+    x_color = axes[0, 0].lines[1].get_color()
+    y_color = axes[0, 0].lines[2].get_color()
+    # set text for each Ground Truth, x_name, y_name
+    fig.text(
+        0.81, 
+        0.96, 
+        'Ground Truth', 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=gt_color
+    )
+    
+    fig.text(
+        0.89, 
+        0.96, 
+        x_name, 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=x_color
+    )
+    fig.text(
+        0.96, 
+        0.96, 
+        y_name, 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=y_color
+    )
+
+    # give some space for Time (s) label
+    fig.subplots_adjust(
+        wspace=0.15, 
+        left=0.06,
+        bottom=0.13,
+        top=0.88
+    )
+    return fig, axes
 
 def plot_combined_neuron_psth_raster(
         x_dict,
