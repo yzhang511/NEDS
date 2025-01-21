@@ -445,6 +445,7 @@ def co_smoothing_eval(
 
             ys, y_preds = gt[:,target_t_i], preds[:,target_t_i]
             behav_results = {}
+            save_dict = {}
             for i in tqdm(range(target_n_i.shape[0]), desc="R2"):
                 beh_name = DYNAMIC_VARS[i]
                 if is_aligned:
@@ -468,6 +469,10 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
                     behav_results[f"{beh_name}_r2_psth"] = _r2_psth
                     behav_results[f"{beh_name}_r2_trial"] = _r2_trial
+                    save_dict[beh_name] = {
+                        "gt": ys[...,target_n_i[i]].squeeze(),
+                        "pred": y_preds[...,target_n_i[i]].squeeze()
+                    }
                     if beh_name == "whisker":
                         y = ys[...,target_n_i[i]].squeeze()
                         y_pred = y_preds[...,target_n_i[i]].squeeze()
@@ -485,6 +490,7 @@ def co_smoothing_eval(
                 os.path.join(kwargs["save_path"], "acc.npy"), 
                 {"acc": acc_dict, "balanced_acc": balanced_acc_dict}
             )
+            np.save(os.path.join(kwargs["save_path"], "data.npy"), save_dict)
             return {
                 **behav_results,
                 **acc_dict,

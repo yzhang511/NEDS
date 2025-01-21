@@ -622,4 +622,202 @@ def viz_single_cell_unaligned(
     plt.tight_layout()
 
     return fig, axes
+
+def plot_behav_trial(
+        x_dict, 
+        y_dict, 
+        x_name='Base Model',
+        y_name='New Model',
+        trial_idx=None,
+        ax=None,
+        show_info=True,
+        show_xticks=True,
+        show_yticks=True,
+        text_size=16,
+        line_width=3,
+    ):
+    """
+    Plot a PSTH plot of neuron metrics for two models.
+    
+    Parameters
+    ----------
+    x_dict : dict
+        A dictionary of neuron metrics for the base model.
+    y_dict : dict
+        A dictionary of neuron metrics for the new model.
+    x_name : str, optional
+        The name of the base model for the x-axis.
+    y_name : str, optional
+        The name of the new model for the y-axis.
+    """
+    gt, x_pred, y_pred = x_dict['gt'], x_dict['pred'], y_dict['pred']
+    N = len(gt)
+    if trial_idx is None:
+        trial_idx=0
+
+    gt, x_pred, y_pred = gt[trial_idx], x_pred[trial_idx], y_pred[trial_idx]
+    num_time = len(gt)
+    # compute psth
+    # gt_psth = compute_psth(gt)
+    # x_pred_psth = compute_psth(x_pred)
+    # y_pred_psth = compute_psth(y_pred)
+    # # normalize psth to [0, 1]
+    # gt_psth = (gt_psth - min(gt_psth)) / (max(gt_psth) - min(gt_psth))
+    # x_pred_psth = (x_pred_psth - min(x_pred_psth)) / (max(x_pred_psth) - min(x_pred_psth))
+    # y_pred_psth = (y_pred_psth - min(y_pred_psth)) / (max(y_pred_psth) - min(y_pred_psth))
+    # # x psth r2
+    # x_r2 = r2_score(gt_psth, x_pred_psth)
+    # # y psth r2
+    # y_r2 = r2_score(gt_psth, y_pred_psth)
+    # plot psth
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(4, 4), sharex=True)
+    else:
+        fig = ax.get_figure()
+    ax.plot(gt, label='GT', color='black')
+    ax.plot(x_pred, label=x_name)
+    ax.plot(y_pred, label=y_name, linestyle='--')
+    ax.set_title(f"PSTH Neuron {trial_idx}")
+    ax.set_xlabel("Time") if show_info else None
+    ax.set_ylabel(
+        f"{x_name} PSTH R2: {x_r2:.2f} \n"
+        f"{y_name} PSTH R2: {y_r2:.2f} \n"
+        f"Normalized Firing Rate"
+    ) if show_info else None
+    # x ticks
+    ax.set_xticks([0, num_time-1]) if show_xticks else ax.set_xticks([])
+    ax.set_xticklabels([0, 2.0]) if show_xticks else ax.set_xticklabels([])
+    # y ticks
+    ax.set_yticks([0, 1]) if show_yticks else ax.set_yticks([])
+    ax.set_yticklabels([0, 1]) if show_yticks else ax.set_yticklabels([])
+    ax.legend() if show_info else None
+    # set top spine invisible
+    ax.spines['top'].set_visible(False)
+    # set right spine invisible
+    ax.spines['right'].set_visible(False)
+    # set left spine invisible
+    ax.spines['left'].set_visible(show_yticks)
+    # set bottom spine invisible
+    ax.spines['bottom'].set_visible(show_xticks)
+    # set line width for all lines
+    ax.spines['left'].set_linewidth(line_width)
+    ax.spines['bottom'].set_linewidth(line_width)
+    # set plot line width
+    for line in ax.lines:
+        line.set_linewidth(line_width)
+    # set size for all labels
+    ax.set_title(ax.get_title(), size=text_size)
+    ax.set_xlabel(ax.get_xlabel(), size=text_size)
+    ax.set_ylabel(ax.get_ylabel(), size=text_size)
+    ax.xaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+    ax.yaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+    plt.tight_layout()
+    return fig, ax 
+
+def plot_multi_trial(
+        x_dict,
+        y_dict,
+        x_name='Base Model',
+        y_name='New Model',
+        trial_list=None,
+        title="Neuron PSTH Plot",
+        text_size=16,
+        num_columns=3,
+        num_rows=2,
+        num_trials=16,
+        behav_name='Behavior',
+    ):
+    """
+    Plot a PSTH plot of neuron metrics for two models.
+    """
+    if trial_list is None:
+        trial_list = np.arange(5)
+    trial_list = np.array(trial_list)
+    # call plot_psth for each neuron
+    fig, axes = plt.subplots(
+        num_rows, 
+        num_columns, 
+        figsize=(4*num_columns, 3*num_rows), 
+        # sharex=True,
+        # sharey=False
+    )
+    for i, trial_idx in enumerate(trial_list):
+        row_idx = i // num_columns
+        col_idx = i % num_columns
+        # print(f"Neuron {i} at row {row_idx} col {col_idx}")
+        ax = axes[row_idx, col_idx]
+        fig_neuron, ax_neuron = plot_behav_trial(
+            x_dict, 
+            y_dict, 
+            x_name=x_name, 
+            y_name=y_name, 
+            trial_idx=trial_idx, 
+            ax=ax,
+            show_info=False,
+            text_size=text_size,
+            show_xticks=True if row_idx == num_rows - 1 else False,
+            show_yticks=True if col_idx == 0 else False,
+        )
+        ax_neuron.set_title(f"Trial {i+1}", size=text_size)
+    # set overall y label for the figure
+    fig.text(
+        0.015, 
+        0.5, 
+        behav_name, 
+        ha='center', 
+        va='center', 
+        rotation='vertical',
+        size=text_size
+    )
+    # set legend label Ground Truth, x_name, y_name; in color black, blue, red
+    fig.text(
+        0.5, 
+        0.015, 
+        'Time (s)', 
+        ha='center', 
+        va='center',
+        size=text_size
+    )
+    # get the default color for three different lines
+    gt_color = axes[0, 0].lines[0].get_color()
+    x_color = axes[0, 0].lines[1].get_color()
+    y_color = axes[0, 0].lines[2].get_color()
+    # set text for each Ground Truth, x_name, y_name
+    fig.text(
+        0.81, 
+        0.96, 
+        'Ground Truth', 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=gt_color
+    )
+    
+    fig.text(
+        0.89, 
+        0.96, 
+        x_name, 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=x_color
+    )
+    fig.text(
+        0.96, 
+        0.96, 
+        y_name, 
+        ha='center', 
+        va='center',
+        size=text_size,
+        color=y_color
+    )
+
+    # give some space for Time (s) label
+    fig.subplots_adjust(
+        wspace=0.15, 
+        left=0.06,
+        bottom=0.13,
+        top=0.88
+    )
+    return fig, axes
 # Example usage:

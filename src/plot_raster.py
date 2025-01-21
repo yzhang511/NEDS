@@ -6,12 +6,56 @@ from utils.metric_utils import (
 from utils.plot_utils import (
     plot_multi_neuron_psth,
     plot_neuron_raster,
-    plot_multi_neuron_raster
+    plot_multi_neuron_raster,
+    plot_multi_trial
 )
 mm_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-spike-choice-block-wheel-whisker_outModal-spike-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
 encoding_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-choice-block-wheel-whisker_outModal-spike_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
 mm_data_path = os.path.join(mm_dir, 'data.npy')
 encoding_data_path = os.path.join(encoding_dir, 'data.npy')
+
+mm_whisker_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/results/sesNum-1_ses-db4df_set-eval_inModal-spike-choice-block-wheel-whisker_outModal-spike-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_behavior/data.npy'
+decoding_whisker_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/results/sesNum-1_ses-db4df_set-eval_inModal-spike_outModal-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_behavior/data.npy'
+mm_whisker_data = np.load(mm_whisker_data_path, allow_pickle=True).item()['whisker']
+decoding_whisker_data = np.load(decoding_whisker_data_path, allow_pickle=True).item()['whisker']
+fig, ax = plot_multi_trial(
+    x_dict=decoding_whisker_data,
+    y_dict=mm_whisker_data,
+    x_name="Unimodal",
+    y_name="Multimodal",
+    trial_list=[
+        0,1,2,3,8,10,
+        4,5,6,7,9,11
+    ],
+    text_size=20,
+    num_rows=2,
+    num_columns=6,
+    behav_name="Whisker Motion Energy"
+)
+fig.savefig("whisker.png")
+# load data
+mm_wheel_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/results/sesNum-1_ses-db4df_set-eval_inModal-spike-choice-block-wheel-whisker_outModal-spike-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_behavior/data.npy'
+decoding_wheel_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/results/sesNum-1_ses-db4df_set-eval_inModal-spike_outModal-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_behavior/data.npy'
+mm_wheel_data = np.load(mm_wheel_data_path, allow_pickle=True).item()['wheel']
+decoding_wheel_data = np.load(decoding_wheel_data_path, allow_pickle=True).item()['wheel']
+
+fig, ax = plot_multi_trial(
+    x_dict=decoding_wheel_data,
+    y_dict=mm_wheel_data,
+    x_name="Unimodal",
+    y_name="Multimodal",
+    trial_list=[
+        0,1,2,3,8,10,
+        4,5,6,7,9,11
+    ],
+    text_size=20,
+    num_rows=2,
+    num_columns=6,
+    behav_name="Wheel Speed"
+)
+fig.savefig("wheel.png")
+exit()
+
 # load data
 mm_data = np.load(mm_data_path, allow_pickle=True).item()
 encoding_data = np.load(encoding_data_path, allow_pickle=True).item()
@@ -65,12 +109,4 @@ for neuron_idx in sorted_idx:
         num_trials=1000
     )
     fig.savefig(f"neuron_{neuron_idx}.png")
-    # fig = plot_combined_neuron_psth_raster(
-    #     x_dict=mm_data,
-    #     y_dict=encoding_data,
-    #     x_name="Multimodal",
-    #     y_name="Encoding",
-    #     neuron_idx=neuron_idx,
-    # )
-    # fig.savefig(f"neuron_{neuron_idx}.png")
 
