@@ -73,6 +73,8 @@ class MultiModalTrainer():
 
         self.enc_task_var = kwargs.get("enc_task_var", False)
 
+        self.start_epoch = kwargs.get("start_epoch", 0)
+
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
@@ -184,7 +186,7 @@ class MultiModalTrainer():
                 f"eval_enc_{enc_task_var}_metric": - MAX_VAL for enc_task_var in STATIC_VARS + DYNAMIC_VARS
             }
         
-        for epoch in range(self.config.training.num_epochs):
+        for epoch in range(self.start_epoch, self.config.training.num_epochs):
             
             train_epoch_results = self.train_epoch(epoch)
 
