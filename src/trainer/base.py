@@ -16,6 +16,16 @@ STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
 OUTPUT_DIM = {"choice": 2, "block": 3, "wheel": 1, "whisker": 1}
 
+def set_seed(epoch, base_seed=42):
+    seed = base_seed + epoch
+    print("Train seed set to {}.".format(seed))
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
 class MultiModalTrainer():
     def __init__(
@@ -234,6 +244,9 @@ class MultiModalTrainer():
                     wandb.log(logs_results)
                 else:
                     print(logs_results)
+
+            if epoch % self.config.training.save_every == 0:
+                self.save_model(name="epoch", epoch=epoch)
                 
         self.save_model(name="last", epoch=epoch)
         
@@ -246,6 +259,8 @@ class MultiModalTrainer():
     def train_epoch(self, epoch):
         train_loss = 0.
         mod_loss_dict = {f"train_{mod}_loss": 0. for mod in self.modal_filter["output"]}
+
+        set_seed(epoch)
         
         self.model.train()
         for batch in tqdm(self.train_dataloader):
