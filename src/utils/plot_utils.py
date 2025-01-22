@@ -654,22 +654,9 @@ def plot_behav_trial(
     N = len(gt)
     if trial_idx is None:
         trial_idx=0
-
-    gt, x_pred, y_pred = gt[trial_idx], x_pred[trial_idx], y_pred[trial_idx]
+    gt, x_pred, y_pred = gt[trial_idx] - gt.mean(0), x_pred[trial_idx] - x_pred.mean(0), y_pred[trial_idx] - y_pred.mean(0)
     num_time = len(gt)
-    # compute psth
-    # gt_psth = compute_psth(gt)
-    # x_pred_psth = compute_psth(x_pred)
-    # y_pred_psth = compute_psth(y_pred)
-    # # normalize psth to [0, 1]
-    # gt_psth = (gt_psth - min(gt_psth)) / (max(gt_psth) - min(gt_psth))
-    # x_pred_psth = (x_pred_psth - min(x_pred_psth)) / (max(x_pred_psth) - min(x_pred_psth))
-    # y_pred_psth = (y_pred_psth - min(y_pred_psth)) / (max(y_pred_psth) - min(y_pred_psth))
-    # # x psth r2
-    # x_r2 = r2_score(gt_psth, x_pred_psth)
-    # # y psth r2
-    # y_r2 = r2_score(gt_psth, y_pred_psth)
-    # plot psth
+    
     if ax is None:
         fig, ax = plt.subplots(figsize=(4, 4), sharex=True)
     else:
@@ -820,4 +807,178 @@ def plot_multi_trial(
         top=0.88
     )
     return fig, axes
+
+def plot_behav_raster(
+        x_dict, 
+        y_dict, 
+        x_name='Base Model',
+        y_name='New Model',
+        subtract='global',
+        n_clus=8,
+        n_neighbors=5,
+        ax=None,
+        show_colorbar=True,
+        show_info=True,
+        show_xticks=True,
+        show_model_name=True,
+        text_size=16,
+        num_trials=16,
+        line_width=3,
+        behav_name='Behavior',
+    ):
+    """
+    Plot a raster plot of neuron metrics for two models.
+    
+    Parameters
+    ----------
+    x_dict : dict
+        A dictionary of neuron metrics for the base model.
+    y_dict : dict
+        A dictionary of neuron metrics for the new model.
+    x_name : str, optional
+        The name of the base model for the x-axis.
+    y_name : str, optional
+        The name of the new model for the y-axis.
+    """
+    gt, x_pred, y_pred = x_dict['gt'][:num_trials], x_dict['pred'][:num_trials], y_dict['pred'][:num_trials]
+    N = len(gt)
+
+    # neuron r2
+    x_r2 = r2_score(gt.flatten(), x_pred.flatten())
+    y_r2 = r2_score(gt.flatten(), y_pred.flatten())
+    if subtract == 'global':
+        gt = gt - gt.mean(0)
+        x_pred = x_pred - x_pred.mean(0)
+        y_pred = y_pred - y_pred.mean(0)
+    else:
+        raise ValueError("Invalid subtraction method.")
+
+    clustering = SpectralClustering(
+        n_clusters=n_clus, 
+        n_neighbors=n_neighbors,
+        affinity='nearest_neighbors',
+        assign_labels='discretize',
+        random_state=0
+    )
+    clustering = clustering.fit(y_pred)
+    t_sort = np.argsort(clustering.labels_)
+    vmin_perc, vmax_perc = 10, 90 
+    vmax = np.percentile(y_pred, vmax_perc)
+    vmin = np.percentile(y_pred, vmin_perc)
+
+    # sort gt, x_pred, y_pred
+    gt, x_pred, y_pred = gt[t_sort], x_pred[t_sort], y_pred[t_sort]
+    # plot raster, use imshow. [Trial, Time]
+    if ax is None:
+        fig, axes = plt.subplots(1, 3, figsize=(18, 4), sharex=True)
+    else:
+        fig = ax[0].get_figure()
+        axes = ax
+    norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+    # plot ground truth
+    im1 = axes[0].imshow(gt, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[0].set_title("Ground Truth") if show_model_name else None
+    axes[0].set_xlabel("Time (s)") if show_xticks else None
+    axes[0].set_ylabel("GT \n"
+                       f"subtract_psth: {subtract}\n"
+                       "Trial") if show_info else None
+    # set yticks
+    # set 0 point be N, and end point be 0
+    axes[0].set_yticks([0, N-1])
+    axes[0].set_yticklabels([N-1, 0])
+    # set xticks else no xticks
+    axes[0].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[0].set_xticks([])
+    axes[0].set_xticklabels([0,'',2.0]) if show_xticks else axes[0].set_xticklabels([])
+    fig.colorbar(im1, ax=axes[0]) if show_colorbar else None
+    
+    # plot x_pred
+    im2 = axes[1].imshow(x_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[1].set_title(f"{x_name}") if show_model_name else None
+    axes[1].set_xlabel("Time (s)") if show_xticks else None
+    axes[1].set_yticks([])
+    axes[1].set_yticklabels([])
+    # set xticks
+    axes[1].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[1].set_xticks([])
+    axes[1].set_xticklabels([0,'',2.0]) if show_xticks else axes[1].set_xticklabels([])    
+    fig.colorbar(im2, ax=axes[1]) if show_colorbar else None
+    
+    # plot y_pred
+    im3 = axes[2].imshow(y_pred, aspect='auto', cmap='bwr', origin='lower', norm=norm)
+    axes[2].set_title(f"{y_name}") if show_model_name else None
+    axes[2].set_xlabel("Time (s)") if show_xticks else None
+    axes[2].set_yticks([])
+    axes[2].set_yticklabels([])
+    # set xticks
+    axes[2].set_xticks([0, (len(gt[0])-1)//2,len(gt[0])-1]) if show_xticks else axes[2].set_xticks([])
+    axes[2].set_xticklabels([0,'',2.0]) if show_xticks else axes[2].set_xticklabels([])
+    fig.colorbar(im3, ax=axes[2]) if show_colorbar else None
+    # set parameters for all axes
+    for ax in axes:
+        ax.set_title(ax.get_title(), pad=10, size=text_size)
+        ax.set_xlabel(ax.get_xlabel(), labelpad=-15, size=text_size)
+        ax.set_ylabel(ax.get_ylabel(), labelpad=10, size=text_size)
+        ax.xaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+        ax.yaxis.set_tick_params(labelsize=text_size, width=line_width,length=10)
+        # change all spines
+        for axis in ['top','bottom','left','right']:
+            ax.spines[axis].set_linewidth(line_width)
+    # # set title for the figure
+    fig.suptitle(f"{behav_name} {x_name} R2: {x_r2:.2f} {y_name} R2: {y_r2:.2f}") if show_info else None
+
+    plt.tight_layout()
+    return fig, axes
+
+def plot_multi_behav_raster(
+        x_dict,
+        y_dict,
+        x_name='Base Model',
+        y_name='New Model',
+        neuron_list=None,
+        subtract='global',
+        n_clus=8,
+        n_neighbors=5,
+        title="Neuron Raster Plot",
+        text_size=16,
+        num_trials=16,
+    ):
+    """
+    Plot a raster plot of neuron metrics for two models.
+    """
+    # call plot_neuron_raster for each neuron
+    fig, axes = plt.subplots(num_neurons, 3, figsize=(18, 2*num_neurons))
+    for i, neuron_idx in enumerate(neuron_list):
+        fig_neuron, ax_neuron = plot_neuron_raster(
+            x_dict, 
+            y_dict, 
+            x_name=x_name, 
+            y_name=y_name, 
+            neuron_idx=neuron_idx, 
+            subtract=subtract,
+            n_clus=n_clus,
+            n_neighbors=n_neighbors,
+            ax=axes[i],
+            show_colorbar=False,
+            show_info=False,
+            show_xticks=True if i == num_neurons - 1 else False,
+            show_model_name=True if i == 0 else False,
+            text_size=text_size,
+            num_trials=num_trials,
+        )
+        # move the ax to the right side of the figure
+        ax_neuron[-1].yaxis.set_label_position("right")
+        # ax label becomes neuron idx
+        ax_neuron[-1].set_ylabel(f"Neuron {i}", size=text_size)
+    # set overall y label for the figure
+    fig.text(
+        0.015, 
+        0.5, 
+        'Trial Index', 
+        ha='center', 
+        va='center', 
+        rotation='vertical',
+        size=text_size
+    )
+    fig.subplots_adjust(wspace=0.15, left=0.06)
+    return fig, axes
+
 # Example usage:
