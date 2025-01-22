@@ -28,14 +28,22 @@ from ray.tune.schedulers import ASHAScheduler
 def main(tune_config=None):
     if args.num_sessions <= 10:
         model_config = f"{args.config_dir}/multi_modal/mm_single_session.yaml"
+    elif args.num_sessions > 70:
+        model_config = "src/configs/multi_modal/mm_large_size.yaml"
     else:
         model_config = f"{args.config_dir}/multi_modal/mm.yaml"
 
     kwargs = {"model": f"include:{model_config}"}
     config = config_from_kwargs(kwargs)
-    config = update_config(f"{args.config_dir}/multi_modal/trainer_mm.yaml", config)
+    
+    if args.num_sessions <= 40:
+        config = update_config("src/configs/multi_modal/trainer_mm.yaml", config)
+    else:
+        config = update_config("src/configs/multi_modal/trainer_multi_session.yaml", config)
+        
     if args.model_mode == "encoding":
         config["training"]["num_epochs"] = 4000
+        
     set_seed(config.seed)
 
     best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
