@@ -117,6 +117,9 @@ def main(tune_config=None):
         if accelerator.num_processes > max_num_processes:
             max_lr *= max_num_processes / 2
             global_batch_size = 512
+        elif args.num_sessions > 70:
+            max_lr = 0.003
+            global_batch_size = 1024
         else:
             max_lr *= accelerator.num_processes
             global_batch_size *= accelerator.num_processes 
