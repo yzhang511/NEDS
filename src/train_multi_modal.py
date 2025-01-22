@@ -382,6 +382,7 @@ def main(tune_config=None):
         "enc_task_var": args.enc_task_var,
         "config": config,
         "multi_gpu": args.multi_gpu,
+        "start_epoch": start_epoch, 
     }
 
     stop_dummy_load = threading.Event()
