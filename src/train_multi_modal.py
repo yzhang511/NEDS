@@ -293,8 +293,7 @@ def main(tune_config=None):
         )
 
     if args.continue_pretrain:
-
-        best_pretrain_ckpt = "model_best_spike.pt"
+        best_pretrain_ckpt = "model_epoch.pt"
         pretrain_path = \
         "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
             num_sessions,
@@ -310,13 +309,18 @@ def main(tune_config=None):
             base_path, "results", pretrain_path, "pretrained", best_pretrain_ckpt
         )       
 
-        model_state_dict = torch.load(pretrained_model_path)["model"]
-        optimizer_state_dict = torch.load(pretrained_model_path)["optimizer"]
-        lr_scheduler_state_dict = torch.load(pretrained_model_path)["lr_sched"]
-
-        model = model.load_state_dict(model_state_dict)
-        optimizer = optimizer.load_state_dict(optimizer_state_dict)
-        lr_scheduler = lr_scheduler.load_state_dict(lr_scheduler_state_dict)
+        checkpoint = torch.load(pretrained_model_path)
+        model_state_dict = checkpoint["model"]
+        optimizer_state_dict = checkpoint["optimizer"]
+        lr_scheduler_state_dict = checkpoint["lr_sched"]
+        start_epoch = checkpoint["epoch"] + 1
+    
+        model.load_state_dict(model_state_dict)
+        optimizer.load_state_dict(optimizer_state_dict)
+        lr_scheduler.load_state_dict(lr_scheduler_state_dict)
+        print(f"Resume training from epoch {start_epoch}.")
+    else:
+        start_epoch = 0
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
