@@ -18,6 +18,7 @@ echo $TMPDIR
 eid=${1}
 model_mode=${2}
 behavior=${3}
+pretrain_n_ses=${4}
 
 conda activate ibl-mm
 
@@ -36,6 +37,8 @@ if [ $behavior = "continuous" ]; then
                                 --model_mode $model_mode \
                                 --save_plot \
                                 --overwrite \
+                                --finetune \
+                                --pretrain_num_sessions $pretrain_n_ses \
                                 --wandb
 elif [ $behavior = "choice" ] || [ $behavior = "block" ];
 then
@@ -47,6 +50,8 @@ then
                                 --behavior $behavior \
                                 --save_plot \
                                 --overwrite \
+                                --finetune \
+                                --pretrain_num_sessions $pretrain_n_ses \
                                 --wandb
 elif [ $behavior = "all" ];
 then
@@ -58,6 +63,8 @@ then
                                 --behavior choice block wheel-speed whisker-motion-energy \
                                 --save_plot \
                                 --overwrite \
+                                --finetune \
+                                --pretrain_num_sessions $pretrain_n_ses \
                                 --wandb
 else
     echo "behavior: $behavior not supported"

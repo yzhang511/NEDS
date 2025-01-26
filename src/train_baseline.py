@@ -85,6 +85,11 @@ train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     seed=config.seed
 )
 
+max_space_length = max(list(meta_data["eid_list"].values()))  # ASK
+logging.info(f"MAX space length to pad spike data to: {max_space_length}")
+
+local_data_dir = "ibl_mm" if args.num_sessions == 1 else f"ibl_mm_{args.num_sessions}"
+
 train_dataloader = make_loader(
     train_dataset, 
     target=DYNAMIC_VARS,
@@ -93,16 +98,19 @@ train_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}",
+    # data_dir=None,
     mode="train",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
+    eids=list(meta_data["eids"]),
     shuffle=True,
+    sampler_type='eid',
 )
 
 val_dataloader = make_loader(
@@ -113,16 +121,19 @@ val_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}", 
+    # data_dir=None,
     mode="val",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
-    shuffle=False
+    eids=list(meta_data["eids"]),
+    shuffle=False,
+    sampler_type='eid',
 )
 
 test_dataloader = make_loader(
@@ -133,16 +144,19 @@ test_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}",
+    # data_dir=None,
     mode="test",
-    eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
-    shuffle=False
+    eids=list(meta_data["eids"]),
+    shuffle=False,
+    sampler_type='eid',
 )
 
 # --------
@@ -158,7 +172,6 @@ log_name = "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
     "-".join(modal_filter["input"]),
     "-".join(modal_filter["output"]),
     f"behavior-{'-'.join(avail_beh)}",
-    model_class,
 )
 
 log_dir = os.path.join(base_path, "results", log_name)

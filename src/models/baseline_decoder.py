@@ -105,6 +105,18 @@ class ReducedRankDecoder(nn.Module):
         # eid_idx = self.eid_list.index(data_dict['eid'])
         eid_idx = data_dict['eid']
         inputs, targets = data_dict['inputs'], data_dict['targets']
+        
+        # Trancate the input tensor to the correct size
+        inputs = inputs[:, :, :self.Us[eid_idx].shape[0]]
+
+        # DEBUG
+        '''
+        print('Us', self.Us)
+        print('V', self.V.shape)
+        print('eid', eid_idx)
+        print('inputs', inputs.shape)
+        '''
+
         self.B = torch.einsum('nr,rtp->ntp', self.Us[eid_idx], self.V)
 
         if self.is_clf:

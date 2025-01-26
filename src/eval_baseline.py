@@ -36,6 +36,7 @@ ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--save_plot", action="store_true")
 ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
+ap.add_argument("--pretrain_num_sessions", type=int, default=40)
 args = ap.parse_args()
 
 
@@ -89,8 +90,9 @@ log_name = "sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_model-{}".format(
     "-".join(modal_filter["input"]),
     "-".join(modal_filter["output"]),
     f"behavior-{'-'.join(avail_beh)}",
-    model_class,
 )
+if args.finetune:
+    log_name = log_name + f'_pretrain-{args.pretrain_num_sessions}'
 
 save_path = os.path.join(base_path, "results", log_name)
 
@@ -103,7 +105,7 @@ logging.info(f"Save results to {save_path}")
 
 if args.wandb:
     wandb.init(
-        project="baseline",
+        project="rrr",
         config=args,
         name=log_name
     )

@@ -219,7 +219,7 @@ class LengthGroupedSampler(Sampler):
 
 class SessionSampler(Sampler):
     """Custom Sampler that batches data by session ID (eid)."""
-    def __init__(self, dataset, generator, shuffle=True, seed=42):
+    def __init__(self, dataset, generator, shuffle=True):
         self.data_source = dataset
         self.shuffle = shuffle
         self.generator = generator
@@ -370,6 +370,7 @@ class BaseDataset(torch.utils.data.Dataset):
         pad_value = -1.,
         max_time_length = 5000,
         max_space_length = 1000,
+        no_space_pad = False,
         bin_size = 0.05,
         mask_ratio = 0.1,
         pad_to_right = True,
@@ -395,6 +396,7 @@ class BaseDataset(torch.utils.data.Dataset):
             self.sort_by_region = sort_by_region
             self.max_time_length = max_time_length
             self.max_space_length = max_space_length
+            self.no_space_pad = no_space_pad
             self.bin_size = bin_size
             self.pad_to_right = pad_to_right
             self.mask_ratio = mask_ratio
@@ -467,7 +469,11 @@ class BaseDataset(torch.utils.data.Dataset):
         binned_spikes_data, neuron_depths, neuron_regions = self._sort_data_by_depth_or_region(
             binned_spikes_data, neuron_depths, neuron_regions
         )
-            
+
+        # Set the max space length to present length, so there's no padding.
+        if self.no_space_pad:
+            self.max_space_length = binned_spikes_data.shape[1]
+
         # Pad along time and space dimensions
         binned_spikes_data, pad_time_length = self._pad_data(binned_spikes_data, self.max_time_length, axis=0)
         binned_spikes_data, pad_space_length = self._pad_data(binned_spikes_data, self.max_space_length, axis=1)
@@ -566,6 +572,8 @@ class BaseDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         if self.data_paths is not None:
+            # DEBUG
+            # print('No preprocessing.')
             data = np.load(self.data_paths[idx], allow_pickle=True).item()
             return data
         elif "ibl" in self.dataset_name:

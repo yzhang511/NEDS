@@ -91,9 +91,14 @@ class ReducedRankEncoder(nn.Module):
     def forward(
             self, data_dict: Dict[str, Dict[str, torch.Tensor]]
         ) -> EncoderOutput:
+
         # eid_idx = self.eid_list.index(data_dict['eid'])
         eid_idx = data_dict['eid']
         inputs, targets = data_dict['inputs'], data_dict['targets']
+
+        # Trancate the target tensor to the correct size
+        targets = targets[:, :, :self.Us[eid_idx].shape[0]]
+
         self.B = torch.einsum('npr,rt->npt', self.Us[eid_idx], self.V)
         preds = torch.einsum('npt,ktp->ktn', self.B, inputs)
         preds += self.bs[eid_idx]

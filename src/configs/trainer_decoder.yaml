@@ -2,16 +2,16 @@ seed: 42
 
 savestring: test
 wandb_project: rrr
-log_to_wandb: false
+log_to_wandb: true
 
 verbosity: 0
 
 # wandb configuration
 wandb:
   use: true
-  entity: null
+  entity: wdk0082
   project: rrr
-  run_name: 671c7ea7
+  run_name: test01_rrr
 
 # Logging directories
 dirs:

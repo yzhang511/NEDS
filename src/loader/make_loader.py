@@ -33,6 +33,7 @@ def make_loader(
     pad_value = 0.,
     max_time_length = 5000,
     max_space_length = 100,
+    no_space_pad=False,
     bin_size = 0.05,
     brain_region = 'all',
     load_meta=False,
@@ -40,7 +41,7 @@ def make_loader(
     stitching = False,
     seed=42,
     shuffle = True,
-    weighted_sampler=False,
+    sampler_type='regular',
     data_dir = None,
     mode='train',
     eids=None,
@@ -51,6 +52,7 @@ def make_loader(
                           pad_value=pad_value,
                           max_time_length=max_time_length,
                           max_space_length=max_space_length,
+                          no_space_pad=no_space_pad,
                           bin_size=bin_size,
                           pad_to_right=pad_to_right,
                           dataset_name=dataset_name,
@@ -69,7 +71,7 @@ def make_loader(
     generator = torch.Generator()
     generator.manual_seed(seed)
 
-    if weighted_sampler:
+    if sampler_type == 'weighted':
         # Weight samples according to choice
         print(f'Using weighted sampler')
         labels = [x["target"][0][0] for x in dataset]
@@ -79,11 +81,21 @@ def make_loader(
             dataset, sampler=sampler, batch_size=batch_size, 
             worker_init_fn=seed_worker, generator=generator, pin_memory=True,
         )
-    else:
+    elif sampler_type == 'eid':
+        # Use eid to batch trials
+        print('Using eid sampler')
+        sampler = SessionSampler(dataset=dataset, generator=generator, shuffle=shuffle)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, sampler=sampler, batch_size=batch_size, 
+            worker_init_fn=seed_worker, generator=generator, pin_memory=True,
+        )
+    elif sampler_type == 'regular':
         print(f'Using regular sampler')
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, shuffle=shuffle, 
             worker_init_fn=seed_worker, generator=generator, pin_memory=True,
         )
+    else:
+        raise NotImplementedError(f"sampler {sampler_type} not implemented.")
 
     return dataloader

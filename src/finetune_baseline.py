@@ -16,30 +16,17 @@ from utils.config_utils import config_from_kwargs, update_config
 from trainer.make import make_baseline_trainer
 from models.baseline_encoder import BaselineEncoder, ReducedRankEncoder
 from models.baseline_decoder import BaselineDecoder, ReducedRankDecoder
-
-from torch.cuda.amp import GradScaler
+from torch.optim.lr_scheduler import OneCycleLR
 
 logging.basicConfig(level=logging.INFO) 
 
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel-speed", "whisker-motion-energy"]
 
-model_config = "src/configs/baseline.yaml"
-if args.model_mode == "decoding":
-    trainer_config = update_config("src/configs/trainer_decoder.yaml", model_config)
-elif args.model_mode == "encoding":
-    trainer_config = update_config("src/configs/trainer_encoder.yaml", model_config)
-set_seed(trainer_config.seed)
-
-best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
-
-# ------ 
-# SET UP
-# ------ 
-
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
+ap.add_argument("--data_path", type=str, default="EXAMPLE_PATH")
 ap.add_argument("--model_mode", type=str, default="decoding")
 ap.add_argument("--model", type=str, default="rrr", choices=["rrr", "linear"])
 ap.add_argument("--rank", type=int, default=4)
@@ -47,8 +34,27 @@ ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion
 ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--overwrite", action="store_true")
+ap.add_argument("--full_finetune", action='store_true')
+ap.add_argument("--pretrain_num_sessions", type=int, default=40)
 args = ap.parse_args()
 
+if args.num_sessions > 1:
+    raise ValueError("Can only finetune on a single session.")
+
+kwargs = {"model": "include:src/configs/baseline.yaml"}
+config = config_from_kwargs(kwargs)
+if args.model_mode == "decoding":
+    config = update_config("src/configs/trainer_decoder.yaml", config)
+elif args.model_mode == "encoding":
+    config = update_config("src/configs/trainer_encoder.yaml", config)
+set_seed(config.seed)
+
+best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
+
+
+# ------ 
+# SET UP
+# ------ 
 
 eid = args.eid
 base_path = args.base_path
@@ -57,8 +63,6 @@ avail_mod = args.modality
 model_mode = args.model_mode
 model_class = args.model
 n_beh = len(avail_beh)
-
-assert model_class == "rrr", "Finetuning only supported for reduced rank model."
 
 if args.model_mode == "decoding":
     input_modal = ["ap"]
@@ -71,21 +75,25 @@ else:
     
 modal_filter = {"input": input_modal, "output": output_modal}
 
-
 # ---------
 # LOAD DATA
 # ---------
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     config.dirs.dataset_cache_dir, 
     config.dirs.huggingface_org,
-    num_sessions=1,
-    eid=eid,
+    num_sessions=args.num_sessions,
+    eid = eid if args.num_sessions == 1 else None,
     use_re=True,
     split_method="predefined",
     test_session_eid=[],
     batch_size=config.training.train_batch_size,
     seed=config.seed
 )
+
+max_space_length = max(list(meta_data["eid_list"].values()))  # ASK
+logging.info(f"MAX space length to pad spike data to: {max_space_length}")
+
+local_data_dir = "ibl_mm" if args.num_sessions == 1 else f"ibl_mm_{args.num_sessions}"
 
 train_dataloader = make_loader(
     train_dataset, 
@@ -95,13 +103,19 @@ train_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=True
+    data_dir=f"{args.data_path}/{local_data_dir}",
+    # data_dir=None,
+    mode="train",
+    eids=list(meta_data["eids"]),
+    shuffle=True,
+    sampler_type='eid',
 )
 
 val_dataloader = make_loader(
@@ -112,13 +126,19 @@ val_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=False
+    data_dir=f"{args.data_path}/{local_data_dir}", 
+    # data_dir=None,
+    mode="val",
+    eids=list(meta_data["eids"]),
+    shuffle=False,
+    sampler_type='eid',
 )
 
 test_dataloader = make_loader(
@@ -129,42 +149,38 @@ test_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
+    no_space_pad=True,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    shuffle=False
+    data_dir=f"{args.data_path}/{local_data_dir}",
+    # data_dir=None,
+    mode="test",
+    eids=list(meta_data["eids"]),
+    shuffle=False,
+    sampler_type='eid',
 )
 
 # --------
 # SET PATH
 # --------
-num_sessions = args.num_sessions
 
-pretrain_path = \
-"sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
+num_sessions = len(meta_data["eid_list"])
+eid_ = "multi" if num_sessions > 1 else eid[:5]  # will only be single session though
+
+log_name = "sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_model-{}_pretrain-{}".format(
     num_sessions,
-    "multi",
+    eid_,
     "-".join(modal_filter["input"]),
     "-".join(modal_filter["output"]),
     f"behavior-{'-'.join(avail_beh)}",
-    model_class,
-)
-
-log_name = "sesNum-{}_ses-{}_set-finetune_inModal-{}_outModal-{}_model-{}".format(
-    num_sessions,
-    eid[:5],
-    "-".join(modal_filter["input"]),
-    "-".join(modal_filter["output"]),
-    f"behavior-{'-'.join(avail_beh)}",
-    model_class,
+    args.pretrain_num_sessions,
 )
 
 log_dir = os.path.join(base_path, "results", log_name)
-
-logging.info(f"Save model to {log_dir}")
 
 final_checkpoint = os.path.join(log_dir, last_ckpt_path)
 assert not os.path.exists(final_checkpoint) or args.overwrite, \
@@ -179,52 +195,47 @@ if config.wandb.use:
         name=log_name
     )
 
-
 # ----------
 # LOAD MODEL
 # ----------
-logging.info(f"Start model finetuning:")
+
+pretrain_path = os.path.join(
+    args.base_path, 
+    "results/sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
+        args.pretrain_num_sessions, 
+        'multi',
+        "-".join(modal_filter["input"]),
+        "-".join(modal_filter["output"]),
+        f"behavior-{'-'.join(avail_beh)}",
+    ),
+    best_ckpt_path,
+)
+
+try:
+    model = torch.load(pretrain_path)['model']
+except:
+    model = torch.load(pretrain_path, map_location=torch.device('cpu'))['model']
+
+
+# ------------
+# Set UP MODEL
+# ------------
+
+# create new Us for new eid
+model.Us[eid] = torch.nn.Parameter(torch.randn(meta_data['eid_list'][eid], model.rank))
+model.bs[eid] = torch.nn.Parameter(torch.randn(model.out_channel,))
+
+# freeze gradient
+if not args.full_finetune:
+    for name, p in model.named_parameters():
+        if name != f'Us.{eid}' and name != f'bs.{eid}':
+            p.requires_grad = False
+
+# DEBUG
+for name, p in model.named_parameters():
+    print(f"{name}: requires_grad={p.requires_grad}")
 
 accelerator = Accelerator()
-
-model_path = os.path.join(
-    base_path, "results", pretrain_path, best_ckpt_path
-)   
-configs = {
-    "model_config": model_config,
-    "model_path": pretrain_path,
-    "trainer_config": trainer_config,
-    "dataset_path": None, 
-    "seed": trainer_config.seed,
-    "eid": eid,
-    "avail_mod": avail_mod,
-    "avail_beh": avail_beh,
-}  
-model, accelerator, dataset, dataloader = load_model_data_local(**configs)
-model_state_dict = model.state_dict()
-model.load_state_dict(model_state_dict)
-
-# -----------------------
-# ACCOMMODATE NEW SESSION
-# -----------------------
-
-Us, bs = {}, {}
-if model_mode == "decoding":
-    for key, val in meta_data["eid_list"].items():
-        Us[str(key)] = torch.nn.Parameter(torch.randn(val, model.rank))
-        bs[str(key)] = torch.nn.Parameter(torch.randn(model.out_channel,))
-elif model_mode == "encoding":
-    for key, val in meta_data["eid_list"].items():
-        Us[str(key)] = torch.nn.Parameter(torch.randn(val, model.in_channel, model.rank))
-        bs[str(key)] = torch.nn.Parameter(torch.randn(val,))
-else:
-    raise NotImplementedError
-model.Us = torch.nn.ParameterDict(Us)
-model.bs = torch.nn.ParameterDict(bs)
-
-# ------------
-# SET UP MODEL
-# ------------
 model = accelerator.prepare(model)
 
 optimizer = torch.optim.AdamW(
@@ -244,8 +255,6 @@ lr_scheduler = OneCycleLR(
     div_factor=config.optimizer.div_factor,
 )
 
-scaler = GradScaler()
-
 # -----
 # TRAIN
 # -----
@@ -253,7 +262,6 @@ trainer_kwargs = {
     "log_dir": log_dir,
     "accelerator": accelerator,
     "lr_scheduler": lr_scheduler,
-    "scaler": scaler,
     "avail_mod": avail_mod,
     "modal_filter": modal_filter,
     "config": config,

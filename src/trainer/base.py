@@ -570,6 +570,10 @@ class BaselineTrainer():
                 data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)+1]
             else:
                 data_dict["targets"] = batch["target"][..., :len(DYNAMIC_VARS)]
+        
+        # DEBUG
+        # print('Sampled eid', batch["eid"])
+
         data_dict["eid"] = batch["eid"][0] 
         data_dict["num_neuron"] = batch["spikes_data"].shape[-1]
         return self.model(data_dict)
@@ -697,8 +701,11 @@ class BaselineTrainer():
             for idx, eid in enumerate(self.eid_list):
                 gt[idx], preds[idx] = {}, {}
                 for mod in self.modal_filter["output"]:
-                    _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
-                    _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                    try: 
+                        _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
+                        _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
+                    except:
+                        print(f"Missing EID {idx}: {eid} Modality: {mod}")
                     if mod == "ap":
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
@@ -729,12 +736,11 @@ class BaselineTrainer():
                     elif (mod == "behavior") and (("choice" not in self.target_to_decode) \
                             and ("block" not in self.target_to_decode)):
                         results = metrics_list(
-                            gt = gt[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0),
-                            pred = preds[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0), 
-                            metrics=["r2"], 
-                            device=self.accelerator.device
+                            gt = gt[idx][mod].unsqueeze(-1), pred = preds[idx][mod].unsqueeze(-1),
+                            metrics=["behave_r2"], device=self.accelerator.device
                         )
-                        results_list.append(results["r2"])
+                        results["behave_r2"] = np.nan if results["behave_r2"] == -float("inf") else results["behave_r2"]
+                        results_list.append(results["behave_r2"])
                     elif (mod == "behavior") and (("choice" in self.target_to_decode) \
                             or ("block" in self.target_to_decode)):
                         results_list.append(
