@@ -8,7 +8,8 @@ from utils.plot_utils import (
     plot_neuron_raster,
     plot_multi_neuron_raster,
     plot_multi_trial,
-    plot_behav_raster
+    plot_behav_raster,
+    plot_multi_behav_raster
 )
 mm_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-spike-choice-block-wheel-whisker_outModal-spike-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
 encoding_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-choice-block-wheel-whisker_outModal-spike_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
@@ -19,18 +20,6 @@ mm_whisker_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/res
 decoding_whisker_data_path = '/scratch/yl6624/Project/multi_modal_foundation_model/results/sesNum-1_ses-db4df_set-eval_inModal-spike_outModal-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_behavior/data.npy'
 mm_whisker_data = np.load(mm_whisker_data_path, allow_pickle=True).item()['whisker']
 decoding_whisker_data = np.load(decoding_whisker_data_path, allow_pickle=True).item()['whisker']
-fig, ax = plot_behav_raster(
-    x_dict=decoding_whisker_data,
-    y_dict=mm_whisker_data,
-    x_name="Unimodal",
-    y_name="Multimodal",
-    behav_name="Whisker Motion Energy",
-    num_trials=21,
-    text_size=20,
-    show_colorbar=False,
-    show_info=True
-)
-fig.savefig("whisker_raster.png")
 
 fig, ax = plot_multi_trial(
     x_dict=decoding_whisker_data,
@@ -69,6 +58,25 @@ fig, ax = plot_multi_trial(
     behav_name="Wheel Speed"
 )
 fig.savefig("wheel.png")
+# decoding_whisker_data = {
+#     "Whisker Motion Energy": decoding_whisker_data,
+# }
+# mm_whisker_data = {
+#     "Whisker Motion Energy": mm_whisker_data,
+# }
+fig, ax = plot_behav_raster(
+    x_dict=decoding_whisker_data,
+    y_dict=mm_whisker_data,
+    x_name="Unimodal",
+    y_name="Multimodal",
+    behav_name="Whisker Motion Energy",
+    num_trials=21,
+    text_size=20,
+    if_plot=True,
+    show_colorbar=False,
+    show_info=False
+)
+fig.savefig("whisker_raster.png")
 fig, ax = plot_behav_raster(
     x_dict=decoding_wheel_data,
     y_dict=mm_wheel_data,
@@ -77,8 +85,9 @@ fig, ax = plot_behav_raster(
     behav_name="Wheel Speed",
     num_trials=21,
     text_size=20,
+    if_plot=True,
     show_colorbar=False,
-    show_info=True
+    show_info=False
 )
 fig.savefig("wheel_raster.png")
 print("wheel done")
@@ -113,6 +122,20 @@ fig, ax = plot_multi_neuron_psth(
 )
 fig.savefig("psth.png")
 print("psth done")
+fig ,ax = plot_multi_neuron_raster(
+    x_dict=encoding_data,
+    y_dict=mm_data,
+    x_name="Unimodal",
+    y_name="Multimodal",
+    neuron_list=[79,59],
+    text_size=20,
+    num_trials=21,
+    show_neuron_idx=False
+)
+fig.savefig("multi_neuron.png")
+print("raster done")
+exit()
+# plot raster: 3 neurons
 fig ,ax = plot_multi_neuron_raster(
     x_dict=encoding_data,
     y_dict=mm_data,

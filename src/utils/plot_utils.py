@@ -227,6 +227,7 @@ def plot_multi_neuron_raster(
         title="Neuron Raster Plot",
         text_size=16,
         num_trials=16,
+        show_neuron_idx=True,
     ):
     """
     Plot a raster plot of neuron metrics for two models.
@@ -260,7 +261,7 @@ def plot_multi_neuron_raster(
         # move the ax to the right side of the figure
         ax_neuron[-1].yaxis.set_label_position("right")
         # ax label becomes neuron idx
-        ax_neuron[-1].set_ylabel(f"Neuron {i}", size=text_size)
+        ax_neuron[-1].set_ylabel(f"Neuron {i}", size=text_size) if show_neuron_idx else None
     # set overall y label for the figure
     fig.text(
         0.015, 
@@ -825,6 +826,7 @@ def plot_behav_raster(
         num_trials=16,
         line_width=3,
         behav_name='Behavior',
+        if_plot=True,
     ):
     """
     Plot a raster plot of neuron metrics for two models.
@@ -873,7 +875,7 @@ def plot_behav_raster(
         fig, axes = plt.subplots(1, 3, figsize=(18, 4), sharex=True)
     else:
         fig = ax[0].get_figure()
-        axes = ax
+        axes = ax 
     norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
     # plot ground truth
     im1 = axes[0].imshow(gt, aspect='auto', cmap='bwr', origin='lower', norm=norm)
@@ -924,8 +926,17 @@ def plot_behav_raster(
             ax.spines[axis].set_linewidth(line_width)
     # # set title for the figure
     fig.suptitle(f"{behav_name} {x_name} R2: {x_r2:.2f} {y_name} R2: {y_r2:.2f}") if show_info else None
-
     plt.tight_layout()
+    fig.text(
+        0.015, 
+        0.5, 
+        'Trial Index', 
+        ha='center', 
+        va='center', 
+        rotation='vertical',
+        size=text_size
+    ) if if_plot else None
+    fig.subplots_adjust(wspace=0.15, left=0.06)
     return fig, axes
 
 def plot_multi_behav_raster(
@@ -933,7 +944,6 @@ def plot_multi_behav_raster(
         y_dict,
         x_name='Base Model',
         y_name='New Model',
-        neuron_list=None,
         subtract='global',
         n_clus=8,
         n_neighbors=5,
@@ -944,32 +954,36 @@ def plot_multi_behav_raster(
     """
     Plot a raster plot of neuron metrics for two models.
     """
+    assert len(x_dict) == len(y_dict), "The number of behavs should be the same."
+    num_behavs = len(x_dict)
+    title_list = list(x_dict.keys())
     # call plot_neuron_raster for each neuron
-    fig, axes = plt.subplots(num_neurons, 3, figsize=(18, 2*num_neurons))
-    for i, neuron_idx in enumerate(neuron_list):
-        fig_neuron, ax_neuron = plot_neuron_raster(
-            x_dict, 
-            y_dict, 
+    fig, axes = plt.subplots(num_behavs, 3, figsize=(18, 2*num_behavs + 1))
+    # ensure the axes is a 2D array
+    for behav_idx in range(num_behavs):
+        fig_behav, ax_behav = plot_behav_raster(
+            x_dict[title_list[behav_idx]],
+            y_dict[title_list[behav_idx]],
             x_name=x_name, 
             y_name=y_name, 
-            neuron_idx=neuron_idx, 
+            behav_name=title_list[behav_idx],
             subtract=subtract,
             n_clus=n_clus,
             n_neighbors=n_neighbors,
-            ax=axes[i],
+            ax=axes[behav_idx] if num_behavs > 1 else axes,
             show_colorbar=False,
             show_info=False,
-            show_xticks=True if i == num_neurons - 1 else False,
-            show_model_name=True if i == 0 else False,
+            show_xticks=True if behav_idx == num_behavs - 1 else False,
+            show_model_name=True if behav_idx == 0 else False,
             text_size=text_size,
             num_trials=num_trials,
         )
         # move the ax to the right side of the figure
-        ax_neuron[-1].yaxis.set_label_position("right")
+        ax_behav[-1].yaxis.set_label_position("right")
         # ax label becomes neuron idx
-        ax_neuron[-1].set_ylabel(f"Neuron {i}", size=text_size)
-    # set overall y label for the figure
-    fig.text(
+        ax_behav[-1].set_ylabel(title_list[behav_idx], size=text_size)
+
+    fig_behav.text(
         0.015, 
         0.5, 
         'Trial Index', 
