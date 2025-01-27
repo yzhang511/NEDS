@@ -9,8 +9,22 @@ from utils.plot_utils import (
     plot_multi_neuron_raster,
     plot_multi_trial,
     plot_behav_raster,
-    plot_multi_behav_raster
+    plot_multi_behav_raster,
+    plot_encoding_boxplot
 )
+encoding_csv_path = 'results/encoding_score.csv'
+decoding_csv_path = 'results/decoding_score.csv'
+fig, ax = plot_encoding_boxplot(
+    csv_path=encoding_csv_path,
+    model_list = ['Linear (1-session)', 'RRR (1-session)', 'UniModal (1-session)', 'MultiModal (1-session)'],
+    model_name_list=['Linear', 'RRR', 'Unimodal', 'Multimodal'],
+    color_list=['Gray', 'Green', 'cornflowerblue', 'darkorange'],
+    text_size=20,
+    line_width=2,
+    title="Single Session Encoding",
+)
+fig.savefig("encoding.png")
+exit()
 mm_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-spike-choice-block-wheel-whisker_outModal-spike-choice-block-wheel-whisker_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
 encoding_dir = 'results/sesNum-1_ses-d23a4_set-eval_inModal-choice-block-wheel-whisker_outModal-spike_mask-embd_mode-temporal_ratio-0.1_taskVar-random/eval_spike'
 mm_data_path = os.path.join(mm_dir, 'data.npy')

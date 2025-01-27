@@ -8,7 +8,8 @@ from matplotlib.animation import PillowWriter
 from sklearn.cluster import SpectralClustering
 import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
-
+import pandas as pd
+import seaborn as sns
 
 def compute_psth(neural):
     psth = np.mean(neural, axis=0)
@@ -994,5 +995,70 @@ def plot_multi_behav_raster(
     )
     fig.subplots_adjust(wspace=0.15, left=0.06)
     return fig, axes
+
+def plot_encoding_boxplot(
+        csv_path,
+        model_list,
+        model_name_list,
+        color_list,
+        text_size=16,
+        line_width=3,
+        title="Encoding",
+):
+    """
+    Plot a barplot of the encoding results.
+    """
+    df = pd.read_csv(csv_path)
+    model_res = {}
+    print(color_list)
+    for model in model_list:
+        model = model
+        # select columns that contain the model name
+        model_df = df.filter(like=model, axis=1)
+        # skip the first row of the model_df, and convert columns to list
+        values = model_df.iloc[1:].values.flatten()
+        values = values.astype(float)
+        model_res[model] = values
+    # plot the boxplot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    # make the box plot median line be black
+    ax.boxplot(
+        model_res.values(),
+        medianprops=dict(color='black')
+    )
+    # makes bar plot of the mean of each model
+    # align with the boxplot
+    x = np.arange(1, len(model_name_list) + 1)
+    y = [np.mean(model_res[model]) for model in model_list]
+    ax.bar(x, y, color=color_list)
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_name_list)
+    # set the mean value on the bottom of the bar
+    for i, v in enumerate(y):
+        ax.text(
+            x=i + 1, 
+            y=0, 
+            s=f"{v:.2f}", 
+            color='white', 
+            ha='center', 
+            va='bottom',
+            size=text_size
+        )
+    ax.set_ylabel("Bits per spike")
+    ax.set_title(title)
+    # set size for all labels
+    ax.set_title(ax.get_title(), size=text_size)
+    ax.set_xlabel(ax.get_xlabel(), size=text_size)
+    ax.set_ylabel(ax.get_ylabel(), size=text_size)
+    ax.xaxis.set_tick_params(labelsize=text_size)
+    ax.yaxis.set_tick_params(labelsize=text_size)
+    # set line width for all lines
+    for axis in ['top','bottom','left','right']:
+        ax.spines[axis].set_linewidth(line_width)
+    # set the boxplot line width
+    for line in ax.lines:
+        line.set_linewidth(line_width)
+    plt.tight_layout()
+    return fig, ax
 
 # Example usage:
