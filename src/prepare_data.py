@@ -86,12 +86,31 @@ one = ONE(
     cache_dir=args.base_path
 )
 
+# num_insertions = 0
+# animal_ids = {}
+
+# with open("data/eids.txt") as file:
+#     keep_eids = [line.rstrip() for line in file]
+
+eids = ["b22f694e-4a34-4142-ab9d-2556c3487086"]
 final_eids = []
 for eid_idx, eid in enumerate(eids):
 
-    if os.path.exists(f"{args.base_path}/{eid}_aligned"):
-        logging.info(f"The dataset {eid}_aligned already exists.")
-        continue
+    # if eid not in keep_eids:
+    #     continue
+
+    # pths = one.eid2path(eid)
+    # subject = str(pths).split('/')[7]
+    # animal_ids[eid] = subject
+
+    # pids, _ = one.eid2pid(eid)
+    # num_insertions += len(pids)
+
+    # logging.info(f"EID {eid} Subject {subject} # Probes {len(pids)}")
+
+    # if os.path.exists(f"{args.base_path}/{eid}_aligned"):
+    #     logging.info(f"The dataset {eid}_aligned already exists.")
+    #     continue
     
     logging.info(f"EID {eid}")
 
@@ -120,6 +139,10 @@ for eid_idx, eid in enumerate(eids):
     logging.info(
         f"# Responsive Units: {bin_spikes.shape[-1]} / {len(mean_fr)}"
     )
+
+    # np.save("/u/yzhang39/multi_modal_foundation_model/notebooks/mean_fr.npy", mean_fr)
+    # np.save("/u/yzhang39/multi_modal_foundation_model/notebooks/uuids.npy", meta_dict["uuids"])
+
     meta_dict["cluster_regions"] = [meta_dict["cluster_regions"][idx] for idx in keep_unit_idxs]
     meta_dict["cluster_channels"] = [meta_dict["cluster_channels"][idx] for idx in keep_unit_idxs]
     meta_dict["cluster_depths"] = [meta_dict["cluster_depths"][idx] for idx in keep_unit_idxs]
@@ -153,7 +176,7 @@ for eid_idx, eid in enumerate(eids):
         bin_lfp = None
 
     try:
-        align_bin_spikes, align_bin_beh, align_bin_lfp, _, bad_trial_idxs = align_data(
+        align_bin_spikes, align_bin_beh, align_bin_lfp, target_mask, bad_trial_idxs = align_data(
             bin_spikes, 
             bin_beh, 
             bin_lfp, 
@@ -171,6 +194,18 @@ for eid_idx, eid in enumerate(eids):
     # Data partition (train: 0.7 val: 0.1 test: 0.2)
     num_trials = len(align_bin_spikes)
     trial_idxs = np.random.choice(np.arange(num_trials), num_trials, replace=False)
+    np.save(f"{args.base_path}/trial_idxs/{eid}.npy", trial_idxs)
+
+    breakpoint()
+    trial_mask = np.array(target_mask).astype(bool).tolist()
+    trials_dict['trials_df'] = trials_dict['trials_df'][trial_mask]
+    intervals = np.vstack([
+        trials_dict['trials_df'][params["align_time"]] + params["time_window"][0],
+        trials_dict['trials_df'][params["align_time"]] + params["time_window"][1]
+    ]).T
+    intervals = intervals[trial_idxs]
+    np.save(f"{args.base_path}/trial_start_end/{eid}.npy", intervals)
+
     train_idxs = trial_idxs[:int(0.7*num_trials)]
     val_idxs = trial_idxs[int(0.7*num_trials):int(0.8*num_trials)]
     test_idxs = trial_idxs[int(0.8*num_trials):]
@@ -221,5 +256,17 @@ for eid_idx, eid in enumerate(eids):
 
 
 logging.info(f"Successfully uploaded EIDs: ")
+
 for eid in final_eids:
     print(eid)
+
+# print(num_insertions)
+
+# print(len(np.unique(list(animal_ids.values()))))
+
+# with open("data/test_eids.txt") as file:
+#     test_eids = [line.rstrip() for line in file]
+
+# for eid in animal_ids:
+#     if eid in test_eids:
+#         print(f"EID {eid} Subject {animal_ids[eid]}")

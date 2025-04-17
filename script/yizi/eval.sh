@@ -1,7 +1,6 @@
 #!/bin/bash
-
 #SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA40x4
+#SBATCH --partition=gpuA40x4,gpuA100x4,gpuA40x4-preempt,gpuA100x4-preempt
 #SBATCH --job-name="eval"
 #SBATCH --output="eval.%j.out"
 #SBATCH -N 1
@@ -18,10 +17,29 @@ eid=${2}
 model_mode=${3}
 mask_rartio=${4}
 task_var=${5}
+search=${6}
+use_nlb=${7}
 
 . ~/.bashrc
 echo $TMPDIR
 conda activate ibl-mm
+
+if [ "$use_nlb" = "True" ]; then
+    echo "Using NLB"
+    use_nlb="--use_nlb"
+else
+    echo "Not using NLB"
+    search=""
+fi
+
+# if search is empty, then we are not doing hyperparameter search
+if [ "$search" = "True" ]; then
+    echo "Doing hyperparameter search"
+    search="--param_search"
+else
+    echo "Not doing hyperparameter search"
+    search=""
+fi
 
 cd ../..
 if [ $model_mode = "mm" ]; then
@@ -34,9 +52,11 @@ if [ $model_mode = "mm" ]; then
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
-            			        --overwrite	\
+            			        --overwrite \
                                 --enc_task_var $task_var \
-                                --data_path /scratch/bdtg/yzhang39/datasets/
+                                --data_path /projects/bcxj/yzhang39/datasets/ \
+                                ${search} \
+                                ${use_nlb}
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     python src/eval_multi_modal.py --mask_mode temporal \
@@ -49,7 +69,9 @@ then
                                 --wandb \
 				                --overwrite \
                                 --enc_task_var $task_var \
-                                --data_path /scratch/bdtg/yzhang39/datasets/
+                                --data_path /projects/bcxj/yzhang39/datasets/ \
+                                ${search} \
+                                ${use_nlb}
 else
     echo "model_mode: $model_mode not supported"
 fi

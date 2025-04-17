@@ -13,28 +13,29 @@ from models.stitcher import StitchEncoder, StitchDecoder
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
-with open("data/train_eids.txt") as file:
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+with open(f"{PROJ_DIR}/data/train_eids.txt") as file:
     INCLUDE_EIDS = [line.rstrip() for line in file]
-with open("data/test_eids.txt") as file:
+with open(f"{PROJ_DIR}/data/test_eids.txt") as file:
     INCLUDE_EIDS += [line.rstrip() for line in file]
 
-STATIC_VARS = ["choice", "block"]
+STATIC_VARS = ["choice", "block", "finger_x_vel", "finger_y_vel"]
 
 
 class EncoderEmbeddingLayer(nn.Module):
     def __init__(
-        self, hidden_size, n_channels, config: DictConfig, stitching=False, eid_list=None, mod=None,
+        self, hidden_size, n_channels, config: DictConfig, stitching=False, eid_list=None, mod=None, max_F=100
     ):
         super().__init__()
 
         self.bias = config.bias
         self.n_channels = n_channels
         self.input_dim = self.n_channels*config.mult
-        self.max_F = config.max_F
+        self.max_F = max_F
 
         self.mod_emb = nn.Embedding(config.n_modality, hidden_size)
 
-        self.eid_lookup = INCLUDE_EIDS
+        self.eid_lookup = INCLUDE_EIDS if "nlb-rtt" not in eid_list else ["nlb-rtt"]
         self.eid_to_indx = {r: i for i, r in enumerate(self.eid_lookup)}
         self.session_emb = nn.Embedding(len(self.eid_lookup), hidden_size)
 
@@ -46,7 +47,7 @@ class EncoderEmbeddingLayer(nn.Module):
 
         if stitching:
             self.mod_stitch_encoder = StitchEncoder(
-                eid_list=eid_list, n_channels=hidden_size, mod=mod,
+                eid_list=eid_list, n_channels=hidden_size, mod=mod, max_F=max_F
             )
         else:
             self.token_embed = nn.Linear(self.n_channels, self.input_dim, bias=self.bias)
@@ -93,23 +94,24 @@ class EncoderEmbedding(nn.Module):
         stitching=False,
         eid_list=None,
         mod=None,
+        max_F=100,
         **kwargs
     ):
         super().__init__() 
 
         self.hidden_size = config.transformer.hidden_size
         self.n_layers = config.transformer.n_layers
-        self.max_F = config.embedder.max_F
+        self.max_F = max_F
         self.n_channel = n_channel
         self.output_channel = output_channel
 
         self.embedder = EncoderEmbeddingLayer(
-            self.hidden_size, self.n_channel, config.embedder, stitching, eid_list, mod
+            self.hidden_size, self.n_channel, config.embedder, stitching, eid_list, mod, max_F
         )
 
         if stitching:
             self.mod_stitcher_proj_dict = StitchDecoder(
-                eid_list = eid_list, n_channels = self.n_channel, mod = mod,
+                eid_list = eid_list, n_channels = self.n_channel, mod = mod, max_F = max_F
             )
             if mod in STATIC_VARS:
                 mod_static_weight_dict = {}

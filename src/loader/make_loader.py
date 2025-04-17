@@ -44,28 +44,28 @@ def make_loader(
     data_dir = None,
     mode='train',
     eids=None,
+    use_nlb=False,
 ):
     
     dataset = BaseDataset(dataset=dataset, 
-                          target=target,
-                          pad_value=pad_value,
-                          max_time_length=max_time_length,
-                          max_space_length=max_space_length,
-                          bin_size=bin_size,
-                          pad_to_right=pad_to_right,
-                          dataset_name=dataset_name,
-                          sort_by_depth = sort_by_depth,
-                          sort_by_region = sort_by_region,
-                          brain_region = brain_region,
-                          load_meta=load_meta,
-                          stitching=stitching,
-                          data_dir=data_dir,
-                          mode=mode,
-                          eids=eids,
-            )
+        target=target,
+        pad_value=pad_value,
+        max_time_length=max_time_length,
+        max_space_length=max_space_length,
+        bin_size=bin_size,
+        pad_to_right=pad_to_right,
+        dataset_name=dataset_name,
+        sort_by_depth = sort_by_depth,
+        sort_by_region = sort_by_region,
+        brain_region = brain_region,
+        load_meta=load_meta,
+        stitching=stitching,
+        data_dir=data_dir,
+        mode=mode,
+        eids=eids,
+        use_nlb=use_nlb,
+    )
     
-    print(f"len(dataset): {len(dataset)}")
-
     generator = torch.Generator()
     generator.manual_seed(seed)
 

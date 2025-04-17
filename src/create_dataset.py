@@ -133,7 +133,7 @@ modal_filter = {"input": input_mods, "output": output_mods}
 # ---------
 
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
-    config.dirs.dataset_cache_dir, 
+    args.data_path,  
     config.dirs.huggingface_org,
     num_sessions=args.num_sessions,
     eid = eid if args.num_sessions == 1 else None,

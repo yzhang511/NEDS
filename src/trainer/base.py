@@ -10,11 +10,23 @@ from utils.utils import (
     plot_gt_pred, 
     plot_neurons_r2
 )
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, r2_score
 
-STATIC_VARS = ["choice", "block"]
-DYNAMIC_VARS = ["wheel", "whisker"]
-OUTPUT_DIM = {"choice": 2, "block": 3, "wheel": 1, "whisker": 1}
+OUTPUT_DIM = {
+    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
+    "finger_x_vel": 1, "finger_y_vel": 1
+}
+
+def set_seed(epoch, base_seed=42):
+    seed = base_seed + epoch
+    print("Train seed set to {}.".format(seed))
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
 
 class MultiModalTrainer():
@@ -52,8 +64,13 @@ class MultiModalTrainer():
         self.n_output_mods = len(self.modal_filter["output"])
 
         self.mixed_training = kwargs.get("mixed_training", False)
+        self.zero_shot_transfer = kwargs.get("zero_shot_transfer", False)
+
         if self.mixed_training:
             self.training_mode = "mixed"
+        elif self.zero_shot_transfer:
+            self.training_mode = "self-spike"
+            self.training_schemes = ["self-spike"]
         else:
             self.training_schemes = [
                 "encoding", "decoding", 
@@ -62,6 +79,11 @@ class MultiModalTrainer():
             ]
 
         self.enc_task_var = kwargs.get("enc_task_var", False)
+
+        self.start_epoch = kwargs.get("start_epoch", 0)
+
+        self.STATIC_VARS = ["choice", "block"] if "choice" in self.avail_beh else ["finger_x_vel", "finger_y_vel"]
+        self.DYNAMIC_VARS = ["wheel", "whisker"] if "wheel" in self.avail_beh else []
 
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
@@ -85,6 +107,7 @@ class MultiModalTrainer():
         elif training_mode == "self-behavior":
             for mod in self.mod_to_indx.keys():
                 mod_dict[mod]["eval_mask"] = None if mod in self.avail_beh else all_zeros
+
         elif training_mode == "mixed":
             for mod in self.mod_to_indx.keys():
                 mod_dict[mod]["eval_mask"] = None
@@ -106,7 +129,10 @@ class MultiModalTrainer():
         all_zeros = all_ones * 0.
         
         mod_dict = {}
-        for mod in self.mod_to_indx.keys():
+
+        avail_mod = self.mod_to_indx.keys() if not self.zero_shot_transfer else self.modal_filter["output"]
+        
+        for mod in avail_mod:
             
             mod_idx = self.mod_to_indx[mod]
             mod_dict[mod] = {}
@@ -145,7 +171,7 @@ class MultiModalTrainer():
     def _plot_log_epoch(self, epoch, eval_epoch_results, n_viz=5):
         
         for mod in self.modal_filter["output"]:
-            if mod in STATIC_VARS:
+            if mod in self.STATIC_VARS:
                 continue
             gt_pred_fig = self.plot_epoch(
                 gt=eval_epoch_results["eval_gt"][0][mod], 
@@ -171,10 +197,10 @@ class MultiModalTrainer():
 
         if "spike" in self.modal_filter["output"] and self.enc_task_var == "random":
             best_eval_enc_metric = {
-                f"eval_enc_{enc_task_var}_metric": - MAX_VAL for enc_task_var in STATIC_VARS + DYNAMIC_VARS
+                f"eval_enc_{enc_task_var}_metric": - MAX_VAL for enc_task_var in self.STATIC_VARS + self.DYNAMIC_VARS
             }
         
-        for epoch in range(self.config.training.num_epochs):
+        for epoch in range(self.start_epoch, self.config.training.num_epochs):
             
             train_epoch_results = self.train_epoch(epoch)
 
@@ -189,20 +215,25 @@ class MultiModalTrainer():
                 if eval_epoch_results:
 
                     for eval_name in best_eval_metric.keys():
-                        mode = eval_name.split("_")[1]
+                        if "finger_x_vel" in self.modal_filter["output"]:
+                            mode = "_".join(eval_name.split("_")[1:])
+                        else:
+                            mode = eval_name.split("_")[1]
                         if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
                             best_eval_metric[eval_name] = eval_epoch_results[eval_name]
                             print(
                                 f"Epoch: {epoch} best val {mode} metric: {best_eval_metric[eval_name]}"
                             )
                             self.save_model(name=f"best_{mode}", epoch=epoch)
+
                             if self.config.wandb.use:
                                 wandb.log({f"best_{mode}_epoch": epoch}) if self.config.wandb.use else None
                     
                     if eval_epoch_results["eval_avg_metric"] > best_eval_metric["eval_avg_metric"]:
                         best_eval_loss = eval_epoch_results["eval_loss"]
                         best_eval_metric["eval_avg_metric"] = eval_epoch_results["eval_avg_metric"]
-                        print(f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric['eval_avg_metric']}"
+                        print(
+                            f"Epoch: {epoch} best val loss: {best_eval_loss} val metric: {best_eval_metric['eval_avg_metric']}"
                         )
                         self.save_model(name="best", epoch=epoch)
                         self._plot_log_epoch(epoch, eval_epoch_results)
@@ -234,6 +265,9 @@ class MultiModalTrainer():
                     wandb.log(logs_results)
                 else:
                     print(logs_results)
+
+            if epoch % self.config.training.save_every == 0:
+                self.save_model(name="epoch", epoch=epoch)
                 
         self.save_model(name="last", epoch=epoch)
         
@@ -241,10 +275,14 @@ class MultiModalTrainer():
             if self.accelerator.is_main_process:
                 wandb.log({"best_eval_loss": best_eval_loss, **best_eval_metric})
 
+        return best_eval_metric
+
     
     def train_epoch(self, epoch):
         train_loss = 0.
         mod_loss_dict = {f"train_{mod}_loss": 0. for mod in self.modal_filter["output"]}
+
+        set_seed(epoch)
         
         self.model.train()
         for batch in tqdm(self.train_dataloader):
@@ -255,7 +293,7 @@ class MultiModalTrainer():
                 
             if self.training_mode == "encoding":
                 if self.enc_task_var == "random":
-                    enc_task_var = random.sample(STATIC_VARS+DYNAMIC_VARS+["all"], 1)[0]
+                    enc_task_var = random.sample(self.STATIC_VARS+self.DYNAMIC_VARS+["all"], 1)[0]
                 else:
                     enc_task_var = self.enc_task_var
             else:
@@ -271,6 +309,8 @@ class MultiModalTrainer():
 
             for mod in self.modal_filter["output"]:
                 mod_loss_dict[f"train_{mod}_loss"] += outputs.mod_loss[mod]
+
+        print(f"Epoch {epoch} LR: {self.lr_scheduler.get_last_lr()}")
                 
         for key in mod_loss_dict.keys():
             mod_loss_dict[key] /= len(self.train_dataloader)
@@ -310,7 +350,7 @@ class MultiModalTrainer():
                                 session_results[group_eid]["spike"]["gt"].append(_gt)
                                 session_results[group_eid]["spike"]["preds"].append(_pred)
     
-                if "wheel" in self.modal_filter["output"]:
+                if ("wheel" in self.modal_filter["output"]) or ("finger_x_vel" in self.modal_filter["output"]):
                     for batch in self.eval_dataloader:
                         eid = np.array(batch["eid"])
                         outputs = self._forward_model_inputs(batch, training_mode="decoding")
@@ -339,7 +379,7 @@ class MultiModalTrainer():
         
         if self.eval_dataloader:
             with torch.no_grad(): 
-                for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+                for enc_task_var in self.STATIC_VARS + self.DYNAMIC_VARS:
                     for batch in self.eval_dataloader:
                         eid = np.array(batch["eid"])
                         space_attn_mask = batch["space_attn_mask"]
@@ -370,15 +410,15 @@ class MultiModalTrainer():
         session_enc_results = {}
         for eid in self.eid_list:
             session_enc_results[eid] = {}
-            for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+            for enc_task_var in self.STATIC_VARS + self.DYNAMIC_VARS:
                 session_enc_results[eid][enc_task_var] = {"gt": [], "preds": []}
 
         session_enc_results = self._collect_enc_results(session_enc_results)
 
-        gt, preds, eval_metrics = {}, {}, {enc_task_var: [] for enc_task_var in STATIC_VARS + DYNAMIC_VARS}
+        gt, preds, eval_metrics = {}, {}, {enc_task_var: [] for enc_task_var in self.STATIC_VARS + self.DYNAMIC_VARS}
         for idx, eid in enumerate(self.eid_list):
             gt[idx], preds[idx] = {}, {}
-            for enc_task_var in STATIC_VARS + DYNAMIC_VARS:
+            for enc_task_var in self.STATIC_VARS + self.DYNAMIC_VARS:
                 _gt = torch.cat(session_enc_results[eid][enc_task_var]["gt"], dim=0)
                 _preds = torch.cat(session_enc_results[eid][enc_task_var]["preds"], dim=0)
                 _preds = torch.exp(_preds)
@@ -440,21 +480,29 @@ class MultiModalTrainer():
                     )
                     eval_metrics[mod].append(results["bps"])
                 
-                elif mod in DYNAMIC_VARS:
+                elif mod in self.DYNAMIC_VARS:
                     self.session_active_neurons[eid][mod] = [i for i in range(gt[idx][mod].size(-1))]
                     results = metrics_list(
-                        gt = gt[idx][mod].unsqueeze(-1), pred = preds[idx][mod].unsqueeze(-1),
+                        gt = gt[idx][mod].unsqueeze(-1) if gt[idx][mod].ndim == 2 else gt[idx][mod], 
+                        pred = preds[idx][mod].unsqueeze(-1) if preds[idx][mod].ndim == 2 else preds[idx][mod],
                         metrics=["behave_r2"], device=self.accelerator.device
                     )
                     results["behave_r2"] = np.nan if results["behave_r2"] == -float("inf") else results["behave_r2"]
                     eval_metrics[mod].append(results["behave_r2"])
                 
-                elif mod in STATIC_VARS:
-                    acc = balanced_accuracy_score(
-                        gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
-                    )
-                    for mod in STATIC_VARS:
-                        eval_metrics[mod].append(acc)
+                elif mod in self.STATIC_VARS:
+                    try:
+                        if mod in ["choice", "block"]:
+                            metric = balanced_accuracy_score(
+                                gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
+                            )
+                        else:
+                            metric = r2_score(
+                                gt[idx][mod].cpu().numpy(), preds[idx][mod].cpu().numpy()
+                            )
+                    except ValueError:
+                        metric = np.nan
+                    eval_metrics[mod].append(metric)
 
         for key in mod_loss_dict.keys():
             mod_loss_dict[key] /= len(self.eval_dataloader)
@@ -482,7 +530,7 @@ class MultiModalTrainer():
                 epoch = epoch,
                 modality = modality
             )
-        elif modality in DYNAMIC_VARS:
+        elif modality in self.DYNAMIC_VARS:
             gt_pred_fig = plot_gt_pred(
                 gt = gt.mean(0).T.cpu().numpy(),
                 pred = preds.mean(0).T.detach().cpu().numpy(),
@@ -550,23 +598,32 @@ class BaselineTrainer():
         if ("choice" in self.target_to_decode) or ("block" in self.target_to_decode):
             self.metric = "acc"      
         else:
-            self.metric = "r2"    
+            self.metric = "r2"
+
+        self.STATIC_VARS = ["choice", "block"] if "choice" in self.target_to_decode else ["finger_x_vel", "finger_y_vel"]
+        self.DYNAMIC_VARS = ["wheel", "whisker"] if "wheel" in self.target_to_decode else []
 
     
     def _forward_model_outputs(self, batch):
         batch = move_batch_to_device(batch, self.accelerator.device)
         data_dict = {}
-        if "ap" in self.modal_filter["output"]:
+        if ("ap" in self.modal_filter["output"]) or ("spike" in self.modal_filter["output"]):
             data_dict["inputs"] = batch["target"]
             data_dict["targets"] = batch["spikes_data"]
         else:
             data_dict["inputs"] = batch["spikes_data"]
+            n_beh = sum([OUTPUT_DIM[beh] for beh in self.target_to_decode])
+
+            if "finger_x_vel" in self.target_to_decode:
+                batch["target"] = torch.cat([batch[mod] for mod in self.target_to_decode], dim=-1)
+
             if self.target_to_decode[0] == "choice":
-                data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)]
+                data_dict["targets"] = batch["target"][:, 0, n_beh]
             elif self.target_to_decode[0] == "block":
-                data_dict["targets"] = batch["target"][:, 0, len(DYNAMIC_VARS)+1]
+                data_dict["targets"] = batch["target"][:, 0, n_beh+1]
             else:
-                data_dict["targets"] = batch["target"][..., :len(DYNAMIC_VARS)]
+                data_dict["targets"] = batch["target"][..., :n_beh]
+            
         data_dict["eid"] = batch["eid"][0] 
         data_dict["num_neuron"] = batch["spikes_data"].shape[-1]
         return self.model(data_dict)
@@ -652,7 +709,7 @@ class BaselineTrainer():
     
     def train_epoch(self, epoch):
         train_loss = 0.
-        train_examples = 0
+        train_examples = 0.
         self.model.train()
         for batch in tqdm(self.train_dataloader):
             self.optimizer.zero_grad()
@@ -696,7 +753,7 @@ class BaselineTrainer():
                 for mod in self.modal_filter["output"]:
                     _gt = torch.cat(session_results[eid][mod]["gt"], dim=0)
                     _preds = torch.cat(session_results[eid][mod]["preds"], dim=0)
-                    if mod == "ap":
+                    if (mod == "ap") or ("spike" in mod):
                         _preds = torch.exp(_preds)
                     gt[idx][mod] = _gt
                     preds[idx][mod] = _preds
@@ -704,7 +761,7 @@ class BaselineTrainer():
                     if eid not in self.session_active_neurons:
                         self.session_active_neurons[eid] = {}
 
-                    if mod == "ap":
+                    if (mod == "ap") or ("spike" in mod):
                         active_neurons = np.arange(gt[idx][mod].shape[-1]).tolist()
                         self.session_active_neurons[eid][mod] = active_neurons
                         
@@ -715,7 +772,7 @@ class BaselineTrainer():
                         ]
 
                 for mod in self.modal_filter["output"]:
-                    if mod == "ap":
+                    if (mod == "ap") or ("spike" in mod):
                         results = metrics_list(
                                 gt = gt[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0),
                                 pred = preds[idx][mod][..., self.session_active_neurons[eid][mod]].transpose(-1,0), 
@@ -750,7 +807,7 @@ class BaselineTrainer():
     
     def plot_epoch(self, gt, preds, epoch, active_neurons, modality):
         
-        if modality == "ap":
+        if (modality == "ap") or ("spike" in modality):
             gt_pred_fig = plot_gt_pred(
                 gt = gt.mean(0).T.cpu().numpy(),
                 pred = preds.mean(0).T.detach().cpu().numpy(),
@@ -777,7 +834,6 @@ class BaselineTrainer():
             "plot_r2": r2_fig
         }
 
-    
     def save_model(self, name="last", epoch=0):
         print(f"saving model: {name} to {self.log_dir}")
         dict_config = {

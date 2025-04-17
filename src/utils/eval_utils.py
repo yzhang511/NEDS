@@ -1,4 +1,6 @@
 import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import logging
 import numpy as np
 from tqdm import tqdm
@@ -38,7 +40,7 @@ NAME2MODEL = {"MultiModal": MultiModal}
 
 logger = logging.getLogger(__name__)
 
-STATIC_VARS = ["choice", "block"]
+STATIC_VARS = ["choice", "block", "finger_x_vel", "finger_y_vel"]
 DYNAMIC_VARS = ["wheel", "whisker"]
 
 neural_acronyms = {
@@ -54,10 +56,14 @@ dynamic_acronyms = {
     "whisker-motion-energy": "whisker",
 }
 
+OUTPUT_DIM = {
+    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
+    "finger_x_vel": 1, "finger_y_vel": 1,
+}
+
 # --------------------------------------------------------------------------------------------------
 # Model/Dataset Loading and Configuration
 # --------------------------------------------------------------------------------------------------
-
 def load_model_data_local(**kwargs):
     model_config = kwargs["model_config"]
     trainer_config = kwargs["trainer_config"]
@@ -72,6 +78,10 @@ def load_model_data_local(**kwargs):
     neural_mods = kwargs["neural_mods"]
     static_mods = kwargs["static_mods"]
     dynamic_mods = kwargs["dynamic_mods"]
+    use_nlb = kwargs["use_nlb"]
+    search = kwargs.get("search", False)
+    bin_size = kwargs.get("bin_size", 20)
+
     if "num_sessions" in kwargs:
         num_sessions = kwargs["num_sessions"]
     else:
@@ -82,26 +92,73 @@ def load_model_data_local(**kwargs):
 
     set_seed(seed)
 
-    config = config_from_kwargs({"model": f"include:{model_config}"})
-    config = update_config(model_config, config)
-    config = update_config(trainer_config, config)
+    if isinstance(model_config, str):
+        config = config_from_kwargs({"model": f"include:{model_config}"})
+        config = update_config(model_config, config)
+        config = update_config(trainer_config, config)
+    elif isinstance(model_config, dict):
+        config = model_config
 
-    _, _, dataset, meta_data = load_ibl_dataset(
-        config.dirs.dataset_cache_dir, 
-        config.dirs.huggingface_org,
-        num_sessions=num_sessions,
-        eid = eid if num_sessions == 1 else None,
-        use_re=True,
-        split_method="predefined",
-        test_session_eid=[],
-        batch_size=config.training.train_batch_size,
-        seed=config.seed
-    )
+    if not use_nlb:
+        # _, _, dataset, meta_data = load_ibl_dataset(
+        #     config.dirs.dataset_cache_dir, 
+        #     config.dirs.huggingface_org,
+        #     num_sessions=num_sessions,
+        #     eid = eid if num_sessions == 1 else None,
+        #     use_re=True,
+        #     split_method="predefined",
+        #     test_session_eid=[],
+        #     batch_size=config.training.train_batch_size,
+        #     seed=config.seed
+        # )
+        from datasets import load_from_disk, concatenate_datasets
+        from utils.dataset_utils import get_binned_spikes_from_sparse
+        meta_data = {}
+        meta_data["eid_list"] = {}
+        test_dataset = []
+        for _eid in tqdm([eid]):
+            _dataset = load_from_disk(f"{config.dirs.dataset_cache_dir}/{_eid}_aligned")
+            binned_spikes_data = get_binned_spikes_from_sparse(
+                [_dataset["train"]["spikes_sparse_data"][0]], 
+                [_dataset["train"]["spikes_sparse_indices"][0]],
+                [_dataset["train"]["spikes_sparse_indptr"][0]],
+                [_dataset["train"]["spikes_sparse_shape"][0]]
+            )
+            meta_data["eid_list"][_eid] = binned_spikes_data.shape[-1]
+            test_trials = len(_dataset["test"]["spikes_sparse_data"])
+            test_dataset.append(_dataset["test"].select(list(range(test_trials))))
+            dataset = concatenate_datasets(test_dataset)
+    else:
+        from utils.nlb_data_utils import load_nlb_dataset
+        trial_length, bin_size, tau_prime = 600, bin_size, 13 # ms
+        _, _, dataset, meta_data = load_nlb_dataset(
+            "/u/yzhang39/multi_modal_foundation_model/data/mc_rtt.pickle", bin_size_ms=bin_size, tau_prime=tau_prime
+        )
+        config["data"]["max_time_length"] = tau_prime # int(trial_length / bin_size)
+        config["model"]["encoder"]["embedder"]["max_F"] = tau_prime # int(trial_length / bin_size)
+            
+    meta_data["eids"] = set(meta_data["eid_list"].keys())
 
     logger.info(meta_data)
 
-    encoder_embeddings = {}
+    if search:
+        substring = "results/"
+        first_index = model_path.find(substring)
+        second_index = model_path.find(substring, first_index + len(substring))
+        if second_index != -1: 
+            model_path = model_path[:second_index] + model_path[second_index + len(substring):]
+        else:
+            model_path = model_path
 
+        import pickle
+        with open(f"{model_path.replace('model_best_avg.pt', '')}/params.pkl", "rb") as file:
+            params = pickle.load(file)
+
+        config["model"]["encoder"]["transformer"]["hidden_size"] = params["hidden_size"]
+        config["model"]["encoder"]["transformer"]["inter_size"] = params["inter_size"]
+        config["model"]["encoder"]["transformer"]["n_layers"] = params["n_layers"]
+
+    encoder_embeddings = {}
     hidden_size = config.model.encoder.transformer.hidden_size
     for mod in modal_filter["input"]:
         encoder_embeddings[mod] = EncoderEmbedding(
@@ -112,6 +169,7 @@ def load_model_data_local(**kwargs):
             eid_list = meta_data["eid_list"],
             mod = mod,
             config = config.model.encoder,
+            max_F = config.data.max_time_length,
         )
 
     NAME2MODEL = {"MultiModal": MultiModal}
@@ -125,6 +183,9 @@ def load_model_data_local(**kwargs):
         **config.method.model_kwargs, 
         **meta_data
     )
+
+    if use_nlb and model_mode != "encoding":
+        model_path = model_path.replace(".pt", "_metric.pt")
 
     try:
         state_dict = torch.load(model_path)["model"]
@@ -141,25 +202,25 @@ def load_model_data_local(**kwargs):
     accelerator = Accelerator()
     model = accelerator.prepare(model)
 
-    _, _, dataset, meta_data = load_ibl_dataset(
-        config.dirs.dataset_cache_dir, 
-        config.dirs.huggingface_org,
-        num_sessions=1,
-        eid = eid,
-        use_re=True,
-        split_method="predefined",
-        test_session_eid=[],
-        batch_size=config.training.train_batch_size,
-        seed=config.seed
-    )
+    # _, _, dataset, meta_data = load_ibl_dataset(
+    #     config.dirs.dataset_cache_dir, 
+    #     config.dirs.huggingface_org,
+    #     num_sessions=1,
+    #     eid = eid,
+    #     use_re=True,
+    #     split_method="predefined",
+    #     test_session_eid=[],
+    #     batch_size=config.training.train_batch_size,
+    #     seed=config.seed
+    # )
 
     n_neurons = max(list(meta_data["eid_list"].values()))
     logger.info(f"Load test data with {n_neurons} neurons.")
     
     dataloader = make_loader(
         dataset, 
-        target=list(dynamic_acronyms.keys()),
-        batch_size=len(dataset),
+        target=dynamic_mods if not use_nlb else static_mods,
+        batch_size=100000,
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
         max_space_length=n_neurons,
@@ -167,12 +228,12 @@ def load_model_data_local(**kwargs):
         load_meta=config.data.load_meta,
         shuffle=False,
         seed=config.seed,
-        data_dir=f"{kwargs['data_path']}/ibl_mm",
+        data_dir=f"{kwargs['data_path']}/ibl_mm" if not use_nlb else None,
         mode="test",
         eids=list(meta_data["eids"]),
         stitching=False,
+        use_nlb=use_nlb,
     )
-
     return model, accelerator, dataset, dataloader
     
 
@@ -182,6 +243,292 @@ def load_model_data_local(**kwargs):
 # 2. Behavior reconstruction
 # 3. Co-smooth/forward-pred/inter-region/intra-region
 # --------------------------------------------------------------------------------------------------
+def eval_nlb(
+    model,
+    accelerator,
+    test_dataloader,
+    test_dataset,
+    save_plot=False,
+    is_multimodal=False,
+    trial_len=0.6,
+    **kwargs
+):
+    for batch in test_dataloader:
+        break
+
+    method_name = kwargs["method_name"]
+    mode = kwargs["mode"]
+    T = kwargs["n_time_steps"]
+    bin_size = kwargs["bin_size"]
+
+    print(mode)
+
+    N = sum(batch["space_attn_mask"][0] != 0)
+        
+    substring = "results/"
+    first_index = kwargs['save_path'].find(substring)
+    second_index = kwargs['save_path'].find(substring, first_index + len(substring))
+    if second_index != -1: 
+        kwargs['save_path'] = kwargs['save_path'][:second_index] + kwargs['save_path'][second_index + len(substring):]
+    else:
+        kwargs['save_path'] = kwargs['save_path']
+    os.makedirs(kwargs["save_path"], exist_ok=True)
+
+    neural_acronyms = {"spike": "spike"}
+    static_acronyms = {}
+    dynamic_acronyms = {"finger_x_vel": "finger_x_vel", "finger_y_vel": "finger_y_vel"}
+
+    STATIC_VARS = ["finger_x_vel", "finger_y_vel"]
+    DYNAMIC_VARS = []
+
+    if mode == "eval_spike":
+
+        held_out_list = [kwargs["held_out_list"]]
+        assert held_out_list[0] is not None, \
+            "Forward prediction requires specific target time points to predict."
+        target_regions = None
+        neuron_regions = None
+
+        bps_result_list = [float("nan")]
+        r2_result_list = [np.array([np.nan])] * N
+        
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    
+                    mask_result = heldout_mask(
+                        batch["spikes_data"].clone(),
+                        mode=mode,
+                        heldout_idxs=hd,
+                        target_regions=target_regions,
+                    )  
+
+                    all_ones = torch.ones_like(batch["spikes_data"]).to(accelerator.device, torch.int64)
+                    all_zeros = all_ones * 0.
+
+                    mod_dict = {}
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod] = {}
+                        mod_idx = model.mod_to_indx[mod]
+                        mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(accelerator.device)
+                        mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(accelerator.device)
+                        mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
+                        mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
+                        mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
+                        # Each batch contains samples from different sessions
+                        mod_dict[mod]["eid"] = batch["eid"]
+                        mod_dict[mod]["num_neuron"] = N
+                        mod_dict[mod]["training_mode"] = "encoding"
+
+                        if mod == "spike":
+                            mod_dict[mod]["inputs"] = batch["spikes_data"].clone()
+                            mod_dict[mod]["targets"] = batch["spikes_data"].clone()
+                        elif mod in model.avail_beh:
+                            mod_dict[mod]["inputs"] = batch[mod].clone()
+                            mod_dict[mod]["targets"] = batch[mod].clone()
+                        else:
+                           raise Exception(f"Modality {mod} not implemented.")
+
+                        mod_dict[mod]["eval_mask"] = all_ones \
+                            if not is_multimodal and mod == "spike" else all_zeros
+
+                if is_multimodal:
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod]["eval_mask"] = all_ones if mod == "spike" else all_zeros
+
+                outputs = model(mod_dict)
+                    
+            gt = outputs.mod_targets["spike"][...,:N]
+            preds = torch.exp(outputs.mod_preds["spike"][...,:N])
+            gt = gt.detach().cpu().numpy()
+            preds = preds.detach().cpu().numpy()
+
+            # target_n_i, target_t_i = np.arange(N), held_out_list[0]
+            target_n_i, target_t_i = np.arange(N), [-1]
+
+            gt_held_out = gt[:,target_t_i][...,target_n_i]
+            pred_held_out = preds[:,target_t_i][...,target_n_i]
+
+            gt_held_out = gt_held_out.reshape(-1, N)
+            pred_held_out = pred_held_out.reshape(-1, N)
+
+            bps = bits_per_spike(pred_held_out, gt_held_out)
+            bps = np.nan if np.isinf(bps) else bps
+            bps_result_list[0] = bps
+
+            from sklearn.metrics import r2_score
+            for n_i in tqdm(range(len(target_n_i)), desc="r2"): 
+                r2 = r2_score(gt_held_out[...,[n_i]].flatten(), pred_held_out[...,[n_i]].flatten())
+                if np.isinf(r2):
+                    r2 = np.nan
+                r2_result_list[target_n_i[n_i]] = r2
+
+            ys, y_preds = gt[:,target_t_i], preds[:,target_t_i]
+
+            np.save(
+                f"{kwargs['save_path']}/spike_data.npy", 
+                {"gt": ys, "pred": y_preds}
+            )
+        
+    elif mode == "eval_behavior":
+
+        N = sum([OUTPUT_DIM[mod] for mod in STATIC_VARS])
+        held_out_list = [kwargs["held_out_list"]]
+        assert held_out_list[0] is not None, \
+            "Forward prediction requires specific target time points to predict."
+        target_regions = neuron_regions = None
+
+        bps_result_list = [float('nan')] * N
+        r2_result_list = [np.array([np.nan])] * N
+        
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    mask_result_dict = {}
+                    for mod in STATIC_VARS + DYNAMIC_VARS:
+                        mask_result = heldout_mask(
+                            batch[mod].clone(),
+                            mode=mode,
+                            heldout_idxs=hd
+                        )
+                        mask_result_dict[mod] = mask_result
+
+                    all_ones = torch.ones_like(batch["spikes_data"]).to(accelerator.device, torch.int64)
+                    all_zeros = all_ones * 0.
+
+                    mod_dict = {}
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod] = {}
+                        mod_idx = model.mod_to_indx[mod]
+                        mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(accelerator.device)
+                        mod_dict[mod]["targets_modality"] = torch.tensor(mod_idx).to(accelerator.device)
+                        mod_dict[mod]["inputs_attn_mask"] = batch["time_attn_mask"]
+                        mod_dict[mod]["inputs_timestamp"] = batch["spikes_timestamps"]
+                        mod_dict[mod]["targets_timestamp"] = batch["spikes_timestamps"]
+                        # Each batch contains samples from different sessions
+                        mod_dict[mod]["eid"] = batch["eid"]
+                        mod_dict[mod]["num_neuron"] = N
+                        mod_dict[mod]['training_mode'] = "decoding"
+
+                        if mod == "spike":
+                            mod_dict[mod]["inputs"] = batch["spikes_data"].clone()
+                            mod_dict[mod]["targets"] = batch["spikes_data"].clone()
+                        elif mod in model.avail_beh:
+                            mod_dict[mod]["inputs"] = batch[mod].clone()
+                            mod_dict[mod]["targets"] = batch[mod].clone()
+                        else:
+                           raise Exception(f"Modality {mod} not implemented.")
+
+                        mod_dict[mod]["eval_mask"] = all_ones \
+                            if not is_multimodal and mod in STATIC_VARS + DYNAMIC_VARS else all_zeros
+
+                if is_multimodal:
+                    for mod in model.mod_to_indx.keys():
+                        mod_dict[mod]["eval_mask"] = \
+                        all_ones if mod in model.avail_beh else all_zeros
+                    
+                outputs = model(mod_dict)
+                                
+            gt, preds = [], []
+            for mod in outputs.mod_targets.keys():
+                if mod in STATIC_VARS:
+                    gt.append(outputs.mod_targets[mod].detach().cpu().numpy())
+                    preds.append(outputs.mod_preds[mod].detach().cpu().numpy())
+            
+            gt = np.stack(gt, axis=-1)
+            preds = np.stack(preds, axis=-1)
+
+            target_n_i = np.arange(N)
+
+            gt_held_out = gt[...,target_n_i]
+            pred_held_out = preds[...,target_n_i]
+
+            ys, y_preds = gt_held_out, pred_held_out
+
+            from utils.nlb_data_utils import load_data, restrict_data
+            from utils.nlb_data_utils import bin_spikes, array2list, zero_order_hold
+            tau_prime = 13
+            Train, Val, Test = load_data("/u/yzhang39/multi_modal_foundation_model/data/mc_rtt.pickle", test_frac=0.2)
+            T = [s.shape[1] for s in Test["spikes"]]
+            S = [bin_spikes(sp, bin_size) for sp in Test["spikes"]]
+            T_prime = [s.shape[1] for s in S]
+            ys = Test["vel"]
+            preds[...,0] += test_dataset["finger_x_vel_mean"]
+            preds[...,1] += test_dataset["finger_y_vel_mean"]
+            print(preds.squeeze(1).shape)
+            preds = array2list(preds.squeeze(1), np.array(T_prime)-tau_prime, axis=0)
+            preds = [Z.T for Z in preds]
+            preds = [np.hstack((np.full((Z.shape[0],tau_prime), np.nan), Z)) for Z in preds]
+            # Return estimate to original time scale.
+            preds = [zero_order_hold(Z, bin_size) for Z in preds]
+            preds = [np.hstack((np.full((Z.shape[0],bin_size-1), np.nan), Z)) for Z in preds]
+            preds = [z[:,:t] for z,t in zip(preds, T)]
+
+            from utils.nlb_data_utils import compute_R2
+            behav_results = {}
+            tau = bin_size*(tau_prime+1)-1
+            _r2_trial = compute_R2(ys, preds, skip_samples=tau, eval_bin_size=bin_size)
+            behav_results[f"finger_vel_r2_trial"] = _r2_trial
+            r2_result_list = [_r2_trial]
+
+            from matplotlib import pyplot as plt
+            for i in range(2):
+                plt.figure(figsize=(20, 3))
+                plt.plot(np.array(ys).reshape(-1, 2)[:10000, i], label="GT")
+                plt.plot(np.array(preds).reshape(-1, 2)[:10000, i], label="Pred")
+                plt.legend()
+                plt.savefig(os.path.join(kwargs["save_path"], f"pred_finger_vel_dim_{i}.png"))
+                np.save(
+                    os.path.join(kwargs["save_path"], f"pred_finger_vel_dim_{i}.npy"), 
+                    {"gt": np.array(ys).reshape(-1, 2)[:, i], "pred": np.array(preds).reshape(-1, 2)[:, i]}
+                )
+
+            # behav_results = {}
+            # for i in tqdm(range(target_n_i.shape[0]), desc="R2"):
+            #     beh_name = DYNAMIC_VARS[0]
+            #     from sklearn.metrics import r2_score
+            #     y = ys[..., target_n_i[i]]
+            #     y_pred = y_preds[...,target_n_i[i]]
+            #     y_pred = y_pred + behavior_means["test"]["finger_vel"][...,i]
+            #     y_pred = np.repeat(y_pred[...,None], bin_size, axis=1).squeeze(-1)
+            #     _r2_trial = r2_score(y.flatten(), y_pred.flatten())
+            #     behav_results[f"{beh_name}_r2_trial"] = _r2_trial
+            #     r2_result_list[target_n_i[i]] = _r2_trial
+            #     from matplotlib import pyplot as plt
+            #     plt.figure(figsize=(20, 3))
+            #     plt.plot(y.flatten()[:10000], label="GT")
+            #     plt.plot(y_pred.flatten()[:10000], label="Pred")
+            #     plt.legend()
+            #     plt.savefig(os.path.join(kwargs["save_path"], f"pred_finger_vel_dim_{i}.png"))
+            #     np.save(os.path.join(kwargs["save_path"], f"pred_finger_vel_dim_{i}.npy"), {"gt": y, "pred": y_pred})
+
+            np.save(os.path.join(kwargs["save_path"], "r2.npy"), behav_results)
+    else:
+        raise NotImplementedError("Evaluation mode not implemented.")
+
+    os.makedirs(kwargs["save_path"], exist_ok=True)
+    bps_all = np.array(bps_result_list)
+    bps_mean = np.nanmean(bps_all)
+    r2_all = np.array(r2_result_list)
+    np.save(os.path.join(kwargs["save_path"], "bps.npy"), bps_all)
+    np.save(os.path.join(kwargs["save_path"], "r2.npy"), r2_all)
+
+    return {
+        f"{mode}_mean_bps": bps_mean,
+        f"{mode}_mean_r2_trial": np.nanmean(r2_all),
+    }
+    
+
 
 def co_smoothing_eval(
     model,
@@ -203,11 +550,21 @@ def co_smoothing_eval(
     is_aligned = kwargs["is_aligned"]
     target_regions = kwargs["target_regions"]
     T = kwargs["n_time_steps"]
+    eval_zero_shot = kwargs.get("eval_zero_shot", False)
 
     N = sum(batch["space_attn_mask"][0] != 0)
         
     uuids_list = np.array(test_dataset["cluster_uuids"][0])[:N]
     region_list = np.array(test_dataset["cluster_regions"])[0][:N]
+
+    substring = "results/"
+    first_index = kwargs['save_path'].find(substring)
+    second_index = kwargs['save_path'].find(substring, first_index + len(substring))
+    if second_index != -1: 
+        kwargs['save_path'] = kwargs['save_path'][:second_index] + kwargs['save_path'][second_index + len(substring):]
+    else:
+        kwargs['save_path'] = kwargs['save_path']
+    os.makedirs(kwargs["save_path"], exist_ok=True)
 
     if is_aligned:
         
@@ -322,6 +679,14 @@ def co_smoothing_eval(
                 bps_result_list[target_n_i[n_i]] = bps
 
             ys, y_preds = gt[:,target_t_i], preds[:,target_t_i]
+
+            np.save(
+                f"{kwargs['save_path']}/spike_data.npy", 
+                {
+                    "gt": ys,
+                    "pred": y_preds,
+                }
+            )
         
             for i in tqdm(range(target_n_i.shape[0]), desc="R2"):
                 mean_fr = ys[...,target_n_i[i]].sum(1).mean(0)/trial_len
@@ -454,15 +819,17 @@ def co_smoothing_eval(
                     r2_result_list[target_n_i[i]] = np.array([_r2_psth, _r2_trial])
                     behav_results[f"{beh_name}_r2_psth"] = _r2_psth
                     behav_results[f"{beh_name}_r2_trial"] = _r2_trial
-                    if beh_name == "whisker":
-                        y = ys[...,target_n_i[i]].squeeze()
-                        y_pred = y_preds[...,target_n_i[i]].squeeze()
-                        y = y.mean(0)
-                        y_pred = y_pred.mean(0)
-                        plt.plot(y, label="gt")
-                        plt.plot(y_pred, label="pred")
-                        plt.legend()
-                        plt.savefig(f'{kwargs["save_path"]}/{beh_name}.png')
+
+                    y = ys[...,target_n_i[i]].squeeze()
+                    y_pred = y_preds[...,target_n_i[i]].squeeze()
+                    np.save(
+                        f"{kwargs['save_path']}/{beh_name}_data.npy", 
+                        {
+                            "gt": y,
+                            "pred": y_pred,
+                        }
+                    )
+
                 else:
                     raise ValueError("Unaligned data not supported.")
                     
@@ -471,11 +838,19 @@ def co_smoothing_eval(
                 os.path.join(kwargs["save_path"], "acc.npy"), 
                 {"acc": acc_dict, "balanced_acc": balanced_acc_dict}
             )
-            return {
-                **behav_results,
-                **acc_dict,
-                **balanced_acc_dict
-            }     
+            if not eval_zero_shot:
+                return {
+                    **behav_results,
+                    **acc_dict,
+                    **balanced_acc_dict
+                }     
+            else:
+                return {
+                    "gt_choice": list(gt_static["choice"]),
+                    "gt_block": list(gt_static["block"]),
+                    "pred_choice": list(preds_static["choice"]),
+                    "pred_block": list(preds_static["block"]),
+                }     
     else:
         raise NotImplementedError("Evaluation mode not implemented.")
 
@@ -505,15 +880,15 @@ def co_smoothing_eval(
 # --------------------------------------------------------------------------------------------------
 
 def heldout_mask(
-        spike_data,                     # (K, T, N)
-        mode='manual',                  
-        heldout_idxs=np.array([]),      # list for manual mode
-        n_active=1,                     # n_neurons for most-active mode
-        target_regions=None,            # list for region mode
-        neuron_regions=None,            # list for region mode
+    spike_data,                     # (K, T, N)
+    mode='manual',                  
+    heldout_idxs=np.array([]),      # list for manual mode
+    n_active=1,                     # n_neurons for most-active mode
+    target_regions=None,            # list for region mode
+    neuron_regions=None,            # list for region mode
 ):
     mask = torch.ones(spike_data.shape).to(torch.int64).to(spike_data.device)
-    
+
     if mode == 'manual':
         hd = heldout_idxs
         mask[:, :, hd] = 0
@@ -553,7 +928,9 @@ def heldout_mask(
         mask[:, hd, :] = 0
     
     elif mode == 'eval_behavior':
-        hd = heldout_idxs
+        hd = heldout_idxs; n_heldout = len(np.unique(heldout_idxs))
+        if mask.shape[1] != n_heldout:
+            mask = mask.expand(-1, n_heldout, 1)
         mask[:, hd] = 0
     elif mode in DYNAMIC_VARS:
         hd = heldout_idxs

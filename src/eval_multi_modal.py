@@ -1,4 +1,6 @@
 import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import wandb
 import pickle
 import logging
@@ -13,26 +15,14 @@ from loader.make_loader import make_loader
 from utils.config_utils import config_from_kwargs, update_config
 from utils.eval_utils import (
     load_model_data_local, 
-    co_smoothing_eval
+    co_smoothing_eval,
+    eval_nlb
 )
 from accelerate import Accelerator
 
 logging.basicConfig(
     level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
 ) 
-
-neural_acronyms = {
-    "ap": "spike",
-    "lfp": "lfp",
-}
-static_acronyms = {
-    "choice": "choice", 
-    "block": "block",
-}
-dynamic_acronyms = {
-    "wheel-speed": "wheel", 
-    "whisker-motion-energy": "whisker",
-}
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
@@ -45,20 +35,27 @@ ap.add_argument("--mask_ratio", type=float, default=0.1)
 ap.add_argument("--mixed_training", action="store_true")
 ap.add_argument("--enc_task_var", type=str, default="all")
 ap.add_argument("--finetune", action="store_true")
+ap.add_argument("--param_search", action="store_true")
 ap.add_argument(
     "--modality", nargs="+", 
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
 )
+ap.add_argument("--use_nlb", action="store_true")
 ap.add_argument("--overwrite", action="store_true")
 ap.add_argument("--save_plot", action="store_true")
 ap.add_argument("--seed", type=int, default=42)
 ap.add_argument("--wandb", action="store_true")
+ap.add_argument("--nlb_bin_size", type=int, default=20)
 args = ap.parse_args()
 
 if args.num_sessions <= 10:
-    model_config = "src/configs/multi_modal/mm_single_session.yaml"
+    model_config = f"src/configs/multi_modal/mm_single_session.yaml"
+elif args.num_sessions == 40: 
+    model_config = f"src/configs/multi_modal/mm_medium_size.yaml"
+elif args.num_sessions == 74: 
+    model_config = f"src/configs/multi_modal/mm_large_size.yaml"
 else:
-    model_config = "src/configs/multi_modal/mm.yaml"
+    model_config = f"src/configs/multi_modal/mm.yaml"
 
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
@@ -67,13 +64,22 @@ set_seed(config.seed)
 
 best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 
+if not args.use_nlb:
+    neural_acronyms = {"ap": "spike", "lfp": "lfp"}
+    static_acronyms = {"choice": "choice", "block": "block"}
+    dynamic_acronyms = {"wheel-speed": "wheel", "whisker-motion-energy": "whisker"}
+else:
+    neural_acronyms = {"spike": "spike"}
+    static_acronyms = {"finger_x_vel": "finger_x_vel", "finger_y_vel": "finger_y_vel"}
+    dynamic_acronyms = {}
+
 # ------ 
 # SET UP
 # ------
 eid = args.eid
 base_path = args.base_path
 model_mode = args.model_mode
-modality = args.modality
+modality = list(neural_acronyms.keys()) + list(static_acronyms.keys()) + list(dynamic_acronyms.keys())
 mask_mode = args.mask_mode
 mask_name = f"mask_{mask_mode}"
 
@@ -106,24 +112,25 @@ modal_filter = {"input": input_mods, "output": output_mods}
 # --------
 # SET PATH
 # --------
-
 num_sessions = args.num_sessions
 if num_sessions > 1:
     logging.warning("num_sessions > 1: ensure the model is trained with multiple sessions.")
     eid_ = "multi"
+elif args.use_nlb:
+    eid_ = eid
 else:
     eid_ = eid[:5]
 
 log_name = \
 "sesNum-{}_ses-{}_set-eval_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
-        num_sessions,
-        eid[:5], 
-        "-".join(modal_filter["input"]),
-        "-".join(modal_filter["output"]),
-        config.training.mask_type, 
-        mask_mode,
-        args.mask_ratio,
-        args.enc_task_var,
+    num_sessions,
+    eid[:5] if not args.use_nlb else eid, 
+    "-".join(modal_filter["input"]),
+    "-".join(modal_filter["output"]),
+    config.training.mask_type, 
+    mask_mode,
+    args.mask_ratio,
+    args.enc_task_var,
 )
 
 save_path = os.path.join(base_path, "results", log_name)
@@ -133,7 +140,28 @@ if args.finetune:
 else:
     pretrain_path = save_path.replace("eval", "train")
 
-logging.info(f"Save results to {save_path}")
+if args.param_search:
+    log_name = f"{eid_}_{model_mode}_binSize-{args.nlb_bin_size}"
+    save_path = os.path.join(base_path, "results", log_name)
+    tune_path = args.data_path.replace("datasets", f"tune/session_{num_sessions}/ray_results/{log_name}")
+    tune_path = tune_path.replace("bcxj", "beez")
+    print(f"Load ray tune model from: {tune_path}")
+    if not os.path.exists(tune_path):
+        tune_path = args.data_path.replace("datasets", f"ray_results/{log_name}")
+    pretrain_path = [
+        f for f in os.listdir(tune_path) if os.path.isdir(os.path.join(tune_path, f))
+    ][0]
+    pretrain_path = os.path.join(tune_path, pretrain_path)
+    logging.info(f"Load best hyperparams model from {pretrain_path}.")
+    with open(f"{pretrain_path}/params.pkl", "rb") as file:
+        params = pickle.load(file)
+    if not args.finetune:
+        config["model"]["encoder"]["transformer"]["hidden_size"] = params["hidden_size"]
+        config["model"]["encoder"]["transformer"]["inter_size"] = params["inter_size"]
+        config["model"]["encoder"]["transformer"]["n_layers"] = params["n_layers"]
+    model_config = config
+
+logging.info(f"Save results to {save_path}.")
 
 if args.wandb:
     wandb.init(
@@ -141,21 +169,15 @@ if args.wandb:
         entity=config.wandb.entity, 
         config=args,
         name=log_name
-)
+    )
 
 # ----------
 # LOAD MODEL
 # ----------
-
 if args.model_mode == "mm":
     if args.enc_task_var in ["all", "random"]:
         best_ckpt_path = [
             "model_best_avg.pt", 
-            # "model_best_spike.pt",
-            #"model_best_wheel.pt", 
-            # "model_best_whisker.pt",
-            #"model_best_choice.pt",
-            #"model_best_block.pt"
         ]
     else:
         best_ckpt_path = ["model_best_avg.pt"]
@@ -179,6 +201,8 @@ for ckpt_path in best_ckpt_path:
         "modal_filter": modal_filter,
         "model_mode": model_mode,
         "data_path": args.data_path,
+        "use_nlb": args.use_nlb,
+        "bin_size": args.nlb_bin_size if args.use_nlb else 20,
     }      
     model, accelerator, dataset, dataloader = load_model_data_local(**configs)
     model_state_dict = model.state_dict()
@@ -195,7 +219,6 @@ model.load_state_dict(model_state_dict)
 # ----------
 # EVAL MODEL
 # ----------
-
 eval_spike = True if model_mode in ["mm", "encoding"] else False
 eval_behavior = True if model_mode in ["mm", "decoding"] else False
 
@@ -213,13 +236,16 @@ if eval_spike:
             "method_name": mask_name, 
             "save_path": f"{save_path}/eval_spike",
             "mode": "eval_spike",
-            "n_time_steps": config.model.encoder.embedder.max_F,  
-            "held_out_list": list(range(0, 100)),
+            "n_time_steps": model.encoder_embeddings[modal_filter["input"][0]].max_F,  
+            "held_out_list": list(range(model.encoder_embeddings[modal_filter["input"][0]].max_F)),
             "is_aligned": True,
             "target_regions": None,
             "enc_task_var": args.enc_task_var,
+            "use_nlb": args.use_nlb,
+            "bin_size": args.nlb_bin_size if args.use_nlb else 20,
         }
-        results = co_smoothing_eval(
+        EVAL_FN = eval_nlb if args.use_nlb else co_smoothing_eval
+        results = EVAL_FN(
             model=model, 
             accelerator=accelerator, 
             test_dataloader=dataloader, 
@@ -246,13 +272,16 @@ if eval_behavior:
             "method_name": mask_name, 
             "save_path": f"{save_path}/eval_behavior",
             "mode": "eval_behavior",
-            "n_time_steps": config.model.encoder.embedder.max_F,  
-            "held_out_list": list(range(0, 100)),
+            "n_time_steps": model.encoder_embeddings["spike"].max_F,  
+            "held_out_list": list(range(model.encoder_embeddings["spike"].max_F)),
             "is_aligned": True,
             "target_regions": None,
             "avail_beh": static_mods + dynamic_mods,
+            "use_nlb": args.use_nlb,
+            "bin_size": args.nlb_bin_size if args.use_nlb else 20,
         }
-        results = co_smoothing_eval(
+        EVAL_FN = eval_nlb if args.use_nlb else co_smoothing_eval
+        results = EVAL_FN(
             model=model, 
             accelerator=accelerator, 
             test_dataloader=dataloader, 
@@ -267,8 +296,8 @@ if eval_behavior:
         logging.info("Skip evaluation for decoding since files exist or overwrite is False.")
 
 
-# Mask selected modalities for encoding
-if eval_spike and args.enc_task_var == "random":
+if (args.enc_task_var == "random") and not args.use_nlb:
+    # Mask selected modalities for encoding
     for mod in static_mods + dynamic_mods:
 
         model_path = os.path.join(pretrain_path, f"model_best_enc_{mod}.pt")    
@@ -300,8 +329,8 @@ if eval_spike and args.enc_task_var == "random":
                 "method_name": mask_name, 
                 "save_path": f"{save_path}/eval_spike_{mod}",
                 "mode": "eval_spike",
-                "n_time_steps": config.model.encoder.embedder.max_F,  
-                "held_out_list": list(range(0, 100)),
+                "n_time_steps": model.encoder_embeddings["spike"].max_F,  
+                "held_out_list": list(range(model.encoder_embeddings["spike"].max_F)),
                 "is_aligned": True,
                 "target_regions": None,
                 "enc_task_var": mod,
@@ -321,4 +350,3 @@ if eval_spike and args.enc_task_var == "random":
             logging.info("Skip evaluation for encoding since files exist or overwrite is False.")
 
 logging.info("Finish model evaluation")
-

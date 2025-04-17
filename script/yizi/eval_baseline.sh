@@ -18,6 +18,15 @@ echo $TMPDIR
 eid=${1}
 model_mode=${2}
 behavior=${3}
+use_nlb=${4}
+
+if [ "$use_nlb" = "True" ]; then
+    echo "Using NLB"
+    use_nlb="--use_nlb"
+else
+    echo "Not using NLB"
+    use_nlb=""
+fi
 
 conda activate ibl-mm
 
@@ -27,22 +36,24 @@ if [ $behavior = "continuous" ]; then
     python src/eval_baseline.py --eid $eid \
                                 --seed 42 \
                                 --base_path ./ \
-                                --data_path /scratch/bdtg/yzhang39/datasets/ \
+                                --data_path /projects/bcxj/yzhang39/datasets/ \
                                 --model_mode $model_mode \
                                 --save_plot \
                                 --overwrite \
-                                --wandb
+                                --wandb \
+                                $use_nlb
 elif [ $behavior = "choice" ] || [ $behavior = "block" ];
 then
     python src/eval_baseline.py --eid $eid \
                                 --seed 42 \
                                 --base_path ./ \
-                                --data_path /scratch/bdtg/yzhang39/datasets/ \
+                                --data_path /projects/bcxj/yzhang39/datasets/ \
                                 --model_mode $model_mode \
                                 --behavior $behavior \
                                 --save_plot \
                                 --overwrite \
-                                --wandb
+                                --wandb \
+                                $use_nlb
 else
     echo "behavior: $behavior not supported"
 fi

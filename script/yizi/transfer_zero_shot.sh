@@ -1,16 +1,15 @@
 #!/bin/bash
-
 #SBATCH --account=bcxj-delta-gpu
 #SBATCH --partition=gpuA40x4
-#SBATCH --job-name="finetune"
-#SBATCH --output="finetune.%j.out"
+#SBATCH --job-name="transfer"
+#SBATCH --output="transfer.%j.out"
 #SBATCH -N 1
 #SBACTH --array=0
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 100000
 #SBATCH --gpus=1
-#SBATCH -t 0-04
+#SBATCH -t 0-08
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -29,7 +28,7 @@ cd ../..
 
 if [ $model_mode = "mm" ]; then
     python src/finetune_multi_modal.py --eid $eid \
-                                    --base_path /scratch/bdtg/yzhang39/tmp/ \
+                                    --base_path ./ \
                                     --mask_ratio $mask_ratio \
                                     --mixed_training \
                                     --num_sessions $num_sessions \
@@ -37,6 +36,7 @@ if [ $model_mode = "mm" ]; then
                                     --model_mode $model_mode \
                                     --pretrain_task_var all \
                                     --enc_task_var $task_var \
+                                    --zero_shot_transfer \
                                     --data_path /scratch/bdtg/yzhang39/datasets/
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then

@@ -10,7 +10,9 @@ from sklearn.cluster import SpectralClustering
 from sklearn.metrics import accuracy_score
 import time
 import glob
-with open('data/test_eids.txt') as file:
+
+PROJ_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+with open(f"{PROJ_DIR}/data/test_eids.txt") as file:
     test_eids = file.read().splitlines()
     
 def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
@@ -688,6 +690,39 @@ def huggingface2numpy(
         data_dict['choice'] = torch.cat(data_dict['choice'], 0).numpy()
         data_dict['block'] = torch.cat(data_dict['block'], 0).numpy()
         data_dict['reward'] = torch.cat(data_dict['reward'], 0).numpy()
+
+    return {
+        "train": train_data_dict, "val": val_data_dict, "test": test_data_dict
+    }
+
+
+def nlb2numpy(
+    train_dataloader, val_dataloader, test_dataloader, test_dataset
+):
+    
+    train_data_dict, val_data_dict, test_data_dict = {}, {}, {}
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = []
+        data_dict['dynamic_behavior'] = []
+    
+    for batch in tqdm(train_dataloader):
+        train_data_dict['spikes_data'].append(batch['spikes_data'])
+        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
+        train_data_dict['dynamic_behavior'].append(target)
+    
+    for batch in tqdm(val_dataloader):
+        val_data_dict['spikes_data'].append(batch['spikes_data'])
+        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
+        val_data_dict['dynamic_behavior'].append(target)
+    
+    for batch in tqdm(test_dataloader):
+        test_data_dict['spikes_data'].append(batch['spikes_data'])
+        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
+        test_data_dict['dynamic_behavior'].append(target)
+    
+    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
+        data_dict['spikes_data'] = torch.cat(data_dict['spikes_data'], 0).numpy()
+        data_dict['dynamic_behavior'] = torch.cat(data_dict['dynamic_behavior'], 0).numpy()
 
     return {
         "train": train_data_dict, "val": val_data_dict, "test": test_data_dict

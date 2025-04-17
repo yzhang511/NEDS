@@ -1,15 +1,14 @@
 #!/bin/bash
-
-#SBATCH --account=beez-delta-gpu
-#SBATCH --partition=gpuA40x4,gpuA100x4,gpuA40x4-preempt,gpuA100x4-preempt
-#SBATCH --job-name="mm"
-#SBATCH --output="mm.%j.out"
-#SBATCH --nodes=4
-#SBATCH --ntasks=4
+#SBATCH --account=bcxj-delta-gpu
+#SBATCH --partition=gpuA40x4
+#SBATCH --job-name="pretrain"
+#SBATCH --output="pretrain.%j.out"
+#SBATCH --nodes=16
+#SBATCH --ntasks=16
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem 100000   
-#SBATCH -t 0-08:00:00
+#SBATCH -t 2-00
 #SBATCH --export=ALL
 
 . ~/.bashrc
@@ -19,25 +18,11 @@ eid=${2}
 model_mode=${3}
 dummy_size=${4}
 mask_ratio=${5}
-task_var=${6}
-use_nlb=${7}
-nlb_bin_size=${8}
-
-if [ "$use_nlb" = "True" ]; then
-    echo "Using NLB"
-    use_nlb="--use_nlb"
-else
-    echo "Not using NLB"
-    search=""
-fi
-
 echo $TMPDIR
 
 conda activate ibl-mm
 
 cd ../..
-
-config_dir=$(pwd)/src/configs
 
 nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
 nodes_array=($nodes)
@@ -54,39 +39,31 @@ export LAUNCHER="torchrun \
     --rdzv_backend c10d \
     --rdzv_endpoint $head_node_ip:29500 \
     "
-export SCRIPT="src/train_multi_modal.py"
+export SCRIPT="src/train_multi_modal_tmp.py"
 
 if [ $model_mode = "mm" ]; then
     export SCRIPT_ARGS=" \
             --eid $eid \
-            --base_path ./ \
+            --base_path /scratch/bdtg/yzhang39/tmp/ \
             --mask_ratio $mask_ratio \
             --mixed_training \
             --num_sessions $num_sessions \
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --enc_task_var $task_var \
-            $use_nlb \
-            --nlb_bin_size $nlb_bin_size \
-            --data_path /projects/bcxj/yzhang39/datasets/ \
-            --config_dir $config_dir
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     export SCRIPT_ARGS=" \
             --eid $eid \
-            --base_path ./ \
+            --base_path /scratch/bdtg/yzhang39/tmp/ \
             --mask_ratio $mask_ratio \
             --num_sessions $num_sessions \
             --dummy_size $dummy_size \
             --model_mode $model_mode \
             --multi_gpu \
-            --enc_task_var $task_var \
-            $use_nlb \
-            --nlb_bin_size $nlb_bin_size \
-            --data_path /projects/bcxj/yzhang39/datasets/ \
-            --config_dir $config_dir
+            --data_path /scratch/bdtg/yzhang39/datasets/
         "
 else
     echo "model_mode: $model_mode not supported"

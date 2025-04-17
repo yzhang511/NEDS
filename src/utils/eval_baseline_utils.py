@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
 
+OUTPUT_DIM = {
+    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
+    "cursor_pos": 2, "target_pos": 2, "finger_pos": 3, "finger_vel": 2
+}
+
 # --------------------------------------------------------------------------------------------------
 # Model/Dataset Loading and Configuration
 # --------------------------------------------------------------------------------------------------
@@ -49,6 +54,7 @@ def load_model_data_local(**kwargs):
     eid = kwargs['eid']
     avail_mod = kwargs['avail_mod']
     avail_beh = kwargs['avail_beh']
+    use_nlb = kwargs["use_nlb"]
 
     set_seed(seed)
 
@@ -56,16 +62,25 @@ def load_model_data_local(**kwargs):
     config = update_config(model_config, config)
     config = update_config(trainer_config, config)
 
-    _, _, dataset, meta_data = load_ibl_dataset(
-            config.dirs.dataset_cache_dir, 
-            config.dirs.huggingface_org,
-            num_sessions=1,
-            eid = eid,
-            use_re=True,
-            split_method="predefined",
-            test_session_eid=[],
-            batch_size=config.training.train_batch_size,
-            seed=config.seed)
+    if not use_nlb:
+        _, _, dataset, meta_data = load_ibl_dataset(
+                config.dirs.dataset_cache_dir, 
+                config.dirs.huggingface_org,
+                num_sessions=1,
+                eid = eid,
+                use_re=True,
+                split_method="predefined",
+                test_session_eid=[],
+                batch_size=config.training.train_batch_size,
+                seed=config.seed)
+    else:
+        from utils.nlb_data_utils import load_nlb_dataset
+        trial_length, bin_size = 600, 20 # ms
+        _, _, dataset, meta_data = load_nlb_dataset(
+            "/projects/beez/yzhang39/nlb/000129/sub-Indy", bin_size
+        )
+        config["data"]["max_time_length"] = int(trial_length / bin_size)
+        config["model"]["seq_len"] = int(trial_length / bin_size)
 
     n_neurons = meta_data['eid_list'][eid]
     n_behaviors = len(avail_beh)
@@ -80,17 +95,18 @@ def load_model_data_local(**kwargs):
     
     dataloader = make_loader(
         dataset, 
-        target=DYNAMIC_VARS,
+        target=DYNAMIC_VARS if not use_nlb else ["finger_vel", "cursor_pos", "finger_pos"],
         batch_size=len(dataset),
         pad_to_right=True, pad_value=-1.,
         max_time_length=config.data.max_time_length,
         max_space_length=n_neurons,
         dataset_name=config.data.dataset_name,
         load_meta=config.data.load_meta,
-        data_dir=f"{kwargs['data_path']}/ibl_mm",
+        data_dir=f"{kwargs['data_path']}/ibl_mm" if not use_nlb else None, 
         mode="test",
         eids=list(meta_data["eids"]),
         shuffle=False,
+        use_nlb=use_nlb,
     )
 
     return model, accelerator, dataset, dataloader
@@ -102,6 +118,185 @@ def load_model_data_local(**kwargs):
 # 2. Behavior reconstruction
 # 3. Co-smooth/forward-pred/inter-region/intra-region
 # --------------------------------------------------------------------------------------------------
+def eval_nlb(
+    model,
+    accelerator,
+    test_dataloader,
+    test_dataset,
+    save_plot=False,
+    trial_len=0.6,
+    **kwargs
+):
+    
+    for batch in test_dataloader:
+        break
+
+    target_regions = kwargs['target_regions']
+    T = kwargs['n_time_steps']
+    modal_filter = kwargs['modal_filter']
+    mode = kwargs['mode']
+    method_name = 'linear'
+    target_to_decode = kwargs['target_to_decode']
+
+    STATIC_VARS = []
+    DYNAMIC_VARS = ["finger_vel"]
+
+    if sum(batch['space_attn_mask'][0] == 0) == 0:
+        N = batch['space_attn_mask'].size()[-1]
+    else:
+        N = (batch['space_attn_mask'][0] == 0).nonzero().min().item() 
+        
+    if mode == 'modal_spike':
+
+        held_out_list = [kwargs['held_out_list']]
+
+        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
+        target_regions = neuron_regions = None
+
+        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan])] * N
+
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    
+                    data_dict = {}
+                    if ('ap' in modal_filter['output']) or ('spikes' in modal_filter['output']):
+                        data_dict['inputs'] = batch['target']
+                        data_dict['targets'] = batch['spikes_data']
+                    else:
+                        data_dict['inputs'] = batch['spikes_data']
+                        n_beh = sum([OUTPUT_DIM[beh] for beh in target_to_decode])
+
+                        if "finger_vel" in target_to_decode:
+                            batch["target"] = torch.cat([batch[mod] for mod in target_to_decode], dim=-1)
+
+                        if target_to_decode[0] == "choice":
+                            data_dict["targets"] = batch["target"][:, 0, n_beh]
+                        elif target_to_decode[0] == "block":
+                            data_dict["targets"] = batch["target"][:, 0, n_beh+1]
+                        else:
+                            data_dict["targets"] = batch["target"][..., :n_beh]
+
+                    data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
+                    data_dict['num_neuron'] = batch['spikes_data'].shape[2]
+
+                    outputs = model(data_dict)
+                    
+            gt = outputs.targets[:,:,:N].detach().cpu().numpy()
+            preds = outputs.preds[:,:,:N]
+            preds = torch.exp(preds).detach().cpu().numpy()
+
+            target_n_i, target_t_i = np.arange(N), held_out_list[0]
+
+            gt_held_out = gt[:,target_t_i][:,:,target_n_i]
+            pred_held_out = preds[:,target_t_i][:,:,target_n_i]
+
+            bps = bits_per_spike(pred_held_out, gt_held_out)
+            bps = np.nan if np.isinf(bps) else bps
+            bps_result_list[0] = bps
+
+            from sklearn.metrics import r2_score
+            for n_i in tqdm(range(len(target_n_i)), desc="r2"): 
+                r2 = r2_score(gt_held_out[...,[n_i]].flatten(), pred_held_out[...,[n_i]].flatten())
+                if np.isinf(r2):
+                    r2 = np.nan
+                r2_result_list[target_n_i[n_i]] = r2
+                
+    elif mode == 'modal_behavior':
+
+        N = sum([OUTPUT_DIM[mod] for mod in DYNAMIC_VARS])
+
+        held_out_list = [kwargs['held_out_list']]
+
+        assert held_out_list[0] is not None, 'forward_pred requires specific target time points to predict'
+        target_regions = neuron_regions = None
+
+        bps_result_list, r2_result_list = [float('nan')] * N, [np.array([np.nan])] * N
+
+        for hd_idx in held_out_list:
+
+            hd = np.array([hd_idx])
+
+            model.eval()
+            with torch.no_grad():
+                for batch in test_dataloader:
+                    batch = move_batch_to_device(batch, accelerator.device)
+                    
+                    data_dict = {}
+                    if ('ap' in modal_filter['output']) or ('spikes' in modal_filter['output']):
+                        data_dict['inputs'] = batch['target']
+                        data_dict['targets'] = batch['spikes_data']
+                    else:
+                        data_dict['inputs'] = batch['spikes_data']
+
+                        n_beh = sum([OUTPUT_DIM[beh] for beh in target_to_decode])
+
+                        if "finger_vel" in target_to_decode:
+                            batch["target"] = torch.cat([batch[mod] for mod in target_to_decode], dim=-1)
+
+                        if target_to_decode[0] == "choice":
+                            data_dict["targets"] = batch["target"][:, 0, n_beh]
+                        elif target_to_decode[0] == "block":
+                            data_dict["targets"] = batch["target"][:, 0, n_beh+1]
+                        else:
+                            data_dict["targets"] = batch["target"][..., :n_beh]
+
+                    data_dict['eid'] = batch['eid'][0]  # each batch is from the same eid
+                    data_dict['num_neuron'] = batch['spikes_data'].shape[2]
+                    
+                    outputs = model(data_dict)
+                    
+            gt = outputs.targets.detach().cpu().numpy()
+            preds = outputs.preds.detach().cpu().numpy()
+
+            behav_results = {}
+            
+            if ('choice' not in target_to_decode) and ('block' not in target_to_decode):
+                
+                target_n_i, target_t_i = np.arange(N), held_out_list[0]
+    
+                gt_held_out = gt[:,target_t_i][:,:,target_n_i]
+                pred_held_out = preds[:,target_t_i][:,:,target_n_i]
+    
+                ys, y_preds = gt[:, target_t_i], preds[:, target_t_i]
+
+                for n_i in tqdm(range(len(target_n_i)), desc='r2'): 
+                    from sklearn.metrics import r2_score
+                    r2 = r2_score(ys[...,[n_i]].flatten(), y_preds[...,[n_i]].flatten())
+                    if np.isinf(r2):
+                        r2 = np.nan
+                    r2_result_list[target_n_i[n_i]] = r2
+            else:
+                from sklearn.metrics import accuracy_score, balanced_accuracy_score
+                behav_results[f'{target_to_decode[0]}_acc'] = accuracy_score(gt, preds.argmax(-1))
+                behav_results[f'{target_to_decode[0]}_balanced_acc'] = balanced_accuracy_score(gt, preds.argmax(-1))
+
+                return {
+                    f"{mode}_behav_results": behav_results
+                } 
+    
+    else:
+        raise NotImplementedError('mode not implemented')
+
+    os.makedirs(kwargs['save_path'], exist_ok=True)
+    bps_all = np.array(bps_result_list)
+    bps_mean = np.nanmean(bps_all)
+    r2_all = np.array(r2_result_list)
+    np.save(os.path.join(kwargs['save_path'], f'bps.npy'), bps_all)
+    np.save(os.path.join(kwargs['save_path'], f'r2.npy'), r2_all)
+
+    return {
+        f"{mode}_mean_bps": bps_mean,
+        f"{mode}_mean_r2_psth": np.nanmean(r2_all),
+        f"{mode}_mean_r2_trial": np.nanmean(r2_all),
+    }
+
+
 
 def co_smoothing_eval(
         model,

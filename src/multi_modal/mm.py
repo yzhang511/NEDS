@@ -24,7 +24,7 @@ from multi_modal.mm_utils import create_context_mask
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
-STATIC_VARS = ["choice", "block"]
+STATIC_VARS = ["choice", "block", "finger_x_vel", "finger_y_vel"]
 DYNAMIC_VARS = ["wheel", "whisker"]
 
 @dataclass
@@ -37,7 +37,6 @@ class MultiModalOutput(ModelOutput):
     static_preds: Optional[torch.LongTensor] = None
     static_targets: Optional[torch.LongTensor] = None
     
-
 class MultiModal(nn.Module):
     def __init__(
         self, 
@@ -78,17 +77,20 @@ class MultiModal(nn.Module):
         self.encoder_norm = nn.LayerNorm(self.hidden_size) 
 
         self.num_class = {
-            "spike": None, "wheel": 1, "whisker": 1, "choice": 2, "block": 3
+            "spike": None, "wheel": 1, "whisker": 1, "choice": 2, "block": 3,
+            "finger_x_vel": 1, "finger_y_vel": 1,
         }
         self.mod_type = {
-            "spike": "spike", "wheel": "dynamic", "whisker": "dynamic",
-            "choice": "static", "block": "static"
+            "spike": "spike", 
+            "choice": "static", "block": "static",
+            "wheel": "dynamic", "whisker": "dynamic",
+            "finger_x_vel": "static", "finger_y_vel": "static",
         }
 
         self.mod_loss = {
             "spike": nn.PoissonNLLLoss(reduction="none", log_input=True),
             "dynamic": nn.MSELoss(reduction="none"),
-            "static": nn.CrossEntropyLoss(reduction="none"),
+            "static": nn.CrossEntropyLoss(reduction="none") if "choice" in self.avail_beh else nn.MSELoss(reduction="none")
         }
 
         if self.model_mode in ["encoding", "decoding"]:
@@ -206,12 +208,16 @@ class MultiModal(nn.Module):
                     torch.zeros(1, device=targets.device, requires_grad=True).squeeze(), \
                     n_examples, preds, targets
                     continue                
-                static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1)   
-                targets = F.one_hot(
-                    targets.to(torch.int64), num_classes=self.num_class[mod]
-                ).squeeze(1)               
+                static_targets[mod], static_preds[mod] = targets.squeeze(1), preds.argmax(-1) 
+                if mod in ["choice", "block"]:
+                    targets = F.one_hot(
+                        targets.to(torch.int64), num_classes=self.num_class[mod]
+                    ).squeeze(1)          
+                else:
+                    targets = targets.reshape(-1, 1)
                 loss = self.mod_loss[mod_type](preds.float(), targets.float()).sum() / n_examples
-                preds, targets = preds.argmax(-1), targets.argmax(-1)
+                if mod in ["choice", "block"]:
+                    preds, targets = preds.argmax(-1), targets.argmax(-1)
             
             mod_loss[mod] = loss
             mod_n_examples[mod] = n_examples
@@ -314,14 +320,12 @@ class MultiModal(nn.Module):
             for name in ["inputs", "targets"]:
                 if len(mod_dict[mod][name].size()) == 2:
                     mod_dict[mod][name] = mod_dict[mod][name].unsqueeze(-1)
-
-            B, N, D = mod_dict[mod]["inputs"].size()
                         
             if mod_dict[mod]["eval_mask"] is None:
                 _, mask = self.masker(mod_dict[mod]["inputs"].clone(), None)
             else:
                 mask = mod_dict[mod]["eval_mask"]
-            
+
             mask = mask[...,0].to(torch.int64) & mod_dict[mod]["inputs_attn_mask"]
 
             if mod_dict[mod]["training_mode"] == "mixed":

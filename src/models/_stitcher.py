@@ -2,9 +2,15 @@ import numpy as np
 import torch
 from torch import nn
 
-STATIC_VARS = ["choice", "block"]
-DYNAMIC_VARS = ["wheel", "whisker"]
-OUTPUT_DIM = {"choice": 2, "block": 3, "wheel": 1, "whisker": 1}
+IBL_STATIC_VARS = ["choice", "block"]
+IBL_DYNAMIC_VARS = ["wheel", "whisker"]
+NLB_STATIC_VARS = ["finger_x_vel", "finger_y_vel"]
+NLB_DYNAMIC_VARS = []
+
+OUTPUT_DIM = {
+    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
+    "finger_x_vel": 1, "finger_y_vel": 1
+}
 
 class StitchEncoder(nn.Module):
     def __init__(self, 
@@ -22,8 +28,13 @@ class StitchEncoder(nn.Module):
         self.N = max(list(eid_list.values()))
         stitcher_dict, project_dict = {}, {}
         for key, val in eid_list.items():
-            val = 1 if mod in STATIC_VARS + DYNAMIC_VARS else self.N
-            mult = max_F if mod in STATIC_VARS else 1
+            if key == "nlb-rtt":
+                self.STATIC_VARS, self.DYNAMIC_VARS = NLB_STATIC_VARS, NLB_DYNAMIC_VARS
+            else:
+                self.STATIC_VARS, self.DYNAMIC_VARS = IBL_STATIC_VARS, IBL_DYNAMIC_VARS
+                
+            val = self.N if mod == "spike" else OUTPUT_DIM[mod]
+            mult = max_F if mod in self.STATIC_VARS else 1
             # token embedding layer
             stitcher_dict[str(key)] = nn.Linear(int(val), int(val) * 2 * mult)
             # projection layer
@@ -41,7 +52,7 @@ class StitchEncoder(nn.Module):
             mask = torch.tensor(np.argwhere(eid==group_eid), device=x.device).squeeze()
             x_group = x[mask]
             stitched = self.stitcher_dict[group_eid](x_group)
-            if self.mod in STATIC_VARS:
+            if self.mod in self.STATIC_VARS:
                 stitched = stitched.reshape(stitched.shape[0], -1, 2)
             stitched = self.act(stitched) * self.scale
             out[mask] = self.project_dict[group_eid](stitched)
@@ -63,9 +74,12 @@ class StitchDecoder(nn.Module):
         max_num_neuron = max(list(eid_list.values()))
         stitch_decoder_dict = {}
         for key, val in eid_list.items():
-            if mod in STATIC_VARS:
-                val, mult = OUTPUT_DIM[mod], 1
-            elif mod in DYNAMIC_VARS:
+            if key == "nlb-rtt":
+                self.STATIC_VARS, self.DYNAMIC_VARS = NLB_STATIC_VARS, NLB_DYNAMIC_VARS
+            else:
+                self.STATIC_VARS, self.DYNAMIC_VARS = IBL_STATIC_VARS, IBL_DYNAMIC_VARS
+
+            if mod in self.STATIC_VARS + self.DYNAMIC_VARS:
                 val, mult = OUTPUT_DIM[mod], 1
             else:
                 val, mult = max_num_neuron, 1
@@ -84,5 +98,4 @@ class StitchDecoder(nn.Module):
             x_group = x[mask]
             out[mask] = self.stitch_decoder_dict[group_eid](x_group)
         return out
-    
-    
+

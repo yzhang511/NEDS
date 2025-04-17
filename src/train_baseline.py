@@ -20,8 +20,6 @@ from torch.optim.lr_scheduler import OneCycleLR
 
 logging.basicConfig(level=logging.INFO) 
 
-STATIC_VARS = ["choice", "block"]
-DYNAMIC_VARS = ["wheel-speed", "whisker-motion-energy"]
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
@@ -34,6 +32,7 @@ ap.add_argument("--behavior", nargs="+", default=["wheel-speed", "whisker-motion
 ap.add_argument("--modality", nargs="+", default=["ap", "behavior"])
 ap.add_argument("--num_sessions", type=int, default=1)
 ap.add_argument("--overwrite", action="store_true")
+ap.add_argument("--use_nlb", action="store_true")
 args = ap.parse_args()
 
 kwargs = {"model": "include:src/configs/baseline.yaml"}
@@ -46,44 +45,70 @@ set_seed(config.seed)
 
 best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 
+if not args.use_nlb:
+    avail_beh = args.behavior
+    STATIC_VARS = ["choice", "block"]
+    DYNAMIC_VARS = ["wheel-speed", "whisker-motion-energy"]
+else:
+    avail_beh = ["finger_vel"]
+    STATIC_VARS = []
+    DYNAMIC_VARS = ["finger_vel"]
+
+OUTPUT_DIM = {
+    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
+    "cursor_pos": 2, "target_pos": 2, "finger_pos": 3, "finger_vel": 2
+}
+
 # ------ 
 # SET UP
-# ------ 
-
+# ------
 eid = args.eid
 base_path = args.base_path
-avail_beh = args.behavior 
-avail_mod = args.modality
+avail_beh = args.behavior if not args.use_nlb else avail_beh
+avail_mod = args.modality if not args.use_nlb else ["spike", "behavior"]
 model_mode = args.model_mode
 model_class = args.model
 n_beh = len(avail_beh)
 
 if args.model_mode == "decoding":
-    input_modal = ["ap"]
+    input_modal = ["ap"] if not args.use_nlb else ["spike"]
     output_modal = ["behavior"]
 elif args.model_mode == "encoding":
     input_modal = ["behavior"]
-    output_modal = ["ap"]
+    output_modal = ["ap"] if not args.use_nlb else ["spike"]
 else:
     raise ValueError(f"Model mode {model_mode} not supported.")
-    
+
 modal_filter = {"input": input_modal, "output": output_modal}
 
 
 # ---------
 # LOAD DATA
 # ---------
-train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
-    config.dirs.dataset_cache_dir, 
-    config.dirs.huggingface_org,
-    num_sessions=args.num_sessions,
-    eid = eid if args.num_sessions == 1 else None,
-    use_re=True,
-    split_method="predefined",
-    test_session_eid=[],
-    batch_size=config.training.train_batch_size,
-    seed=config.seed
-)
+if not args.use_nlb:
+    train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
+        config.dirs.dataset_cache_dir, 
+        config.dirs.huggingface_org,
+        num_sessions=args.num_sessions,
+        eid = eid if args.num_sessions == 1 else None,
+        use_re=True,
+        split_method="predefined",
+        test_session_eid=[],
+        batch_size=config.training.train_batch_size,
+        seed=config.seed
+    )
+else:
+    from utils.nlb_data_utils import load_nlb_dataset
+    trial_length, bin_size = 600, 20 # ms
+    train_dataset, val_dataset, test_dataset, meta_data = load_nlb_dataset(
+        "/projects/beez/yzhang39/nlb/000129/sub-Indy", 20
+    )
+    config["data"]["max_time_length"] = int(trial_length / bin_size)
+
+max_space_length = max(list(meta_data["eid_list"].values()))
+logging.info(f"MAX space length to pad spike data to: {max_space_length}")
+
+local_data_dir = "ibl_mm" if args.num_sessions == 1 else f"ibl_mm_{args.num_sessions}"
 
 train_dataloader = make_loader(
     train_dataset, 
@@ -93,16 +118,17 @@ train_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
     mode="train",
     eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
     shuffle=True,
+    use_nlb=args.use_nlb
 )
 
 val_dataloader = make_loader(
@@ -113,16 +139,17 @@ val_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
     mode="val",
     eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
-    shuffle=False
+    shuffle=False,
+    use_nlb=args.use_nlb
 )
 
 test_dataloader = make_loader(
@@ -133,16 +160,17 @@ test_dataloader = make_loader(
     pad_to_right=True, 
     pad_value=-1.,
     max_time_length=config.data.max_time_length,
-    max_space_length=meta_data["num_neurons"][0],
+    max_space_length=max_space_length,
     dataset_name=config.data.dataset_name,
     sort_by_depth=config.data.sort_by_depth,
     sort_by_region=config.data.sort_by_region,
     stitching=True,
     seed=config.seed,
-    data_dir=f"{args.data_path}/ibl_mm" if args.num_sessions == 1 else None,
+    data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
     mode="test",
     eids=list(meta_data["eids"]) if args.num_sessions == 1 else None,
-    shuffle=False
+    shuffle=False,
+    use_nlb=args.use_nlb
 )
 
 # --------
@@ -150,7 +178,10 @@ test_dataloader = make_loader(
 # --------
 
 num_sessions = len(meta_data["eid_list"])
-eid_ = "multi" if num_sessions > 1 else eid[:5]
+if not args.use_nlb:
+    eid_ = "multi" if num_sessions > 1 else eid[:5]
+else:
+    eid_ = eid
 
 log_name = "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_model-{}".format(
     num_sessions,
@@ -180,8 +211,7 @@ if config.wandb.use:
 # ------------
 # SET UP MODEL
 # ------------
-
-if "ap" in modal_filter["output"]:
+if ("ap" in modal_filter["output"]) or ("spike" in modal_filter["output"]):
     if args.model == "linear":
         model_class = "LinearEncoder" 
     elif args.model == "rrr":
@@ -189,8 +219,9 @@ if "ap" in modal_filter["output"]:
         meta_data["rank"] = args.rank
     else:
         raise NotImplementedError
-    input_size = n_beh
-    output_size = meta_data["num_neurons"]
+    
+    input_size = n_beh if not args.use_nlb else sum([OUTPUT_DIM[beh] for beh in avail_beh])
+    output_size = max_space_length
 else: 
     if args.model == "linear":
         model_class = "LinearDecoder" 
@@ -199,9 +230,10 @@ else:
         meta_data["rank"] = args.rank
     else:
         raise NotImplementedError
-    input_size = meta_data["num_neurons"]
+    
+    input_size = max_space_length
     if ("choice" not in avail_beh) and ("block" not in avail_beh):
-        output_size = n_beh
+        output_size = n_beh if not args.use_nlb else sum([OUTPUT_DIM[beh] for beh in avail_beh])
     elif ("choice" in avail_beh) and n_beh == 1:
         output_size = 2
     elif ("block" in avail_beh) and n_beh == 1:
@@ -225,6 +257,7 @@ else:
 model = model_class(
     in_channel=input_size, 
     out_channel=output_size,
+    seq_len=config.data.max_time_length,
     **config.method.model_kwargs, 
     **meta_data,
 )

@@ -45,4 +45,4 @@ encoder:
     mlp_bias: true        # learn bias in the mlp layers
     dropout: 0.4          # dropout in transformer layers
     fixup_init: true      # modify weight initialization
-
+    

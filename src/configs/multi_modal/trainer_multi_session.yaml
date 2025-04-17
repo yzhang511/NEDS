@@ -2,7 +2,7 @@ seed: 42
 
 savestring: test
 wandb_project: 4m-benchmark
-log_to_wandb: false
+log_to_wandb: true
 
 verbosity: 0
 
@@ -17,25 +17,25 @@ wandb:
 dirs:
   checkpoint_dir: checkpoints  # save model state dicts (todo optimizer states)
   log_dir: results  # save tensorboard logs
-  dataset_cache_dir: checkpoints/datasets_cache  # save dataset cache
+  dataset_cache_dir: /scratch/bdtg/yzhang39/datasets
   # dataset_dir: /home/ppwang/neural-data-transformers/data/lfads_lorenz.h5
   # pretrained_model_path: checkpoints/models/ndt1/ssl/temporal/model_best_multi-session.pt
   dataset_dir: neurofm123/671c7ea7-6726-4fbe-adeb-f89c2c8e489b_aligned
   behav_dir:  data/671c7ea7-6726-4fbe-adeb-f89c2c8e489b_aligned
-  huggingface_org: neurofm123
+  huggingface_org: ibl-repro-ephys
   
 
 
 # Training configuration
 training:
   num_epochs: 2000
-  train_batch_size: 16
-  test_batch_size: 16  
+  train_batch_size: 64
+  test_batch_size: 64  
   shuffle_test_dataloader: false    # Shuffle test dataloader between epochs
 
   save_plot_every_n_epochs: 20  # Plot the model output every n epochs
-  save_every: 100  # Save checkpoint
-  eval_every: null  # Eval model
+  save_every: 10  # Save checkpoint
+  eval_every: 5  # Eval model
 
   use_mtm: false
   mask_type: embd # embd/input
@@ -115,9 +115,9 @@ method:
 optimizer:
   gradient_accumulation_steps: 1
   lr: 2.e-4
-  wd: 0.05 #0.01
+  wd: 0.01
   eps: 1.e-8
-  warmup_pct: 0.15 # cosine/linear
-  gamma: 0.95     # step
+  warmup_pct: 0.15 # cosine/linear 
+  gamma: 0.95  # step 
   div_factor: 10  # cosine
   scheduler: cosine # step/cosine/linear
