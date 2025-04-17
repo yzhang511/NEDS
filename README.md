@@ -1,6 +1,6 @@
 # NEDS: Neural Encoding and Decoding at Scale
 
-We introduce a multimodal, multi-task model that enables simultaneous Neural Encoding and Decoding at Scale (NEDS). Central to our approach is a novel multi-task-masking strategy, which alternates between neural, behavioral, within-modality, and cross-modality masking. 
+We introduce a multimodal, multi-task model that enables simultaneous [Neural Encoding and Decoding at Scale (NEDS)](https://arxiv.org/abs/2504.08201). Central to our approach is a novel multi-task-masking strategy, which alternates between neural, behavioral, within-modality, and cross-modality masking. 
 
 ![NEDS](assets/neds_schematic.png)
 
