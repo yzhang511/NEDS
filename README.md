@@ -27,8 +27,8 @@ conda activate neds
 
 | Model | Description | Download |
 |-------|-------------|------|
-| NEDS-40 | NEDS trained on 40 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-40) |
-| NEDS-79 | NEDS trained on 79 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-79) |
+| NEDS (Medium) | NEDS trained on 40 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-medium) |
+| NEDS (Large) | NEDS trained on 79 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-large) |
 
 
 ## Citation

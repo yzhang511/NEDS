@@ -1,49 +1,54 @@
 import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import wandb
 import pickle
 import logging
 import argparse
 import threading
 import numpy as np
-import torch
-from utils.dataset_utils import (
-    load_ibl_dataset, 
-)
-from accelerate import Accelerator
-from loader.make_loader import make_loader
-from utils.utils import set_seed, dummy_load
-from utils.config_utils import config_from_kwargs, update_config
-from multi_modal.mm import MultiModal
-from torch.optim.lr_scheduler import OneCycleLR, LinearLR
-from trainer.make import make_multimodal_trainer
-from multi_modal.encoder_embeddings import EncoderEmbedding
 
+import torch
+from torch.optim.lr_scheduler import OneCycleLR, LinearLR
+
+from accelerate import Accelerator
 from accelerate.utils import DistributedDataParallelKwargs
+
 import ray
 from ray import tune, train
 from ray.tune.schedulers import ASHAScheduler
 
+from utils.utils import set_seed, dummy_load
+from utils.dataset_utils import load_ibl_dataset
+from utils.config_utils import config_from_kwargs, update_config
+
+from loader.make_loader import make_loader
+from trainer.make import make_multimodal_trainer
+
+from multi_modal.mm import MultiModal
+from multi_modal.encoder_embeddings import EncoderEmbedding
+
+
 def main(tune_config=None):
 
-    if args.use_nlb:
-        neural_acronyms = {"spike": "spike"}
-        static_acronyms = {
-            "finger_x_vel": "finger_x_vel", "finger_y_vel": "finger_y_vel",
-        }
-        dynamic_acronyms = {}
-    else:
-        neural_acronyms = {"ap": "spike", "lfp": "lfp"}
-        static_acronyms = {"choice": "choice", "block": "block"}
-        dynamic_acronyms = {"wheel-speed": "wheel", "whisker-motion-energy": "whisker"}
+    neural_acronyms = {
+        "ap": "spike"
+    }
+    static_acronyms = {
+        "choice": "choice", 
+        "block": "block"
+    }
+    dynamic_acronyms = {
+        "wheel-speed": "wheel", 
+        "whisker-motion-energy": "whisker"
+    }
 
-    if args.num_sessions <= 10:
+    if args.num_sessions == 1:
         model_config = f"{args.config_dir}/multi_modal/mm_single_session.yaml"
-    elif args.num_sessions > 70:
+    elif (args.num_sessions < 70) and (args.num_sessions > 10):
+        model_config = f"{args.config_dir}/multi_modal/mm_medium_size.yaml"
+    elif args.num_sessions >= 70:
         model_config = f"{args.config_dir}/multi_modal/mm_large_size.yaml"
     else:
-        model_config = f"{args.config_dir}/multi_modal/mm.yaml"
+        model_config = f"{args.config_dir}/multi_modal/mm.yaml" # default
 
     kwargs = {"model": f"include:{model_config}"}
     config = config_from_kwargs(kwargs)
@@ -54,13 +59,7 @@ def main(tune_config=None):
         config = update_config(f"{args.config_dir}/multi_modal/trainer_multi_session.yaml", config)
         
     if args.model_mode == "encoding":
-        config["training"]["num_epochs"] = 4000 if not args.use_nlb else config.training.num_epochs
-
-    if args.use_nlb:
-        config["optimizer"]["lr"] = 0.001
-        config["training"]["train_batch_size"] = 256
-        config["training"]["test_batch_size"] = 256
-        config["training"]["num_epochs"] = 2000 if args.model_mode == "mm" else 1000
+        config["training"]["num_epochs"] = 4000
 
     set_seed(config.seed)
 
@@ -130,12 +129,12 @@ def main(tune_config=None):
     num_epochs = 4_000 if model_mode == "encoding" else config.training.num_epochs
     max_lr = 5e-4 if model_mode == "encoding" else lr
 
-    if args.multi_gpu and not args.use_nlb:
+    if args.multi_gpu:
         num_epochs *= accelerator.num_processes
         if accelerator.num_processes > max_num_processes:
             max_lr *= max_num_processes / 2
             global_batch_size = 512
-        elif args.num_sessions > 70:
+        elif args.num_sessions >= 70:
             max_lr = 0.003
             global_batch_size = 1024
         else:
@@ -145,36 +144,24 @@ def main(tune_config=None):
     # ---------
     # LOAD DATA
     # ---------
-    if not args.use_nlb:
-        train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
-            args.data_path, 
-            config.dirs.huggingface_org,
-            num_sessions=args.num_sessions,
-            eid = eid if args.num_sessions == 1 else None,
-            use_re=True,
-            split_method="predefined",
-            test_session_eid=[],
-            batch_size=batch_size,
-            seed=config.seed
-        )
-    else:
-        from utils.nlb_data_utils import load_nlb_dataset
-        trial_length, bin_size, tau_prime = 600, args.nlb_bin_size, 13 # ms
-        train_dataset, val_dataset, test_dataset, meta_data = load_nlb_dataset(
-            "/u/yzhang39/multi_modal_foundation_model/data/mc_rtt.pickle", bin_size_ms=bin_size, tau_prime=tau_prime
-        )
-        config["data"]["max_time_length"] = tau_prime # int(trial_length / bin_size)
-        config["model"]["encoder"]["embedder"]["max_F"] = tau_prime # int(trial_length / bin_size)
+    train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
+        args.data_path, 
+        config.dirs.huggingface_org,
+        num_sessions=args.num_sessions,
+        eid = eid if args.num_sessions == 1 else None,
+        use_re=True,
+        split_method="predefined",
+        test_session_eid=[],
+        batch_size=batch_size,
+        seed=config.seed
+    )
 
     max_space_length = max(list(meta_data["eid_list"].values()))
     logging.info(f"MAX space length to pad spike data to: {max_space_length}")
 
     local_data_dir = "ibl_mm" if args.num_sessions == 1 else f"ibl_mm_{args.num_sessions}"
 
-    if args.use_nlb:
-        target_behavior_lst = [mod for mod in modality if mod in static_acronyms]
-    else:
-        target_behavior_lst = [mod for mod in modality if mod in dynamic_acronyms]
+    target_behavior_lst = [mod for mod in modality if mod in dynamic_acronyms]
 
     train_dataloader = make_loader(
         train_dataset, 
@@ -190,11 +177,10 @@ def main(tune_config=None):
         sort_by_region=config.data.sort_by_region,
         stitching=True,
         seed=config.seed,
-        data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
+        data_dir=f"{args.data_path}/{local_data_dir}",
         mode="train",
         eids=list(meta_data["eids"]),
         shuffle=True,
-        use_nlb=args.use_nlb
     )
     val_dataloader = make_loader(
         val_dataset, 
@@ -210,11 +196,10 @@ def main(tune_config=None):
         sort_by_region=config.data.sort_by_region,
         stitching=True,
         seed=config.seed,
-        data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
+        data_dir=f"{args.data_path}/{local_data_dir}",
         mode="val",
         eids=list(meta_data["eids"]),
         shuffle=False,
-        use_nlb=args.use_nlb
     )
     test_dataloader = make_loader(
         test_dataset, 
@@ -230,21 +215,17 @@ def main(tune_config=None):
         sort_by_region=config.data.sort_by_region,
         stitching=True,
         seed=config.seed,
-        data_dir=f"{args.data_path}/{local_data_dir}" if not args.use_nlb else None,
+        data_dir=f"{args.data_path}/{local_data_dir}",
         mode="test",
         eids=list(meta_data["eids"]),
         shuffle=False,
-        use_nlb=args.use_nlb
     )
 
     # --------
     # SET PATH
     # --------
     num_sessions = len(meta_data["eid_list"])
-    if not args.use_nlb:
-        eid_ = "multi" if num_sessions > 1 else eid[:5]
-    else:
-        eid_ = args.eid
+    eid_ = "multi" if num_sessions > 1 else eid[:5]
 
     log_name = \
     "sesNum-{}_ses-{}_set-train_inModal-{}_outModal-{}_mask-{}_mode-{}_ratio-{}_taskVar-{}".format(
@@ -260,7 +241,7 @@ def main(tune_config=None):
     if args.search:
         trial_dir = train.get_context().get_trial_dir()
         trial_name = os.path.basename(trial_dir)
-        log_dir = os.path.join(ray_path, f"{eid_}_{model_mode}_binSize-{args.nlb_bin_size}", trial_name)
+        log_dir = os.path.join(ray_path, f"{eid_}_{model_mode}", trial_name)
     else: 
         log_dir = os.path.join(base_path, "results", log_name)
 
@@ -470,8 +451,6 @@ if __name__ == "__main__":
     ap.add_argument("--dummy_load", action="store_true")
     ap.add_argument("--dummy_size", type=int, default=50000)
     ap.add_argument("--search", action="store_true")
-    ap.add_argument("--use_nlb", action="store_true")
-    ap.add_argument("--nlb_bin_size", type=int, default=20)
     ap.add_argument("--num_tune_sample", type=int, default=50)
     ap.add_argument("--config_dir", type=str, default="configs")
     args = ap.parse_args()
@@ -504,10 +483,7 @@ if __name__ == "__main__":
         print("Starting hyperparameter search")
         print(f"Saving to {ray_path}")
 
-        if not args.use_nlb:
-            eid_ = "multi" if args.num_sessions > 1 else args.eid[:5]
-        else:
-            eid_ = args.eid
+        eid_ = "multi" if args.num_sessions > 1 else args.eid[:5]
         
         analysis = tune.run(
             main,
@@ -519,7 +495,7 @@ if __name__ == "__main__":
             num_samples=args.num_tune_sample,
             scheduler=scheduler,
             storage_path=ray_path,
-            name=f"{eid_}_{args.model_mode}_binSize-{args.nlb_bin_size}",
+            name=f"{eid_}_{args.model_mode}",
             log_to_file=True,
             verbose=2
         )
