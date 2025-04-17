@@ -11,24 +11,25 @@ conda env create -f env.yaml
 conda activate neds
 ```
 
-## Data
+## Datasets and Models
 
 
-## Train NEDS
+### Train NEDS
 
 
-## Finetune NEDS
+### Finetune NEDS
 
 
-## Evaluate NEDS
+### Evaluate NEDS
 
 
-## Pretrained Weights
+### Pretrained Weights
 
 | Model | Description | Download |
 |-------|-------------|------|
 | NEDS-40 | NEDS trained on 40 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-40) |
 | NEDS-79 | NEDS trained on 79 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-79) |
+
 
 ## Citation
 Please cite our paper if you use this code in your own work:
