@@ -1,11 +1,11 @@
 # NEDS: Neural Encoding and Decoding at Scale
 
+We introduce a multimodal, multi-task model that enables simultaneous Neural Encoding and Decoding at Scale (NEDS). Central to our approach is a novel multi-task-masking strategy, which alternates between neural, behavioral, within-modality, and cross-modality masking. 
+
+
 
 ## Installation
 `conda env create -f env.yaml`
-
-
-
 
 ## Citation
 Please cite our paper if you use this code in your own work:
