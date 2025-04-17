@@ -6,8 +6,29 @@ We introduce a multimodal, multi-task model that enables simultaneous [Neural En
 
 ## Installation
 
-`conda env create -f env.yaml`
+```bash
+conda env create -f env.yaml
+conda activate neds
+```
 
+## Data
+
+
+## Train NEDS
+
+
+## Finetune NEDS
+
+
+## Evaluate NEDS
+
+
+## Pretrained Weights
+
+| Model | Description | Download |
+|-------|-------------|------|
+| NEDS-40 | NEDS trained on 40 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-40) |
+| NEDS-79 | NEDS trained on 79 sessions from IBL repeated site dataset | [Download](https://huggingface.co/neds/neds-79) |
 
 ## Citation
 Please cite our paper if you use this code in your own work:
