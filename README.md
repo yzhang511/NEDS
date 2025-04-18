@@ -25,11 +25,11 @@ sbatch prepare_data.sh 84       # Download 84 sessions from the IBL repeated-sit
 To accelerate data loading during training, we pre-save the partitioned train/val/test data and load it when needed:
 
 ```bash
-sbatch create_dataset.sh 1 EID  # Save the train/val/test data for a session using the provided EID
+sbatch create_dataset.sh 1 EID    # Save the train/val/test data for a session using the provided EID
 
-source run_create_dataset.sh    # Save the train/val/test data for each of the 10 test sessions individually
+source run_create_dataset.sh      # Save the train/val/test data for each of the 10 test sessions individually
 
-sbatch create_dataset.sh 10     # Save the train/val/test data for pretraining on a set of 10 sessions
+sbatch create_dataset.sh 10 none  # Save the train/val/test data for pretraining on a set of 10 sessions
 ```
 
 ### Train NEDS

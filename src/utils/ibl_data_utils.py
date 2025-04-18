@@ -260,7 +260,7 @@ def bin_spiking_data(
 
 def load_target_behavior(one, eid, target):
     
-    sess_loader = SessionLoader(one, eid)
+    sess_loader = SessionLoader(one, eid=eid)
     
     try:
         if target == "wheel-position":

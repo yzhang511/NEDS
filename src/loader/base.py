@@ -510,23 +510,15 @@ class BaseDataset(torch.utils.data.Dataset):
             "reward": reward,
             **target_behavior_dict,
         }
-
-    def _prepare_target_behavior(self, data, idx=None):
-        target_behavior, target_behavior_dict = [], {}
-        try:
-            for beh_name in self.target:
-                if idx is not None:
-                    beh = np.array(data[beh_name][idx], dtype=np.float32)
-                else:
-                    beh = np.array(data[beh_name], dtype=np.float32)
-                target_behavior.append(beh)
-                target_behavior_dict[beh_name.split("-")[0]] = beh
-
-            target_behavior = np.array(target_behavior).T
-
-        except (ValueError, TypeError):
-            target_behavior = np.array([np.nan])
-        return target_behavior, target_behavior_dict
+    
+    def _prepare_target_behavior(self, data):
+        target_behavior = []
+        target_behavior_dict = {}
+        for beh_name in self.target:
+            beh = np.array(data[beh_name], dtype=np.float32)
+            target_behavior.append(beh)
+            target_behavior_dict[beh_name.split('-')[0]] = beh
+        return np.array(target_behavior).T, target_behavior_dict
 
     def _prepare_column_data(self, col_name, data):
         return np.array(data[col_name], dtype=np.float32)
