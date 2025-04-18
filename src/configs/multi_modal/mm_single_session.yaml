@@ -35,13 +35,13 @@ encoder:
 
   transformer:
     use_rope: true
-    n_layers: 5          # number of transformer layers (5)
+    n_layers: 5           # number of transformer layers (5)
     hidden_size: 256      # hidden space of the transformer (256)
     use_scalenorm: false  # use scalenorm  instead of layernorm
     n_heads: 8            # number of attentiomn heads
     attention_bias: true  # learn bias in the attention layers
     act: gelu             # activiation function in mlp layers
-    inter_size: 512      # intermediate dimension in the mlp layers (512)
+    inter_size: 512       # intermediate dimension in the mlp layers (512)
     mlp_bias: true        # learn bias in the mlp layers
     dropout: 0.4          # dropout in transformer layers
     fixup_init: true      # modify weight initialization

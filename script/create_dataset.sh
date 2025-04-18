@@ -19,13 +19,15 @@ conda activate neds
 
 cd ..
 
+user_name=$(whoami)
+
 python src/create_dataset.py --eid $eid \
                              --num_sessions $num_sessions \
                              --model_mode mm \
                              --mask_ratio 0.1 \
                              --mixed_training \
-                             --base_path ./\
-                             --data_path /projects/bcxj/yzhang39/datasets/
+                             --base_path ./ \
+                             --data_path /projects/bcxj/$user_name/datasets/
 
 conda deactivate
 
