@@ -8,7 +8,7 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem 100000
-#SBATCH -t 0-04
+#SBATCH -t 0-06
 #SBATCH --export=ALL
 
 set -x
@@ -45,55 +45,56 @@ else
 fi
 
 if [ $train_mode = "finetune" ]; then
-    python_file="src/finetune_multi_modal.py"
+    python_file="src/finetune.py"
 else
-    python_file="src/train_multi_modal.py"
+    python_file="src/train.py"
 fi
 
-# Getting the node names
-nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
-nodes_array=($nodes)
+if [ "$search" = "--search" ]; then
+    # Getting the node names
+    nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+    nodes_array=($nodes)
 
-head_node=${nodes_array[0]}
-head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+    head_node=${nodes_array[0]}
+    head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 
-# If we detect a space character in the head node IP, we'll
-# convert it to an ipv4 address. This step is optional.
-if [[ "$head_node_ip" == *" "* ]]; then
-IFS=' ' read -ra ADDR <<<"$head_node_ip"
-if [[ ${#ADDR[0]} -gt 16 ]]; then
-  head_node_ip=${ADDR[1]}
-else
-  head_node_ip=${ADDR[0]}
-fi
-echo "IPV6 address detected. We split the IPV4 address as $head_node_ip"
-fi
+    # If we detect a space character in the head node IP, we'll
+    # convert it to an ipv4 address. This step is optional.
+    if [[ "$head_node_ip" == *" "* ]]; then
+    IFS=' ' read -ra ADDR <<<"$head_node_ip"
+    if [[ ${#ADDR[0]} -gt 16 ]]; then
+    head_node_ip=${ADDR[1]}
+    else
+    head_node_ip=${ADDR[0]}
+    fi
+    echo "IPV6 address detected. We split the IPV4 address as $head_node_ip"
+    fi
 
-# Starting the Ray head node
-port=1111
-ip_head=$head_node_ip:$port
-export ip_head
-echo "IP Head: $ip_head"
+    # Starting the Ray head node
+    port=1111
+    ip_head=$head_node_ip:$port
+    export ip_head
+    echo "IP Head: $ip_head"
 
-echo "Starting HEAD at $head_node"
-srun --nodes=1 --ntasks=1 -w "$head_node" \
-    ray start --head --node-ip-address="$head_node_ip" --port=$port \
-    --num-cpus "1" --num-gpus "1" --block &
-
-# Starting the Ray worker nodes
-sleep 10
-
-worker_num=$((SLURM_JOB_NUM_NODES - 1))  # number of nodes other than the head node
-
-for ((i = 1; i <= worker_num; i++)); do
-    node_i=${nodes_array[$i]}
-    echo "Starting WORKER $i at $node_i"
-    srun --nodes=1 --ntasks=1 -w "$node_i" \
-        ray start --address "$ip_head" \
+    echo "Starting HEAD at $head_node"
+    srun --nodes=1 --ntasks=1 -w "$head_node" \
+        ray start --head --node-ip-address="$head_node_ip" --port=$port \
         --num-cpus "1" --num-gpus "1" --block &
-    sleep 5
-done
 
+    # Starting the Ray worker nodes
+    sleep 10
+
+    worker_num=$((SLURM_JOB_NUM_NODES - 1))  # number of nodes other than the head node
+
+    for ((i = 1; i <= worker_num; i++)); do
+        node_i=${nodes_array[$i]}
+        echo "Starting WORKER $i at $node_i"
+        srun --nodes=1 --ntasks=1 -w "$node_i" \
+            ray start --address "$ip_head" \
+            --num-cpus "1" --num-gpus "1" --block &
+        sleep 5
+    done
+fi
 
 if [ $model_mode = "mm" ]; then
     echo "Training multimodal model:"

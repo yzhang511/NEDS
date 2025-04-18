@@ -46,7 +46,7 @@ else
 fi
 
 if [ $model_mode = "mm" ]; then
-    python src/eval_multi_modal.py --eid ${eid} \
+    python src/eval.py --eid ${eid} \
                                 --mask_mode temporal \
                                 --mask_ratio ${mask_rartio} \
                                 --seed 42 \
@@ -62,7 +62,7 @@ if [ $model_mode = "mm" ]; then
                                 ${search}
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
-    python src/eval_multi_modal.py --eid ${eid} \
+    python src/eval.py --eid ${eid} \
                                 --mask_mode temporal \
                                 --mask_ratio ${mask_rartio} \
                                 --seed 42 \

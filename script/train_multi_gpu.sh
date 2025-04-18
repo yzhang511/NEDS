@@ -46,7 +46,7 @@ export LAUNCHER="torchrun \
     --rdzv_backend c10d \
     --rdzv_endpoint $head_node_ip:29500 \
     "
-export SCRIPT="src/train_multi_modal.py"
+export SCRIPT="src/train.py"
 
 if [ $model_mode = "mm" ]; then
     export SCRIPT_ARGS=" \

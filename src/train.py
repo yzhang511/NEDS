@@ -301,7 +301,7 @@ def main(tune_config=None):
         eps=config.optimizer.eps
     )
 
-    num_train = len(train_dataset["spike"])
+    num_train = len(train_dataset["eid"])
     grad_accum_steps = config.optimizer.gradient_accumulation_steps
     total_steps=int(num_epochs*(num_train//global_batch_size))//grad_accum_steps
     if config.optimizer.scheduler == "linear":
@@ -358,7 +358,7 @@ def main(tune_config=None):
     # -----------------------
     n_mods = len(modal_filter["input"])
     n_tokens_per_mod = config.model.encoder.embedder.max_F
-    num_train = len(train_dataset["spike"])
+    num_train = len(train_dataset["eid"])
     logging.info(f"Total modality: {n_mods} Total tokens per modality: {n_tokens_per_mod}")
     logging.info(f"Total trials: {num_train}")
 
