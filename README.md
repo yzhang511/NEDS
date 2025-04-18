@@ -7,53 +7,59 @@ We introduce a multimodal, multi-task model that enables simultaneous [Neural En
 ## Installation
 
 ```bash
-conda env create -f env.yaml
+conda env create -f env.yaml    # Create conda environment
 
-conda activate neds
+conda activate neds             # Activate conda environment
 ```
 
 ## Datasets and Models
 
-Download and prepare the IBL data. Please change the `base_path` and `data_path` in the scripts to your own path:
+Download and prepare the IBL dataset. Update `base_path` and `data_path` in the scripts:
 
 ```bash
-sbatch prepare_data.sh 1 EID  # Download the data for a single session using a given EID
-sbatch prepare_data.sh 84     # Download the sessions from the IBL repeated site dataset
+sbatch prepare_data.sh 1 EID    # Download data for a session using the provided EID
+
+sbatch prepare_data.sh 84       # Download 84 sessions from the IBL repeated-site dataset
 ```
 
-To speed up data loading, we save the partitioned data ahead of time and load them later:
+To accelerate data loading during training, we pre-save the partitioned train/val/test data and load it when needed:
+
 ```bash
-sbatch create_dataset.sh 1 EID  # Save the partitioned data for a single session  
-source run_create_dataset.sh    # Save the partitioned data for the 10 test sessions (single session)
-sbatch create_dataset.sh 10     # Save the partitioned data for pretraining on 10 sessions
+sbatch create_dataset.sh 1 EID  # Save the train/val/test data for a session using the provided EID
+
+source run_create_dataset.sh    # Save the train/val/test data for each of the 10 test sessions individually
+
+sbatch create_dataset.sh 10     # Save the train/val/test data for pretraining on a set of 10 sessions
 ```
 
 ### Train NEDS
 
-To train NEDS (from scratch) on a single session using a single GPU:
+Train NEDS from scratch on a single session using a single GPU. Update `base_path` and `data_path` in the script:
 
 ```bash
-bash script/train.sh 1 0 mm 100 False 0.5 False
+sbatch train.sh 1 EID train mm 0 0.1 False random        # Train multi-modal model
+
+sbatch train.sh 1 EID train encoding 0 0.1 False random  # Train encoding model
+
+sbatch train.sh 1 EID train decoding 0 0.1 False all     # Train decoding model
 ```
 
-To train NEDS (from scratch) on a single session using hyperparameter search:
+Use `Ray Tune` for hyperparameter search. Update `num_tune_sample` in the script to change the number of random models:
 
 ```bash
-bash script/train.sh 1 0 mm 100 True 0.5 False
+sbatch train.sh 1 EID train mm 0 0.1 True random
 ```
 
-To train NEDS (from scratch) on multiple sessions using multiple GPUs:
+Pre-train NEDS on 10 sessions using multiple GPUs. Update `--nodes` and `--ntasks` in the script to change the number of GPUs used:
 
 ```bash
-bash script/train.sh 1 0 mm 100 False 0.5 False
+sbatch train_multi_gpu.sh 10 none mm 0 0.1 all   # Pre-training requires "all"
 ```
 
-### Finetune NEDS
-
-To finetune pretrained NEDS on a single session:
+Fine-tune the pre-trained 10-session NEDS model on a single held-out test session:
 
 ```bash
-bash script/finetune.sh 1 0 mm 100 False 0.5 False
+sbatch train.sh 10 EID finetune mm 0 0.1 False random
 ```
 
 ### Evaluate NEDS
@@ -61,8 +67,14 @@ bash script/finetune.sh 1 0 mm 100 False 0.5 False
 To evaluate NEDS on a single session:
 
 ```bash
-bash script/eval.sh 1 0 mm 100 False False
+sbatch eval.sh 1 EID train mm 0.1 random False     # Eval a model trained from scratch (no hyperparameter search)
+
+sbatch eval.sh 1 EID finetune mm 0.1 random False  # Eval a model fine-tuned on a held-out test session (no hyperparameter search)
+
+sbatch eval.sh 1 EID train mm 0.1 random True      # Eval a model trained from scratch (with hyperparameter search)
 ```
+**NOTE**: If you want to evaluate a model after hyperparameter tuning, locate the best model in the training logs and keep only its folder in `/YOUR_PATH/tune/`. Alternatively, you can change `eval.py` to automatically load the best checkpoint.
+
 
 ### Pretrained Weights
 
@@ -70,6 +82,8 @@ bash script/eval.sh 1 0 mm 100 False False
 |-------|-------------|------|
 | NEDS (Medium) | NEDS trained on 40 sessions from IBL repeated site dataset | Coming soon |
 | NEDS (Large) | NEDS trained on 79 sessions from IBL repeated site dataset | Coming soon |
+
+The IBL sessions used for pre-training are in `data/train_eids.txt`, while the held-out sessions for evaluation are in `data/test_eids.txt`.
 
 
 ## Citation

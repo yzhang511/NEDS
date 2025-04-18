@@ -21,14 +21,21 @@ cd ..
 
 num_sessions=${1}
 eid=${2}
-model_mode=${3}
-mask_rartio=${4}
-task_var=${5}
-search=${6}
+train_mode=${3}
+model_mode=${4}
+mask_rartio=${5}
+task_var=${6}
+search=${7}
 
 user_name=$(whoami)
 base_path="./" # change to your own path
 data_path="/projects/bcxj/$user_name/datasets/"
+
+if [ $train_mode = "finetune" ]; then
+    finetune="--finetune"
+else
+    finetune=""
+fi
 
 if [ "$search" = "True" ]; then
     echo "Doing hyperparameter search"
@@ -46,6 +53,7 @@ if [ $model_mode = "mm" ]; then
                                 --base_path $base_path \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
+                                ${finetune} \
                                 --model_mode ${model_mode} \
                                 --wandb \
             			        --overwrite \
@@ -60,6 +68,7 @@ then
                                 --seed 42 \
                                 --base_path $base_path \
                                 --num_sessions ${num_sessions} \
+                                ${finetune} \
                                 --model_mode ${model_mode} \
                                 --wandb \
 				                --overwrite \
