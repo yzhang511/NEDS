@@ -1,49 +1,24 @@
 import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
-import wandb
-import pickle
 import logging
 import argparse
-import threading
 import numpy as np
-from math import ceil
+from tqdm import tqdm
+
 import torch
 from datasets import (
-    load_dataset, 
-    load_from_disk, 
-    concatenate_datasets, 
-    load_dataset_builder
+    load_dataset, load_from_disk, concatenate_datasets
 )
-from utils.dataset_utils import (
-    get_user_datasets, 
-    load_ibl_dataset, 
-    split_both_dataset
-)
-from datasets import (
-    load_dataset, 
-    load_from_disk, 
-    concatenate_datasets
-)
-from collections import OrderedDict
-from accelerate import Accelerator
-from collections import defaultdict
-from loader.make_loader import make_loader
-from utils.utils import set_seed, dummy_load
+
+from utils.utils import set_seed
+from utils.dataset_utils import load_ibl_dataset
 from utils.config_utils import config_from_kwargs, update_config
-from multi_modal.mm import MultiModal
-from torch_optimizer import Lamb
-from torch.optim.lr_scheduler import OneCycleLR
-from trainer.make import make_multimodal_trainer
-from multi_modal.encoder_embeddings import EncoderEmbedding
-from tqdm import tqdm
-from accelerate.utils import DistributedDataParallelKwargs
+
+from loader.make_loader import make_loader
 
 logging.basicConfig(level=logging.INFO) 
 
 neural_acronyms = {
     "ap": "spike",
-    "lfp": "lfp",
 }
 static_acronyms = {
     "choice": "choice", 
@@ -62,10 +37,10 @@ set_seed(config.seed)
 
 best_ckpt_path, last_ckpt_path = "model_best.pt", "model_last.pt"
 
+
 # ------ 
 # SET UP
 # ------ 
-
 ap = argparse.ArgumentParser()
 ap.add_argument("--eid", type=str, default="EXAMPLE_EID")
 ap.add_argument("--base_path", type=str, default="EXAMPLE_PATH")
@@ -79,21 +54,8 @@ ap.add_argument(
     "--modality", nargs="+", 
     default=["ap", "wheel-speed", "whisker-motion-energy", "choice", "block"]
 )
-ap.add_argument("--continue_pretrain", action="store_true")
-ap.add_argument("--multi_gpu", action="store_true")
-ap.add_argument("--debug", action="store_true")
-ap.add_argument("--overwrite", action="store_true")
-ap.add_argument("--dummy_load", action="store_true")
-ap.add_argument("--dummy_size", type=int, default=50000)
 args = ap.parse_args()
 
-if args.debug:
-    # Debug using deterministic mode
-    torch.use_deterministic_algorithms(True)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    logging.info("Deterministic mode is activated. This will negatively impact performance.")
 
 eid = args.eid
 base_path = args.base_path
@@ -131,7 +93,6 @@ modal_filter = {"input": input_mods, "output": output_mods}
 # ---------
 # LOAD DATA
 # ---------
-
 train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
     args.data_path,  
     config.dirs.huggingface_org,
@@ -163,25 +124,22 @@ train_dataloader = make_loader(
     seed=config.seed,
     shuffle=True
 )
+
 base_path = args.data_path
 dataset_name = 'ibl_mm' if args.num_sessions == 1 else f'ibl_mm_{args.num_sessions}'
-import time
-start = time.time()
+
 train_save_dir = os.path.join(base_path, dataset_name, 'train')
 val_save_dir = os.path.join(base_path, dataset_name, 'val')
 test_save_dir = os.path.join(base_path, dataset_name, 'test')
 os.makedirs(train_save_dir, exist_ok=True)
 os.makedirs(val_save_dir, exist_ok=True)
 os.makedirs(test_save_dir, exist_ok=True)
+
 count = 0
 for train_data in tqdm(train_dataloader):
-    end = time.time()
-    # logging.info(f"Time to load one batch: {end-start}")
-    start = time.time()
     new_dict = {}
     for key, value in train_data.items():
         if type(value) == torch.Tensor:
-            # change to numpy array
             value = value.cpu().numpy()
         if key == 'neuron_regions':
             neuron_region=[]
@@ -190,20 +148,12 @@ for train_data in tqdm(train_dataloader):
             new_dict[key] = neuron_region
         else:
             new_dict[key] = value[0]
-    # for key, value in new_dict.items():
-    #     if type(value) == torch.Tensor:
-    #         logging.info(f"Key: {key} Shape: {value.shape}")
-    #     elif type(value) == list:
-    #         logging.info(f"Key: {key} Length: {len(value)}")
-    #     elif type(value) == np.ndarray:
-    #         logging.info(f"Key: {key} Shape: {value.shape}")
-    #     else:
-    #         logging.info(f"Key: {key} Type: {type(value)}, Value: {value}")
     eid = new_dict['eid']
     save_path = os.path.join(train_save_dir, f"{eid}_{count}")
     # save to npy file
     np.save(save_path, new_dict)
     count += 1
+
 count = 0
 val_dataloader = make_loader(
     val_dataset, 
@@ -275,4 +225,5 @@ for test_data in tqdm(test_dataloader):
     # save to npy file
     np.save(save_path, new_dict)
     count += 1
+
 logging.info("Finished saving data")

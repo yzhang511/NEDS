@@ -1,8 +1,8 @@
 import os
+import wandb
 import random
 import numpy as np
 from tqdm import tqdm
-import wandb
 import torch
 from utils.utils import (
     move_batch_to_device, 
@@ -13,8 +13,10 @@ from utils.utils import (
 from sklearn.metrics import balanced_accuracy_score, r2_score
 
 OUTPUT_DIM = {
-    "choice": 2, "block": 3, "wheel": 1, "whisker": 1, 
-    "finger_x_vel": 1, "finger_y_vel": 1
+    "choice": 2, 
+    "block": 3, 
+    "wheel": 1, 
+    "whisker": 1, 
 }
 
 def set_seed(epoch, base_seed=42):
@@ -82,9 +84,8 @@ class MultiModalTrainer():
 
         self.start_epoch = kwargs.get("start_epoch", 0)
 
-        self.STATIC_VARS = ["choice", "block"] if "choice" in self.avail_beh else ["finger_x_vel", "finger_y_vel"]
-        self.DYNAMIC_VARS = ["wheel", "whisker"] if "wheel" in self.avail_beh else []
-
+        self.STATIC_VARS = ["choice", "block"]
+        self.DYNAMIC_VARS = ["wheel", "whisker"]
 
     def _prepare_multimodal_mask(self, mod_dict, training_mode, all_ones, all_zeros):
         
@@ -133,7 +134,6 @@ class MultiModalTrainer():
         avail_mod = self.mod_to_indx.keys() if not self.zero_shot_transfer else self.modal_filter["output"]
         
         for mod in avail_mod:
-            
             mod_idx = self.mod_to_indx[mod]
             mod_dict[mod] = {}
             mod_dict[mod]["inputs_modality"] = torch.tensor(mod_idx).to(self.accelerator.device)
@@ -215,10 +215,7 @@ class MultiModalTrainer():
                 if eval_epoch_results:
 
                     for eval_name in best_eval_metric.keys():
-                        if "finger_x_vel" in self.modal_filter["output"]:
-                            mode = "_".join(eval_name.split("_")[1:])
-                        else:
-                            mode = eval_name.split("_")[1]
+                        mode = eval_name.split("_")[1]
                         if eval_epoch_results[eval_name] > best_eval_metric[eval_name]:
                             best_eval_metric[eval_name] = eval_epoch_results[eval_name]
                             print(
@@ -350,7 +347,7 @@ class MultiModalTrainer():
                                 session_results[group_eid]["spike"]["gt"].append(_gt)
                                 session_results[group_eid]["spike"]["preds"].append(_pred)
     
-                if ("wheel" in self.modal_filter["output"]) or ("finger_x_vel" in self.modal_filter["output"]):
+                if "wheel" in self.modal_filter["output"]:
                     for batch in self.eval_dataloader:
                         eid = np.array(batch["eid"])
                         outputs = self._forward_model_inputs(batch, training_mode="decoding")
@@ -565,3 +562,4 @@ class MultiModalTrainer():
                     "lr_sched": self.lr_scheduler.state_dict(),
                 }
             torch.save(dict_config, os.path.join(self.log_dir, f"model_{name}.pt"))
+

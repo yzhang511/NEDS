@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from dataclasses import dataclass
-from einops import rearrange, repeat
+from einops import repeat
 from typing import (
     Any, 
     List, 
@@ -24,7 +24,7 @@ from multi_modal.mm_utils import create_context_mask
 
 DEFAULT_CONFIG = "src/configs/multi_modal/mm.yaml"
 
-STATIC_VARS = ["choice", "block", "finger_x_vel", "finger_y_vel"]
+STATIC_VARS = ["choice", "block"]
 DYNAMIC_VARS = ["wheel", "whisker"]
 
 @dataclass
@@ -78,13 +78,13 @@ class MultiModal(nn.Module):
 
         self.num_class = {
             "spike": None, "wheel": 1, "whisker": 1, "choice": 2, "block": 3,
-            "finger_x_vel": 1, "finger_y_vel": 1,
         }
         self.mod_type = {
             "spike": "spike", 
-            "choice": "static", "block": "static",
-            "wheel": "dynamic", "whisker": "dynamic",
-            "finger_x_vel": "static", "finger_y_vel": "static",
+            "choice": "static", 
+            "block": "static",
+            "wheel": "dynamic", 
+            "whisker": "dynamic",
         }
 
         self.mod_loss = {
@@ -350,9 +350,7 @@ class MultiModal(nn.Module):
         self.forward_mask_encoder(encoder_mod_dict)
 
         x = encoder_tokens + encoder_emb
-        x = self.forward_encoder(
-            x, input_timestamp=input_timestamp,
-        )
+        x = self.forward_encoder(x, input_timestamp=input_timestamp)
 
         if self.model_mode == "mm":
             output_mod_dict = {

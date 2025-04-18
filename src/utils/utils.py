@@ -1,25 +1,21 @@
 import os
+import time
+import glob
 import random
 import numpy as np
 from tqdm import tqdm
 import torch
 import matplotlib.pyplot as plt
-from utils.metric_utils import r2_score
+from torcheval.metrics import R2Score
 from sklearn.metrics import r2_score as r2_score_sklearn
 from sklearn.cluster import SpectralClustering
 from sklearn.metrics import accuracy_score
-import time
-import glob
 
 PROJ_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 with open(f"{PROJ_DIR}/data/test_eids.txt") as file:
     test_eids = file.read().splitlines()
     
 def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
-    # Start dummy load after 2 hours, adjust the sleep interval as needed
-    # time.sleep(7200)
-    # x = torch.rand(dummy_size, dummy_size).to(device)
-    # load dummy linear layer
     dummy_linear = torch.nn.Linear(dummy_size, dummy_size).to(device)
     with torch.no_grad():
         while not stop_event.is_set():
@@ -27,7 +23,6 @@ def dummy_load(stop_event, dummy_size=60000, check_interval=1, device="cuda"):
             time.sleep(check_interval)  # Adjust the sleep interval as needed
 
 def set_seed(seed):
-    
     print("Global seed set to {}.".format(seed))
 
     torch.manual_seed(seed)
@@ -183,7 +178,15 @@ def bits_per_spike(rates, spikes):
     )
     nll_null = neg_log_likelihood(null_rates, spikes, zero_warning=False)
     return (nll_null - nll_model) / np.nansum(spikes) / np.log(2)
-    
+
+r2_metric = R2Score()
+def r2_score(y_true, y_pred, device="cpu"):
+    r2_metric.reset()
+    r2_metric.to(device)
+    y_true = y_true.to(device)
+    y_pred = y_pred.to(device)
+    r2_metric.update(y_pred, y_true)
+    return r2_metric.compute().item()
 
 # metrics list, return different metrics results
 def metrics_list(gt, pred, metrics=["bps", "r2", "rsquared", "mse", "mae", "acc"], device="cpu"):
@@ -409,22 +412,6 @@ def plot_single_trial_activity(X, y, y_pred,
     idxs_behavior = np.concatenate(([var_name2idx[var] for var in var_behlist])) if len(var_behlist)>0 else []
     X_behs = X[:, :, idxs_behavior]
 
-    ### plot single-trial activity
-    # arange the trials by unsupervised clustering labels
-    # model = Rastermap(n_clusters=n_clus, # None turns off clustering and sorts single neurons 
-    #               n_PCs=n_pc, # use fewer PCs than neurons
-    #               locality=0.15, # some locality in sorting (this is a value from 0-1)
-    #               time_lag_window=15, # use future timepoints to compute correlation
-    #               grid_upsample=0, # 0 turns off upsampling since we're using single neurons
-    #             )
-    # if clusby == 'y_pred':
-    #     clustering = model.fit(y_pred)
-    # elif clusby == 'y':
-    #     clustering = model.fit(y)
-    # else:
-    #     assert False, "invalid clusby"
-    # t_sort = model.isort
-
     clustering = SpectralClustering(n_clusters=n_clus, n_neighbors=n_neighbors,
                                         affinity='nearest_neighbors',
                                         assign_labels='discretize',
@@ -496,8 +483,6 @@ This script generates a plot to examine the (single-trial) fitting of a single n
     - "global": subtract global-averaged psth
 :algined_tbins: reference time steps to annotate in the plot. 
 """
-
-
 def viz_single_cell(X, y, y_pred, var_name2idx, var_tasklist, var_value2label, var_behlist,
                     subtract_psth="task", aligned_tbins=[], clusby='y_pred', neuron_idx=0):
     nrows = 8
@@ -649,86 +634,6 @@ var_value2label = {'block': {(0.2,): "p(left)=0.2",
 var_tasklist = ['block','choice','reward']
 
 
-def huggingface2numpy(
-    train_dataloader, val_dataloader, test_dataloader, test_dataset
-):
-    
-    train_data_dict, val_data_dict, test_data_dict = {}, {}, {}
-    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
-        data_dict['spikes_data'] = []
-        data_dict['dynamic_behavior'] = []
-        data_dict['choice'] = []
-        data_dict['block'] = []
-        data_dict['reward'] = []
-        data_dict['cluster_regions'] = np.array(test_dataset['cluster_regions'][0])
-        data_dict['cluster_uuids'] = np.array(test_dataset['cluster_uuids'])[0]
-    
-    for batch in tqdm(train_dataloader):
-        train_data_dict['spikes_data'].append(batch['spikes_data'])
-        train_data_dict['dynamic_behavior'].append(batch['target'])
-        train_data_dict['choice'].append(batch['choice'])
-        train_data_dict['block'].append(batch['block'])
-        train_data_dict['reward'].append(batch['reward'])
-    
-    for batch in tqdm(val_dataloader):
-        val_data_dict['spikes_data'].append(batch['spikes_data'])
-        val_data_dict['dynamic_behavior'].append(batch['target'])
-        val_data_dict['choice'].append(batch['choice'])
-        val_data_dict['block'].append(batch['block'])
-        val_data_dict['reward'].append(batch['reward'])
-    
-    for batch in tqdm(test_dataloader):
-        test_data_dict['spikes_data'].append(batch['spikes_data'])
-        test_data_dict['dynamic_behavior'].append(batch['target'])
-        test_data_dict['choice'].append(batch['choice'])
-        test_data_dict['block'].append(batch['block'])
-        test_data_dict['reward'].append(batch['reward'])
-    
-    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
-        data_dict['spikes_data'] = torch.cat(data_dict['spikes_data'], 0).numpy()
-        data_dict['dynamic_behavior'] = torch.cat(data_dict['dynamic_behavior'], 0).numpy()
-        data_dict['choice'] = torch.cat(data_dict['choice'], 0).numpy()
-        data_dict['block'] = torch.cat(data_dict['block'], 0).numpy()
-        data_dict['reward'] = torch.cat(data_dict['reward'], 0).numpy()
-
-    return {
-        "train": train_data_dict, "val": val_data_dict, "test": test_data_dict
-    }
-
-
-def nlb2numpy(
-    train_dataloader, val_dataloader, test_dataloader, test_dataset
-):
-    
-    train_data_dict, val_data_dict, test_data_dict = {}, {}, {}
-    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
-        data_dict['spikes_data'] = []
-        data_dict['dynamic_behavior'] = []
-    
-    for batch in tqdm(train_dataloader):
-        train_data_dict['spikes_data'].append(batch['spikes_data'])
-        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
-        train_data_dict['dynamic_behavior'].append(target)
-    
-    for batch in tqdm(val_dataloader):
-        val_data_dict['spikes_data'].append(batch['spikes_data'])
-        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
-        val_data_dict['dynamic_behavior'].append(target)
-    
-    for batch in tqdm(test_dataloader):
-        test_data_dict['spikes_data'].append(batch['spikes_data'])
-        target = torch.cat([batch["finger_vel"], batch["cursor_pos"], batch["finger_pos"]], dim=2)
-        test_data_dict['dynamic_behavior'].append(target)
-    
-    for data_dict in [train_data_dict, val_data_dict, test_data_dict]:
-        data_dict['spikes_data'] = torch.cat(data_dict['spikes_data'], 0).numpy()
-        data_dict['dynamic_behavior'] = torch.cat(data_dict['dynamic_behavior'], 0).numpy()
-
-    return {
-        "train": train_data_dict, "val": val_data_dict, "test": test_data_dict
-    }
-
-
 def _one_hot(arr, T):
     uni = np.sort(np.unique(arr))
     ret = np.zeros((len(arr), T, len(uni)))
@@ -742,6 +647,7 @@ def _std(arr):
     std = np.clip(std, 1e-8, None) # (T, N) 
     arr = (arr - mean) / std
     return arr, mean, std
+
 
 def get_npy_files(log_dir, 
                   model_mode='mm',

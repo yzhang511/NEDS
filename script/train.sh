@@ -1,19 +1,25 @@
 #!/bin/bash
 #SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA40x4,gpuA100x4
-#SBATCH --job-name="tune"
-#SBATCH --output="tune.%j.out"
-#SBATCH --nodes=2
-#SBATCH --ntasks=2
+#SBATCH --partition=gpuA40x4,gpuA100x4,gpuA40x4-preempt,gpuA100x4-preempt
+#SBATCH --job-name="train"
+#SBATCH --output="train.%j.out"
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem 100000
-#SBATCH -t 2-00
+#SBATCH -t 0-04
 #SBATCH --export=ALL
 
 set -x
 
 . ~/.bashrc
+
+echo $TMPDIR
+
+conda activate neds
+
+cd ..
 
 num_sessions=${1}
 eid=${2}
@@ -22,32 +28,27 @@ model_mode=${4}
 dummy_size=${5}
 mask_ratio=${6}
 search=${7}
-use_nlb=${8}
-nlb_bin_size=${9}
-task_var=${10}
+task_var=${8}
 
-echo $TMPDIR
-conda activate ibl-mm
+user_name=$(whoami)
+config_dir=$(pwd)/src/configs
+data_path="/projects/bcxj/$user_name/datasets/"
 
-if [ "$use_nlb" = "True" ]; then
-    echo "Using NLB"
-    use_nlb="--use_nlb"
-else
-    echo "Not using NLB"
-    search=""
-fi
-
-# if search is empty, then we are not doing hyperparameter search
 if [ "$search" = "True" ]; then
     echo "Doing hyperparameter search"
     search="--search"
+    base_path="/projects/beez/$user_name/tune/session_$num_sessions/"
 else
     echo "Not doing hyperparameter search"
     search=""
+    base_path="./" # change to your own path
 fi
 
-cd ../..
-user_name=$(whoami)
+if [ $train_mode = "finetune" ]; then
+    python_file="src/finetune_multi_modal.py"
+else
+    python_file="src/train_multi_modal.py"
+fi
 
 # Getting the node names
 nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
@@ -56,7 +57,7 @@ nodes_array=($nodes)
 head_node=${nodes_array[0]}
 head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 
-# if we detect a space character in the head node IP, we'll
+# If we detect a space character in the head node IP, we'll
 # convert it to an ipv4 address. This step is optional.
 if [[ "$head_node_ip" == *" "* ]]; then
 IFS=' ' read -ra ADDR <<<"$head_node_ip"
@@ -93,19 +94,11 @@ for ((i = 1; i <= worker_num; i++)); do
     sleep 5
 done
 
-if [ $train_mode = "finetune" ]; then
-    python_file="src/finetune_multi_modal.py"
-else
-    python_file="src/train_multi_modal.py"
-fi
-
-config_dir="/u/yzhang39/multi_modal_foundation_model/src/configs"
 
 if [ $model_mode = "mm" ]; then
     echo "Training multimodal model:"
-    config_dir=$(pwd)/src/configs
     python $python_file --eid $eid \
-    --base_path /projects/beez/$user_name/tune/session_$num_sessions/ \
+    --base_path $base_path \
     --mask_ratio $mask_ratio \
     --mixed_training \
     --num_sessions $num_sessions \
@@ -113,30 +106,27 @@ if [ $model_mode = "mm" ]; then
     --model_mode $model_mode \
     --enc_task_var $task_var \
     $search \
-    $use_nlb \
-    --nlb_bin_size $nlb_bin_size \
     --num_tune_sample 30 \
     --config_dir $config_dir \
-    --data_path /projects/bcxj/$user_name/datasets/
+    --data_path $data_path
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
     echo "Training $model_mode model:"
     python $python_file --eid $eid \
-    --base_path /projects/beez/$user_name/tune/session_$num_sessions/ \
+    --base_path $base_path \
     --mask_ratio $mask_ratio \
     --num_sessions $num_sessions \
     --dummy_size $dummy_size \
     --model_mode $model_mode \
     --enc_task_var all \
     $search \
-    $use_nlb \
-    --nlb_bin_size $nlb_bin_size \
     --num_tune_sample 30 \
     --config_dir $config_dir \
-    --data_path /projects/bcxj/$user_name/datasets/
+    --data_path $data_path
 else
     echo "model_mode: $model_mode not supported"
 fi
 
-cd script/yizi/
 conda deactivate
+
+cd script

@@ -32,11 +32,8 @@ CONFIG:
     n_mask_regions: number of regions to select from mask_regions or target_regions
 """
 class Masker(nn.Module):
-
-    
     def __init__(self, config: DictConfig):
         super().__init__()
-
         self.force_active = config.force_active if "force_active" in config else False
         self.mode = config.mode          
         self.ratio = config.ratio
@@ -68,7 +65,6 @@ class Masker(nn.Module):
             return spikes, torch.zeros_like(spikes).to(torch.int64)
         elif self.ratio == 0:
             return spikes, torch.zeros_like(spikes).to(torch.int64)
-
 
         if 'all' in self.mask_regions:
             self.mask_regions = list(np.unique(neuron_regions))
@@ -173,4 +169,3 @@ class Masker(nn.Module):
         kernel = torch.ones(width, device=mask.device).view(1, 1, -1)
         expanded_mask = F.conv1d(mask.unsqueeze(1), kernel, padding="same")
         return (expanded_mask.squeeze(1) >= 1)
-    

@@ -1,6 +1,4 @@
 import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
 import wandb
 import pickle
 import logging
@@ -8,32 +6,37 @@ import argparse
 import threading
 import numpy as np
 from math import ceil
+
 import torch
-from utils.dataset_utils import load_ibl_dataset
 from accelerate import Accelerator
-from collections import defaultdict
-from loader.make_loader import make_loader
-from utils.utils import set_seed, dummy_load
-from utils.config_utils import config_from_kwargs, update_config
-from utils.eval_utils import load_model_data_local
-from multi_modal.mm import MultiModal
 from torch.optim.lr_scheduler import OneCycleLR
-from trainer.make import make_multimodal_trainer
-from multi_modal.encoder_embeddings import EncoderEmbedding
+
 import ray
 from ray import tune, train
 from ray.tune.schedulers import ASHAScheduler
 
+from utils.utils import set_seed, dummy_load
+from utils.config_utils import config_from_kwargs, update_config
+from utils.dataset_utils import load_ibl_dataset
+from utils.eval_utils import load_model_data_local
+
+from loader.make_loader import make_loader
+from trainer.make import make_multimodal_trainer
+
+from multi_modal.mm import MultiModal
+from multi_modal.encoder_embeddings import EncoderEmbedding
+
+
 def main(tune_config=None):
 
-    if args.num_sessions <= 10:
+    if args.num_sessions == 1:
         model_config = f"{args.config_dir}/multi_modal/mm_single_session.yaml"
-    elif args.num_sessions == 40:
+    elif (args.num_sessions < 70) and (args.num_sessions > 10):
         model_config = f"{args.config_dir}/multi_modal/mm_medium_size.yaml"
-    elif args.num_sessions == 74:
+    elif args.num_sessions >= 70:
         model_config = f"{args.config_dir}/multi_modal/mm_large_size.yaml"
     else:
-        model_config = f"{args.config_dir}/multi_modal/mm.yaml"
+        model_config = f"{args.config_dir}/multi_modal/mm.yaml" # default
 
     kwargs = {"model": f"include:{model_config}"}
     config = config_from_kwargs(kwargs)
@@ -45,12 +48,12 @@ def main(tune_config=None):
     # ------ 
     # SET UP
     # ------ 
-
     eid = args.eid
     base_path = args.base_path
     model_mode = args.model_mode
     modality = args.modality
     num_sessions = args.num_sessions
+
     if args.search:
         config["wandb"]["use"] = False
         config["model"]["masker"]["ratio"] = tune_config["mask_ratio"]
@@ -60,6 +63,7 @@ def main(tune_config=None):
         config["model"]["masker"]["ratio"] = args.mask_ratio
         lr = config.optimizer.lr
         wd = config.optimizer.wd
+
     mask_mode = args.mask_mode
     mask_name = f"mask_{mask_mode}"
     config["model"]["masker"]["mode"] = args.mask_mode
@@ -92,7 +96,6 @@ def main(tune_config=None):
     # ---------
     # LOAD DATA
     # ---------
-
     train_dataset, val_dataset, test_dataset, meta_data = load_ibl_dataset(
         args.data_path, 
         config.dirs.huggingface_org,
@@ -221,7 +224,6 @@ def main(tune_config=None):
     # ----------
     # LOAD MODEL
     # ----------
-
     logging.info(f"Start model finetuning:")
 
     accelerator = Accelerator()
@@ -273,10 +275,9 @@ def main(tune_config=None):
     model.masker.ratio = args.mask_ratio
     logging.info(f"Reset mask ratio to {model.masker.ratio} for fine-tuning.")
 
-    # -----------------------
-    # ACCOMMODATE NEW SESSION
-    # -----------------------
-
+    # ------------------
+    # STITCH NEW SESSION
+    # ------------------
     if num_sessions > 1:
 
         hidden_size = config.model.encoder.transformer.hidden_size
@@ -298,20 +299,11 @@ def main(tune_config=None):
             model.encoder_embeddings[mod].embedder.mod_emb.load_state_dict(mod_emb)
             model.encoder_embeddings[mod].embedder.session_emb.load_state_dict(session_emb)
 
-            if args.zero_shot_transfer:
-                config["training"]["num_epochs"] = 500
-                model.encoder_embeddings[mod].embedder.pos_embed.requires_grad = False
-                model.encoder_embeddings[mod].embedder.mod_emb.requires_grad = False
-                model.encoder_embeddings[mod].embedder.session_emb.requires_grad = False
-
-
     # -----------------------
     # TRACK MODEL & DATA SIZE
     # -----------------------
-
-    if args.zero_shot_transfer:
-        input_mods = output_mods = neural_mods
-        modal_filter = {"input": input_mods, "output": output_mods}
+    input_mods = output_mods = neural_mods
+    modal_filter = {"input": input_mods, "output": output_mods}
 
     n_mods = len(modal_filter["input"])
     n_tokens_per_mod = config.model.encoder.embedder.max_F
@@ -329,7 +321,6 @@ def main(tune_config=None):
     # ------------
     # SET UP MODEL
     # ------------
-
     model = accelerator.prepare(model)
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -392,11 +383,11 @@ def main(tune_config=None):
 
     
 if __name__ == "__main__":
+
     logging.basicConfig(level=logging.INFO) 
 
     neural_acronyms = {
         "ap": "spike",
-        "lfp": "lfp",
     }
     static_acronyms = {
         "choice": "choice", 
@@ -426,7 +417,6 @@ if __name__ == "__main__":
     ap.add_argument("--dummy_load", action="store_true")
     ap.add_argument("--dummy_size", type=int, default=50000)
     ap.add_argument("--search", action="store_true")
-    ap.add_argument("--zero_shot_transfer", action="store_true")
     ap.add_argument("--num_tune_sample", type=int, default=10)
     ap.add_argument("--config_dir", type=str, default="src/configs")
     args = ap.parse_args()

@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --account=bcxj-delta-gpu
-#SBATCH --partition=gpuA40x4,gpuA100x4,gpuA40x4-preempt,gpuA100x4-preempt
+#SBATCH --account=bcxj-delta-cpu
+#SBATCH --partition=cpu
 #SBATCH --job-name="eval"
 #SBATCH --output="eval.%j.out"
 #SBATCH -N 1
@@ -8,9 +8,16 @@
 #SBATCH -c 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem 100000
-#SBATCH --gpus=1
 #SBATCH -t 0-01
 #SBATCH --export=ALL
+
+. ~/.bashrc
+
+echo $TMPDIR
+
+conda activate neds
+
+cd ..
 
 num_sessions=${1}
 eid=${2}
@@ -18,21 +25,11 @@ model_mode=${3}
 mask_rartio=${4}
 task_var=${5}
 search=${6}
-use_nlb=${7}
 
-. ~/.bashrc
-echo $TMPDIR
-conda activate ibl-mm
+user_name=$(whoami)
+base_path="./" # change to your own path
+data_path="/projects/bcxj/$user_name/datasets/"
 
-if [ "$use_nlb" = "True" ]; then
-    echo "Using NLB"
-    use_nlb="--use_nlb"
-else
-    echo "Not using NLB"
-    search=""
-fi
-
-# if search is empty, then we are not doing hyperparameter search
 if [ "$search" = "True" ]; then
     echo "Doing hyperparameter search"
     search="--param_search"
@@ -41,40 +38,38 @@ else
     search=""
 fi
 
-cd ../..
 if [ $model_mode = "mm" ]; then
-    python src/eval_multi_modal.py --mask_mode temporal \
+    python src/eval_multi_modal.py --eid ${eid} \
+                                --mask_mode temporal \
                                 --mask_ratio ${mask_rartio} \
-                                --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path $base_path \
                                 --mixed_training  \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
             			        --overwrite \
                                 --enc_task_var $task_var \
-                                --data_path /projects/bcxj/yzhang39/datasets/ \
-                                ${search} \
-                                ${use_nlb}
+                                --data_path $data_path \
+                                ${search}
 elif [ $model_mode = "encoding" ] || [ $model_mode = "decoding" ];
 then
-    python src/eval_multi_modal.py --mask_mode temporal \
+    python src/eval_multi_modal.py --eid ${eid} \
+                                --mask_mode temporal \
                                 --mask_ratio ${mask_rartio} \
-                                --eid ${eid} \
                                 --seed 42 \
-                                --base_path ./ \
+                                --base_path $base_path \
                                 --num_sessions ${num_sessions} \
                                 --model_mode ${model_mode} \
                                 --wandb \
 				                --overwrite \
                                 --enc_task_var $task_var \
-                                --data_path /projects/bcxj/yzhang39/datasets/ \
-                                ${search} \
-                                ${use_nlb}
+                                --data_path $data_path \
+                                ${search}
 else
     echo "model_mode: $model_mode not supported"
 fi
-cd script/yizi
 
 conda deactivate
+
+cd script

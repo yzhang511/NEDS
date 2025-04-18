@@ -1,12 +1,18 @@
 import numpy as np
-from scipy.sparse import csr_array
 from datasets import (
-    Dataset, DatasetInfo, list_datasets, load_dataset, concatenate_datasets, DatasetDict, load_from_disk,
+    Dataset, 
+    DatasetInfo, 
+    list_datasets, 
+    load_dataset, 
+    concatenate_datasets, 
+    DatasetDict, 
+    load_from_disk,
 )
 # import h5py
 import os
 import torch
 from tqdm import tqdm
+from scipy.sparse import csr_array
 
 class DATASET_MODES:
     train = "train"
@@ -32,7 +38,6 @@ def get_test_eids():
 
 def get_sparse_from_binned_spikes(binned_spikes):
     sparse_binned_spikes = [csr_array(binned_spikes[i], dtype=np.ubyte) for i in range(binned_spikes.shape[0])]
-
     spikes_sparse_data_list = [csr_matrix.data.tolist() for csr_matrix in sparse_binned_spikes] 
     spikes_sparse_indices_list = [csr_matrix.indices.tolist() for csr_matrix in sparse_binned_spikes]
     spikes_sparse_indptr_list = [csr_matrix.indptr.tolist() for csr_matrix in sparse_binned_spikes]
@@ -42,9 +47,7 @@ def get_sparse_from_binned_spikes(binned_spikes):
 
 def get_binned_spikes_from_sparse(spikes_sparse_data_list, spikes_sparse_indices_list, spikes_sparse_indptr_list, spikes_sparse_shape_list):
     sparse_binned_spikes = [csr_array((spikes_sparse_data_list[i], spikes_sparse_indices_list[i], spikes_sparse_indptr_list[i]), shape=spikes_sparse_shape_list[i]) for i in range(len(spikes_sparse_data_list))]
-
     binned_spikes = np.array([csr_matrix.toarray() for csr_matrix in sparse_binned_spikes])
-
     return binned_spikes
 
 def create_dataset(
@@ -55,7 +58,6 @@ def create_dataset(
     binned_behaviors=None,
     binned_lfp=None
 ):
-
     # Scipy sparse matrices can't be directly loaded into HuggingFace Datasets so they are converted to lists
     sparse_binned_spikes, spikes_sparse_data_list, spikes_sparse_indices_list, \
     spikes_sparse_indptr_list, spikes_sparse_shape_list = get_sparse_from_binned_spikes(binned_spikes)
@@ -177,20 +179,22 @@ def get_user_datasets(user_or_org_name):
     user_datasets = [d for d in all_datasets if d.startswith(f"{user_or_org_name}/")]
     return user_datasets
 
-def load_ibl_dataset(cache_dir,
-                     user_or_org_name='ibl-repro-ephys',
-                     aligned_data_dir=None,
-                     train_aligned=True,
-                     eid=None, # specify 1 session for training, random_split will be used
-                     num_sessions=5, # total number of sessions for training and testing
-                     split_method="session_based",
-                     train_session_eid=[],
-                     test_session_eid=[], # specify session eids for testing, session_based will be used
-                     split_size = 0.1,
-                     mode = "train",
-                     batch_size=16,
-                     use_re=False,
-                     seed=42):
+def load_ibl_dataset(
+    cache_dir,
+    user_or_org_name='ibl-repro-ephys',
+    aligned_data_dir=None,
+    train_aligned=True,
+    eid=None, # specify 1 session for training, random_split will be used
+    num_sessions=5, # total number of sessions for training and testing
+    split_method="session_based",
+    train_session_eid=[],
+    test_session_eid=[], # specify session eids for testing, session_based will be used
+    split_size = 0.1,
+    mode = "train",
+    batch_size=16,
+    use_re=False,
+    seed=42
+):
 
     if aligned_data_dir:
         dataset = load_from_disk(aligned_data_dir)
@@ -351,12 +355,12 @@ def _time_extract(data):
 
 # split the aligned and unaligned dataset together.
 def split_both_dataset(
-        aligned_dataset,
-        unaligned_dataset,
-        train_size=0.9,
-        test_size=0.1,
-        shuffle=True,
-        seed=42
+    aligned_dataset,
+    unaligned_dataset,
+    train_size=0.9,
+    test_size=0.1,
+    shuffle=True,
+    seed=42,
 ):
     assert train_size + test_size == 1, "The sum of train/test is not equal to 1."
 
@@ -367,7 +371,6 @@ def split_both_dataset(
     _tmp1 = aligned_dataset.train_test_split(train_size=train_size, test_size=test_size, shuffle=shuffle, seed=seed)
     test_alg = _tmp1['test']
     train_alg = _tmp1['train']
-
 
     new_aligned_dataset = DatasetDict({
         'train': train_alg,

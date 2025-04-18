@@ -386,7 +386,6 @@ def main(tune_config=None):
     # -----
     # TRAIN
     # -----
-
     trainer_kwargs = {
         "log_dir": log_dir,
         "accelerator": accelerator,

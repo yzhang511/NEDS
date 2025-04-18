@@ -384,7 +384,6 @@ class BaseDataset(torch.utils.data.Dataset):
         data_dir = None,
         mode = "train",
         eids = None,
-        use_nlb = False,
     ) -> None:
 
         if data_dir is not None:
@@ -405,7 +404,6 @@ class BaseDataset(torch.utils.data.Dataset):
             self.load_meta = load_meta
             self.dataset_name = dataset_name
             self.stitching = stitching
-            self.use_nlb = use_nlb
 
     def _preprocess_h5_data(self, data, idx):
         spike_data, rates, _, _ = data
@@ -522,14 +520,10 @@ class BaseDataset(torch.utils.data.Dataset):
                 else:
                     beh = np.array(data[beh_name], dtype=np.float32)
                 target_behavior.append(beh)
-                if self.use_nlb:
-                    target_behavior_dict[beh_name] = beh.reshape(1, 1)
-                else:
-                    target_behavior_dict[beh_name.split("-")[0]] = beh
-            if self.use_nlb:
-                target_behavior = np.array(target_behavior).reshape(-1, 1)
-            else:
-                target_behavior = np.array(target_behavior).T
+                target_behavior_dict[beh_name.split("-")[0]] = beh
+
+            target_behavior = np.array(target_behavior).T
+
         except (ValueError, TypeError):
             target_behavior = np.array([np.nan])
         return target_behavior, target_behavior_dict
@@ -574,159 +568,18 @@ class BaseDataset(torch.utils.data.Dataset):
     def __len__(self):
         if self.data_paths is not None:
             return len(self.data_paths)
-        elif ("ibl" in self.dataset_name) and (not self.use_nlb):
+        elif "ibl" in self.dataset_name:
             return len(self.dataset)
-        elif self.use_nlb:
-            return len(self.dataset["spike"])
         else:
             # get the length of the first tuple in the dataset
             return len(self.dataset)
         
-    def _preprocess_nlb_data(self, data, idx):
-
-        binned_spikes_data = data["spike"][idx]
-
-        if self.target:
-            target_behavior, target_behavior_dict = self._prepare_target_behavior(data, idx)
-        else:
-            target_behavior = np.array([np.nan])
-
-        pad_time_length, pad_space_length = 0, 0
-
-        num_time_steps, num_neurons = binned_spikes_data.shape
-
-        neuron_regions = np.array(["xx" for i in range(num_neurons)])
-        neuron_regions[:98] = "HI"
-        neuron_regions[98:] = "HO"
-        neuron_regions = list(neuron_regions)
-
-        # pad along time dimension
-        if num_time_steps > self.max_time_length:
-            binned_spikes_data = binned_spikes_data[:self.max_time_length]
-        else: 
-            if self.pad_to_right:
-                pad_time_length = self.max_time_length - num_time_steps
-                binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-            else:
-                pad_time_length = num_time_steps - self.max_time_length
-                binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-
-        if not self.stitching:
-            # pad along space dimension
-            if num_neurons > self.max_space_length:
-                binned_spikes_data = binned_spikes_data[:,:self.max_space_length]
-                neuron_regions = neuron_regions[:self.max_space_length]
-            else: 
-                if self.pad_to_right:
-                    pad_space_length = self.max_space_length - num_neurons
-                    binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-                    neuron_regions = _pad_seq_right_to_n(neuron_regions, self.max_space_length, np.nan)
-                else:
-                    pad_space_length = num_neurons - self.max_space_length
-                    binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-                    neuron_regions = _pad_seq_left_to_n(neuron_regions, self.max_space_length, np.nan)
-                binned_spikes_data = binned_spikes_data.T
-            spikes_spacestamps = np.arange(self.max_space_length).astype(np.int64)
-            space_attn_mask = _attention_mask(self.max_space_length, pad_space_length).astype(np.int64)
-        else:
-            spikes_spacestamps = np.arange(num_neurons).astype(np.int64)
-            space_attn_mask = _attention_mask(num_neurons, 0).astype(np.int64)
-                
-        spikes_timestamps = np.arange(self.max_time_length).astype(np.int64)
-        
-        # add attention mask
-        time_attn_mask = _attention_mask(self.max_time_length, pad_time_length).astype(np.int64)
-        binned_spikes_data = binned_spikes_data.astype(np.float32)
-
-        return {
-            "spikes_data": binned_spikes_data,
-            "time_attn_mask": time_attn_mask,
-            "space_attn_mask": space_attn_mask,
-            "spikes_timestamps": spikes_timestamps,
-            "spikes_spacestamps": spikes_spacestamps,
-            "target": target_behavior,
-            "neuron_regions": list(neuron_regions),
-            "eid": "nlb-rtt",
-            **target_behavior_dict,
-        }
-        
-    # def _preprocess_nlb_data(self, data, idx):
-
-    #     binned_spikes_data = data["spike"][idx]
-
-    #     if self.target:
-    #         target_behavior, target_behavior_dict = self._prepare_target_behavior(data, idx)
-    #     else:
-    #         target_behavior = np.array([np.nan])
-
-    #     pad_time_length, pad_space_length = 0, 0
-
-    #     num_time_steps, num_neurons = binned_spikes_data.shape
-
-    #     neuron_regions = np.array(["xx" for i in range(num_neurons)])
-    #     neuron_regions[:98] = "HI"
-    #     neuron_regions[98:] = "HO"
-    #     neuron_regions = list(neuron_regions)
-
-    #     # pad along time dimension
-    #     if num_time_steps > self.max_time_length:
-    #         binned_spikes_data = binned_spikes_data[:self.max_time_length]
-    #     else: 
-    #         if self.pad_to_right:
-    #             pad_time_length = self.max_time_length - num_time_steps
-    #             binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-    #         else:
-    #             pad_time_length = num_time_steps - self.max_time_length
-    #             binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data, self.max_time_length, self.pad_value)
-
-    #     if not self.stitching:
-    #         # pad along space dimension
-    #         if num_neurons > self.max_space_length:
-    #             binned_spikes_data = binned_spikes_data[:,:self.max_space_length]
-    #             neuron_regions = neuron_regions[:self.max_space_length]
-    #         else: 
-    #             if self.pad_to_right:
-    #                 pad_space_length = self.max_space_length - num_neurons
-    #                 binned_spikes_data = _pad_seq_right_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-    #                 neuron_regions = _pad_seq_right_to_n(neuron_regions, self.max_space_length, np.nan)
-    #             else:
-    #                 pad_space_length = num_neurons - self.max_space_length
-    #                 binned_spikes_data = _pad_seq_left_to_n(binned_spikes_data.T, self.max_space_length, self.pad_value)
-    #                 neuron_regions = _pad_seq_left_to_n(neuron_regions, self.max_space_length, np.nan)
-    #             binned_spikes_data = binned_spikes_data.T
-    #         spikes_spacestamps = np.arange(self.max_space_length).astype(np.int64)
-    #         space_attn_mask = _attention_mask(self.max_space_length, pad_space_length).astype(np.int64)
-    #     else:
-    #         spikes_spacestamps = np.arange(num_neurons).astype(np.int64)
-    #         space_attn_mask = _attention_mask(num_neurons, 0).astype(np.int64)
-                
-    #     spikes_timestamps = np.arange(self.max_time_length).astype(np.int64)
-        
-    #     # add attention mask
-    #     time_attn_mask = _attention_mask(self.max_time_length, pad_time_length).astype(np.int64)
-    #     binned_spikes_data = binned_spikes_data.astype(np.float32)
-
-    #     return {
-    #         "spikes_data": binned_spikes_data,
-    #         "time_attn_mask": time_attn_mask,
-    #         "space_attn_mask": space_attn_mask,
-    #         "spikes_timestamps": spikes_timestamps,
-    #         "spikes_spacestamps": spikes_spacestamps,
-    #         "target": target_behavior,
-    #         "neuron_regions": list(neuron_regions),
-    #         "eid": "nlb-rtt",
-    #         "trial_id": data["trial_id"][idx],
-    #         **target_behavior_dict,
-    #     }
-    
     def __getitem__(self, idx):
         if self.data_paths is not None:
             data = np.load(self.data_paths[idx], allow_pickle=True).item()
             return data
-        elif ("ibl" in self.dataset_name) and (not self.use_nlb):
+        elif "ibl" in self.dataset_name:
             return self._preprocess_ibl_data(self.dataset[idx])
-        elif self.use_nlb:
-            return self._preprocess_nlb_data(self.dataset, idx)
         else:
             return self._preprocess_h5_data(self.dataset, idx)  
  

@@ -19,7 +19,7 @@ with open(f"{PROJ_DIR}/data/train_eids.txt") as file:
 with open(f"{PROJ_DIR}/data/test_eids.txt") as file:
     INCLUDE_EIDS += [line.rstrip() for line in file]
 
-STATIC_VARS = ["choice", "block", "finger_x_vel", "finger_y_vel"]
+STATIC_VARS = ["choice", "block"]
 
 
 class EncoderEmbeddingLayer(nn.Module):
@@ -35,7 +35,7 @@ class EncoderEmbeddingLayer(nn.Module):
 
         self.mod_emb = nn.Embedding(config.n_modality, hidden_size)
 
-        self.eid_lookup = INCLUDE_EIDS if "nlb-rtt" not in eid_list else ["nlb-rtt"]
+        self.eid_lookup = INCLUDE_EIDS
         self.eid_to_indx = {r: i for i, r in enumerate(self.eid_lookup)}
         self.session_emb = nn.Embedding(len(self.eid_lookup), hidden_size)
 

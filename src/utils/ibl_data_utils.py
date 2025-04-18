@@ -15,7 +15,9 @@ from iblatlas.regions import BrainRegions
 from brainbox.population.decode import get_spike_counts_in_bins
 
 DYNAMIC_VARS = [
-    "wheel-speed", "whisker-motion-energy", "body-motion-energy", 
+    "wheel-speed", 
+    "whisker-motion-energy", 
+    "body-motion-energy",
 ]
 
 def globalize(func):

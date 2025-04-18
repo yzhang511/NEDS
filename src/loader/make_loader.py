@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import torch
 from loader.base import (
@@ -11,7 +12,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
-    numpy.random.seed(worker_seed)
+    np.random.seed(worker_seed)
     random.seed(worker_seed)
 
 def calculate_weights(labels):
@@ -44,10 +45,10 @@ def make_loader(
     data_dir = None,
     mode='train',
     eids=None,
-    use_nlb=False,
 ):
     
-    dataset = BaseDataset(dataset=dataset, 
+    dataset = BaseDataset(
+        dataset=dataset, 
         target=target,
         pad_value=pad_value,
         max_time_length=max_time_length,
@@ -63,7 +64,6 @@ def make_loader(
         data_dir=data_dir,
         mode=mode,
         eids=eids,
-        use_nlb=use_nlb,
     )
     
     generator = torch.Generator()
