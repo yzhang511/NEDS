@@ -43,7 +43,8 @@ if args.n_sessions == 1:
     else:
         eids = [args.eid]
 else:
-    with open("../data/eids.txt") as file:
+    PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(f"{PROJ_DIR}/data/eids.txt") as file:
         eids = [line.rstrip() for line in file][:args.n_sessions]
 
 params = {
@@ -75,9 +76,9 @@ one = ONE(
 final_eids = []
 for eid_idx, eid in enumerate(eids):
 
-    if os.path.exists(f"{args.base_path}/{eid}_aligned"):
-        logging.info(f"The dataset {eid}_aligned already exists.")
-        continue
+    # if os.path.exists(f"{args.base_path}/{eid}_aligned"):
+    #     logging.info(f"The dataset {eid}_aligned already exists.")
+    #     continue
     
     logging.info(f"EID {eid}")
 
@@ -215,12 +216,12 @@ for eid_idx, eid in enumerate(eids):
     # upload_dataset(dataset, org=args.huggingface_org, eid=f"{eid}_aligned")
     dataset.save_to_disk(f"{args.base_path}/{eid}_aligned")
 
-    logging.info(f"Uploaded EID: {eid}")
-    logging.info(f"Progress: {eid_idx+1} / {len(eids)} Sessions Uploaded")
+    logging.info(f"Downloaded EID: {eid}")
+    logging.info(f"Progress: {eid_idx+1} / {len(eids)} sessions downloaded")
 
     final_eids.append(eid)
 
-logging.info(f"Successfully uploaded EIDs: ")
+logging.info(f"Successfully downloaded EIDs: ")
 
 for eid in final_eids:
     print(eid)

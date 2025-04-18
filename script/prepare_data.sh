@@ -5,13 +5,22 @@
 #SBATCH --partition=cpu
 #SBATCH -c 1
 #SBATCH --mem 100000
-#SBATCH -t 0-02
+#SBATCH -t 0-01
 #SBATCH --export=ALL
 
 . ~/.bashrc
 
+echo $TMPDIR
+
+cd ..
+
+conda activate neds
+
 num_sessions=${1:-1}  # Default to 1 if not provided
 eid=${2:-"None"}      # Default to "None" if not provided
+
+user_name=$(whoami)
+base_path=/projects/bcxj/$user_name/datasets
 
 if ! [[ "$num_sessions" =~ ^[0-9]+$ ]]; then
     echo "Error: num_sessions must be an integer"
@@ -29,17 +38,9 @@ else
     eid="None"
 fi
 
-echo $TMPDIR
-
-cd ..
-
-conda activate neds
-
-user_name=$(whoami)
-
 python src/prepare_data.py --n_sessions $num_sessions \
                            --eid $eid \
-                           --base_path /projects/bcxj/$user_name/datasets
+                           --base_path $base_path
 
 conda deactivate
 
