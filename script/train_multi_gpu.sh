@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=bcxj-delta-gpu
 #SBATCH --partition=gpuA40x4,gpuA100x4
-#SBATCH --job-name="mm"
-#SBATCH --output="mm.%j.out"
+#SBATCH --job-name="train-multi-gpu"
+#SBATCH --output="train-multi-gpu.%j.out"
 #SBATCH --nodes=2
 #SBATCH --ntasks=2
 #SBATCH --gpus-per-task=1
@@ -26,7 +26,7 @@ dummy_size=${4}
 mask_ratio=${5}
 task_var=${6}
 
-user_name=$(whoami)
+user_name="yzhang39"
 base_path="./" # change to your own path
 config_dir=$(pwd)/src/configs
 data_path="/projects/bcxj/$user_name/datasets/"

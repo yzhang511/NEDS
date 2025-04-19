@@ -69,7 +69,7 @@ To evaluate NEDS on a single session:
 ```bash
 sbatch eval.sh 1 EID train mm 0.1 random False     # Eval a model trained from scratch (no hyperparameter search)
 
-sbatch eval.sh 1 EID finetune mm 0.1 random False  # Eval a model fine-tuned on a held-out test session (no hyperparameter search)
+sbatch eval.sh 10 EID finetune mm 0.1 random False # Eval a pre-trained model fine-tuned on a held-out test session (no hyperparameter search)
 
 sbatch eval.sh 1 EID train mm 0.1 random True      # Eval a model trained from scratch (with hyperparameter search)
 ```
@@ -84,6 +84,7 @@ sbatch eval.sh 1 EID train mm 0.1 random True      # Eval a model trained from s
 | NEDS (Large) | NEDS trained on 79 sessions from IBL repeated site dataset | Coming soon |
 
 The IBL sessions used for pre-training are in `data/train_eids.txt`, while the held-out sessions for evaluation are in `data/test_eids.txt`.
+If you want to train and evaluate on a different set of sessions, you can change the `eids.txt`, `train_eids.txt` and `test_eids.txt` files.
 
 
 ## Citation

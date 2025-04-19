@@ -43,13 +43,13 @@ ap.add_argument("--wandb", action="store_true")
 args = ap.parse_args()
 
 if args.num_sessions == 1:
-    model_config = f"{args.config_dir}/multi_modal/mm_single_session.yaml"
+    model_config = f"src/configs/multi_modal/mm_single_session.yaml"
 elif (args.num_sessions < 70) and (args.num_sessions > 10):
-    model_config = f"{args.config_dir}/multi_modal/mm_medium_size.yaml"
+    model_config = f"src/configs/multi_modal/mm_medium_size.yaml"
 elif args.num_sessions >= 70:
-    model_config = f"{args.config_dir}/multi_modal/mm_large_size.yaml"
+    model_config = f"src/configs/multi_modal/mm_large_size.yaml"
 else:
-    model_config = f"{args.config_dir}/multi_modal/mm.yaml" # default
+    model_config = f"src/configs/multi_modal/mm.yaml" # default
 
 kwargs = {"model": f"include:{model_config}"}
 config = config_from_kwargs(kwargs)
