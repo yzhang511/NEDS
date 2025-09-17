@@ -53,7 +53,7 @@ params = {
     "single_region": False,
     "align_time": 'stimOn_times', 
     "time_window": (-.5, 1.5), 
-    "fr_thresh": 0.5
+    "fr_thresh": 0.2
 }
 
 beh_names = [
