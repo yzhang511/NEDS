@@ -71,6 +71,8 @@ class MultiModal(nn.Module):
             assert config.masker.mode in ["temporal", "causal"], "only allow temporal / causal token masking."
             self.masker = Masker(config.masker)
 
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.hidden_size))
+
         self.encoder = nn.ModuleList(
             [EncoderLayer(idx, config.encoder.transformer) for idx in range(self.n_layers)]
         )
@@ -146,12 +148,16 @@ class MultiModal(nn.Module):
         encoder_tokens, encoder_emb, input_timestamp, encoder_mask, mod_mask = \
         self.cat_encoder_tensors(mod_dict)
 
-        B, N, _ = encoder_tokens.size()
-
-        encoder_mask_ids = torch.argwhere(encoder_mask[0] == 1).squeeze()
-        
-        encoder_tokens[:,encoder_mask_ids,:] = 0.        
-
+        # encoder_tokens: [B, N, D]
+        # encoder_mask:   [B, N], where 1 means masked
+    
+        mask = encoder_mask.unsqueeze(-1).bool()   # [B, N, 1]
+    
+        encoder_tokens = torch.where(
+            mask,
+            self.mask_token.expand_as(encoder_tokens),
+            encoder_tokens,
+        )       
         return encoder_tokens, encoder_emb, input_timestamp, encoder_mask, mod_mask
 
 
@@ -278,7 +284,7 @@ class MultiModal(nn.Module):
 
     def _prepare_mixed_masking(self, mod_dict):
                     
-        tmp = mod_dict["spike"]["inputs"]
+        tmp = mod_dict["spike"]["inputs"].clone()
         
         masking_schemes = [
             "encoding", "decoding", "self-spike", "self-behavior", "random_token"
